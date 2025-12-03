@@ -1,0 +1,305 @@
+********************************************** START OF CODE UJWAL 01.12.2025 - CORRECTED ****************************************************
+
+" Field 1: Preship Number
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'PRESHIP_NO'.
+  fieldcat-tabname = 'IT_VBRP'.              " ← CORRECTED from GT_PRESHIP
+  fieldcat-seltext_l = 'Preship Number'.
+  fieldcat-seltext_m = 'Preship No'.
+  fieldcat-seltext_s = 'PreShip'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 15.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 2: MM Invoice Document Number *** NEW - WAS MISSING ***
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'BELNR2'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'MM Invoice Document'.
+  fieldcat-seltext_m = 'MM Inv Doc'.
+  fieldcat-seltext_s = 'MMInv'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 15.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 3: Fiscal Year *** NEW - WAS MISSING ***
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'GJAHR2'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Fiscal Year'.
+  fieldcat-seltext_m = 'Fisc Year'.
+  fieldcat-seltext_s = 'FYear'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 10.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 4: Purchase Order Number
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'EBELN'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Purchase Order Number'.
+  fieldcat-seltext_m = 'PO Number'.
+  fieldcat-seltext_s = 'PO No'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 15.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 5: PO Item Number
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'EBELP'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'PO Item Number'.
+  fieldcat-seltext_m = 'PO Item'.
+  fieldcat-seltext_s = 'POItem'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 10.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 6: Contract Number
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'KONNR'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Purchase Contract Number'.
+  fieldcat-seltext_m = 'Contract No'.
+  fieldcat-seltext_s = 'Contr'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 15.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 7: Contract Item Number
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'KTPNR'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Contract Item Number'.
+  fieldcat-seltext_m = 'Contract Item'.
+  fieldcat-seltext_s = 'CtItem'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 10.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 8: Purchase Order Date (Contract Date)
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'BEDAT'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Purchase Order Date'.
+  fieldcat-seltext_m = 'PO Date'.
+  fieldcat-seltext_s = 'PODate'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 12.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 9: Validity Start Date
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'KDATB'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Validity Start Date'.
+  fieldcat-seltext_m = 'Start Date'.
+  fieldcat-seltext_s = 'StartDt'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 12.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 10: Validity End Date
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'KDATE'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Validity End Date'.
+  fieldcat-seltext_m = 'End Date'.
+  fieldcat-seltext_s = 'EndDt'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 12.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 11: Target Quantity
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'KTMNG'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Target Quantity'.
+  fieldcat-seltext_m = 'Quantity'.
+  fieldcat-seltext_s = 'Qty'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 15.
+  fieldcat-do_sum = 'X'.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+********************************************** END OF CODE UJWAL 01.12.2025 - CORRECTED ****************************************************
+
+
+
+
+
+
+
+
+
+
+
+********************************************** NEW FIELDS FOR UJWAL 01.12.2025 ****************************************************
+
+" Field 1: Preship Number
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'PRESHIP_NO'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Preship Number'.
+  fieldcat-seltext_m = 'Preship No'.
+  fieldcat-seltext_s = 'PreShip'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 15.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 2: MM Invoice Document
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'BELNR2'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'MM Invoice Doc'.
+  fieldcat-seltext_m = 'MM Inv'.
+  fieldcat-seltext_s = 'MMInv'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 15.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 3: Fiscal Year
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'GJAHR2'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Fiscal Year'.
+  fieldcat-seltext_m = 'FYear'.
+  fieldcat-seltext_s = 'FY'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 10.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 4: Purchase Order Number
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'EBELN'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Purchase Order'.
+  fieldcat-seltext_m = 'PO Number'.
+  fieldcat-seltext_s = 'PO'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 15.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 5: PO Item
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'EBELP'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'PO Item'.
+  fieldcat-seltext_m = 'PO Item'.
+  fieldcat-seltext_s = 'POItm'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 10.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 6: Contract Number
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'KONNR'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Contract Number'.
+  fieldcat-seltext_m = 'Contract'.
+  fieldcat-seltext_s = 'Contr'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 15.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 7: Contract Item
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'KTPNR'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Contract Item'.
+  fieldcat-seltext_m = 'Cont Item'.
+  fieldcat-seltext_s = 'CItm'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 10.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 8: PO Date
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'BEDAT'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'PO Date'.
+  fieldcat-seltext_m = 'PO Date'.
+  fieldcat-seltext_s = 'PODt'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 12.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 9: Start Date
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'KDATB'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Start Date'.
+  fieldcat-seltext_m = 'Start'.
+  fieldcat-seltext_s = 'Start'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 12.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 10: End Date
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'KDATE'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'End Date'.
+  fieldcat-seltext_m = 'End'.
+  fieldcat-seltext_s = 'End'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 12.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+" Field 11: Quantity
+  ADD 1 TO col_pos.
+  fieldcat-col_pos = col_pos.
+  fieldcat-fieldname = 'KTMNG'.
+  fieldcat-tabname = 'IT_VBRP'.
+  fieldcat-seltext_l = 'Target Quantity'.
+  fieldcat-seltext_m = 'Quantity'.
+  fieldcat-seltext_s = 'Qty'.
+  fieldcat-fix_column = 'X'.
+  fieldcat-outputlen = 15.
+  fieldcat-do_sum = 'X'.
+  APPEND fieldcat.
+  CLEAR  fieldcat.
+
+********************************************** END NEW FIELDS ****************************************************
