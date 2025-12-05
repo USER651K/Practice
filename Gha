@@ -1,0 +1,73 @@
+""""""""""""""""""""""""""Start of Ujwal Code 01.12.2025""""""""""""""""""""""""""
+" Clear contract fields
+CLEAR: wa_vbrp-preship_no, wa_vbrp-belnr2, wa_vbrp-gjahr2, wa_vbrp-ebeln,
+       wa_vbrp-ebelp, wa_vbrp-konnr, wa_vbrp-ktpnr, wa_vbrp-bedat,
+       wa_vbrp-kdatb, wa_vbrp-kdate, wa_vbrp-ktmng, wa_vbrp-bednr, wa_vbrp-submi.
+
+" Populate preship number (from pship field)
+wa_vbrp-preship_no = wa_vbrp-pship.
+
+IF wa_vbrp-pship IS NOT INITIAL.
+
+  " Get MM Invoice header using pship as reference
+  READ TABLE gt_rbkp INTO gs_rbkp
+    WITH KEY xblnr = wa_vbrp-pship
+    BINARY SEARCH.
+
+  IF sy-subrc = 0.
+    wa_vbrp-belnr2 = gs_rbkp-belnr.
+    wa_vbrp-gjahr2 = gs_rbkp-gjahr.
+
+    " Get Purchase Order from EKBE
+    READ TABLE gt_ekbe INTO gs_ekbe
+      WITH KEY belnr = gs_rbkp-belnr
+               gjahr = gs_rbkp-gjahr
+      BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      wa_vbrp-ebeln = gs_ekbe-ebeln.
+      wa_vbrp-ebelp = gs_ekbe-ebelp.
+
+      " Get PO item to find Contract Reference
+      READ TABLE gt_ekpo INTO gs_ekpo
+        WITH KEY ebeln = gs_ekbe-ebeln
+                 ebelp = gs_ekbe-ebelp
+        BINARY SEARCH.
+
+      IF sy-subrc = 0.
+        wa_vbrp-konnr = gs_ekpo-konnr.    "Contract Number
+        wa_vbrp-ktpnr = gs_ekpo-ktpnr.    "Contract Item Number
+        wa_vbrp-bednr = gs_ekpo-bednr.    "Requirement Tracking Number
+
+        " *** NOW GET CONTRACT DETAILS using KONNR/KTPNR ***
+        IF gs_ekpo-konnr IS NOT INITIAL.
+          
+          " Get Contract ITEM details (Quantity)
+          READ TABLE gt_ekpo INTO DATA(ls_ekpo_contract)
+            WITH KEY ebeln = gs_ekpo-konnr     "Use Contract Number
+                     ebelp = gs_ekpo-ktpnr     "Use Contract Item
+            BINARY SEARCH.
+
+          IF sy-subrc = 0.
+            wa_vbrp-ktmng = ls_ekpo_contract-ktmng.  "Contract Target Quantity ✓
+          ENDIF.
+
+          " Get Contract HEADER details (Dates)
+          READ TABLE gt_ekko INTO gs_ekko
+            WITH KEY ebeln = gs_ekpo-konnr     "Use Contract Number
+            BINARY SEARCH.
+
+          IF sy-subrc = 0.
+            wa_vbrp-bedat = gs_ekko-bedat.     "Contract Date ✓
+            wa_vbrp-kdatb = gs_ekko-kdatb.     "Start Date ✓
+            wa_vbrp-kdate = gs_ekko-kdate.     "End Date ✓
+            wa_vbrp-submi = gs_ekko-submi.     "Collective Number ✓
+          ENDIF.
+
+        ENDIF.
+
+      ENDIF.
+    ENDIF.
+  ENDIF.
+ENDIF.
+""""""""""""""""""""""""""End Ujwal Code 01.12.2025""""""""""""""""""""""""""
