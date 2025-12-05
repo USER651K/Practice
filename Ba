@@ -1,0 +1,24 @@
+SELECT ebeln ebelp konnr ktpnr ktmng bednr
+          FROM ekpo
+          APPENDING TABLE gt_ekpo
+          FOR ALL ENTRIES IN gt_ekpo
+          WHERE ebeln = gt_ekpo-konnr      "Contract Number
+            AND ebelp = gt_ekpo-ktpnr      "Contract Item
+            AND konnr NE space.
+        
+        SORT gt_ekpo BY ebeln ebelp.
+        DELETE ADJACENT DUPLICATES FROM gt_ekpo COMPARING ebeln ebelp.
+      ENDIF.
+
+      IF gt_ekpo IS NOT INITIAL.
+
+        " Step 4: Get CONTRACT Header details from EKKO (using KONNR)
+        SELECT ebeln bedat kdatb kdate submi
+          FROM ekko
+          INTO TABLE gt_ekko
+          FOR ALL ENTRIES IN gt_ekpo
+          WHERE ebeln = gt_ekpo-konnr      "*** Use CONTRACT NUMBER ***
+            AND konnr NE space.
+
+        IF sy-subrc = 0.
+          SORT gt_ekko BY ebeln.
