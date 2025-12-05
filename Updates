@@ -1,0 +1,211 @@
+"""""""""""""""""""""""""""""""START of CODE ADDED BY UJWAL ON 01.12.2025"""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+TYPES: BEGIN OF ty_rbkp,
+         xblnr TYPE xblnr1,      "Reference Document Number
+         belnr TYPE belnr_d,     "MM Invoice Document Number
+         gjahr TYPE gjahr,       "Fiscal Year
+       END OF ty_rbkp.
+
+TYPES: BEGIN OF ty_ekbe,
+         belnr TYPE belnr_d,     "Material Document Number
+         gjahr TYPE gjahr,       "Fiscal Year
+         buzei TYPE buzei,       "Document Item
+         ebeln TYPE ebeln,       "Purchase Order Number
+         ebelp TYPE ebelp,       "Purchase Order Item
+         bewtp TYPE bewtp,       "Movement Type
+       END OF ty_ekbe.
+
+TYPES: BEGIN OF ty_ekpo,
+         ebeln TYPE ebeln,       "Purchase Document Number
+         ebelp TYPE ebelp,       "Item Number
+         konnr TYPE konnr,       "Contract Number
+         ktpnr TYPE ktpnr,       "Contract Item Number
+         ktmng TYPE ktmng,       "Target Quantity
+         bednr TYPE bednr,       "Requirement Tracking Number
+       END OF ty_ekpo.
+
+TYPES: BEGIN OF ty_ekko,
+         ebeln TYPE ebeln,       "Purchase Document Number
+         bedat TYPE bedat,       "Purchase Order Date
+         kdatb TYPE kdatb,       "Validity Start Date
+         kdate TYPE kdate,       "Validity End Date
+         submi TYPE submi,       "Collective Number
+       END OF ty_ekko.
+
+DATA: gt_rbkp TYPE STANDARD TABLE OF ty_rbkp,
+      gs_rbkp TYPE ty_rbkp,
+
+      gt_ekbe TYPE STANDARD TABLE OF ty_ekbe,
+      gs_ekbe TYPE ty_ekbe,
+
+      gt_ekpo TYPE STANDARD TABLE OF ty_ekpo,
+      gs_ekpo TYPE ty_ekpo,
+
+      gt_ekko TYPE STANDARD TABLE OF ty_ekko,
+      gs_ekko TYPE ty_ekko.
+"""""""""""""""""""""""""""""""End of CODE ADDED BY UJWAL ON 01.12.2025"""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+
+""""""""""""""""""""""""""""""""""""""""""Ujwal Start OF CODE 01.12.2025"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Collect unique pship values from main table
+DATA: lt_pship_range TYPE RANGE OF vbeln,
+      ls_pship_range LIKE LINE OF lt_pship_range.
+
+LOOP AT it_vbrp INTO wa_vbrp WHERE pship IS NOT INITIAL.
+  ls_pship_range-sign = 'I'.
+  ls_pship_range-option = 'EQ'.
+  ls_pship_range-low = |{ wa_vbrp-pship ALPHA = IN }|.
+  COLLECT ls_pship_range INTO lt_pship_range.
+  CLEAR: wa_vbrp, ls_pship_range.
+ENDLOOP.
+
+IF lt_pship_range IS NOT INITIAL.
+
+  " Step 1: Get MM Invoice Header from RBKP using pship as reference
+  SELECT xblnr belnr gjahr
+    FROM rbkp
+    INTO TABLE gt_rbkp
+    WHERE xblnr IN lt_pship_range.
+
+  IF sy-subrc = 0.
+    SORT gt_rbkp BY xblnr belnr gjahr.
+    DELETE ADJACENT DUPLICATES FROM gt_rbkp COMPARING xblnr belnr gjahr.
+  ENDIF.
+
+  IF gt_rbkp IS NOT INITIAL.
+
+    " Step 2: Get Purchase Order History from EKBE
+    SELECT belnr gjahr buzei ebeln ebelp bewtp
+      FROM ekbe
+      INTO TABLE gt_ekbe
+      FOR ALL ENTRIES IN gt_rbkp
+      WHERE belnr = gt_rbkp-belnr
+        AND gjahr = gt_rbkp-gjahr
+        AND bewtp = 'Q'
+        AND ebeln NE space.
+
+    IF sy-subrc = 0.
+      SORT gt_ekbe BY belnr gjahr ebeln ebelp.
+      DELETE ADJACENT DUPLICATES FROM gt_ekbe COMPARING belnr gjahr ebeln ebelp.
+    ENDIF.
+
+    IF gt_ekbe IS NOT INITIAL.
+
+      " Step 3: Get PO Items to find Contract Reference
+      SELECT ebeln ebelp konnr ktpnr ktmng bednr
+        FROM ekpo
+        INTO TABLE gt_ekpo
+        FOR ALL ENTRIES IN gt_ekbe
+        WHERE ebeln = gt_ekbe-ebeln
+          AND ebelp = gt_ekbe-ebelp.
+
+      IF sy-subrc = 0.
+        SORT gt_ekpo BY ebeln ebelp.
+
+        " Step 4: Get CONTRACT Items (for Quantity)
+        SELECT ebeln ebelp konnr ktpnr ktmng bednr
+          FROM ekpo
+          APPENDING TABLE gt_ekpo
+          FOR ALL ENTRIES IN gt_ekpo
+          WHERE ebeln = gt_ekpo-konnr
+            AND ebelp = gt_ekpo-ktpnr
+            AND konnr NE space.
+
+        IF sy-subrc = 0.
+          SORT gt_ekpo BY ebeln ebelp.
+          DELETE ADJACENT DUPLICATES FROM gt_ekpo COMPARING ebeln ebelp.
+        ENDIF.
+      ENDIF.
+
+      IF gt_ekpo IS NOT INITIAL.
+
+        " Step 5: Get CONTRACT Headers (for Dates)
+        SELECT ebeln bedat kdatb kdate submi
+          FROM ekko
+          INTO TABLE gt_ekko
+          FOR ALL ENTRIES IN gt_ekpo
+          WHERE ebeln = gt_ekpo-konnr
+            AND konnr NE space.
+
+        IF sy-subrc = 0.
+          SORT gt_ekko BY ebeln.
+          DELETE ADJACENT DUPLICATES FROM gt_ekko COMPARING ebeln.
+        ENDIF.
+
+      ENDIF.
+    ENDIF.
+  ENDIF.
+ENDIF.
+""""""""""""""""""""""""""""""""""""""""""Ujwal END OF CODE 01.12.2025"""""""""""""""""""""""""""""""""""""""""""""""""""
+
+""""""""""""""""""""""""""Start of Ujwal Code 01.12.2025""""""""""""""""""""""""""
+" Clear contract fields
+CLEAR: wa_vbrp-preship_no, wa_vbrp-belnr2, wa_vbrp-gjahr2, wa_vbrp-ebeln,
+       wa_vbrp-ebelp, wa_vbrp-konnr, wa_vbrp-ktpnr, wa_vbrp-bedat,
+       wa_vbrp-kdatb, wa_vbrp-kdate, wa_vbrp-ktmng, wa_vbrp-bednr, wa_vbrp-submi.
+
+" Populate preship number (from pship field)
+wa_vbrp-preship_no = wa_vbrp-pship.
+
+IF wa_vbrp-pship IS NOT INITIAL.
+
+  " Get MM Invoice header using pship as reference
+  READ TABLE gt_rbkp INTO gs_rbkp
+    WITH KEY xblnr = wa_vbrp-pship
+    BINARY SEARCH.
+
+  IF sy-subrc = 0.
+    wa_vbrp-belnr2 = gs_rbkp-belnr.
+    wa_vbrp-gjahr2 = gs_rbkp-gjahr.
+
+    " Get Purchase Order from EKBE
+    READ TABLE gt_ekbe INTO gs_ekbe
+      WITH KEY belnr = gs_rbkp-belnr
+               gjahr = gs_rbkp-gjahr
+      BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      wa_vbrp-ebeln = gs_ekbe-ebeln.
+      wa_vbrp-ebelp = gs_ekbe-ebelp.
+
+      " Get PO item to find Contract Reference
+      READ TABLE gt_ekpo INTO gs_ekpo
+        WITH KEY ebeln = gs_ekbe-ebeln
+                 ebelp = gs_ekbe-ebelp
+        BINARY SEARCH.
+
+      IF sy-subrc = 0.
+        wa_vbrp-konnr = gs_ekpo-konnr.
+        wa_vbrp-ktpnr = gs_ekpo-ktpnr.
+        wa_vbrp-bednr = gs_ekpo-bednr.
+
+        " Now get CONTRACT details using KONNR/KTPNR
+        IF gs_ekpo-konnr IS NOT INITIAL.
+
+          " Get Contract Item details (Quantity from contract)
+          READ TABLE gt_ekpo INTO DATA(ls_contract_item)
+            WITH KEY ebeln = gs_ekpo-konnr
+                     ebelp = gs_ekpo-ktpnr
+            BINARY SEARCH.
+
+          IF sy-subrc = 0.
+            wa_vbrp-ktmng = ls_contract_item-ktmng.
+          ENDIF.
+
+          " Get Contract Header details (Dates from contract)
+          READ TABLE gt_ekko INTO gs_ekko
+            WITH KEY ebeln = gs_ekpo-konnr
+            BINARY SEARCH.
+
+          IF sy-subrc = 0.
+            wa_vbrp-bedat = gs_ekko-bedat.
+            wa_vbrp-kdatb = gs_ekko-kdatb.
+            wa_vbrp-kdate = gs_ekko-kdate.
+            wa_vbrp-submi = gs_ekko-submi.
+          ENDIF.
+
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+ENDIF.
+""""""""""""""""""""""""""End Ujwal Code 01.12.2025""""""""""""""""""""""""""
