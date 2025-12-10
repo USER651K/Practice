@@ -1,0 +1,21 @@
+*&---------------------------------------------------------------------*
+*& Include          ZMM_LIFTVF_SEL
+*&---------------------------------------------------------------------*
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+
+  SELECT-OPTIONS:
+    s_zp2pdetrno     FOR zlift_asp-zp2pdetrno,      "TR No.
+    s_zaspwh         FOR zlift_asp-zaspwh,          "Storage Location
+    s_cgi_date       FOR zlift_asp-cgi_date,        "Date
+    s_zinv_party     FOR zlift_asp-zinv_party,      "Invoicing Party
+    s_itemcode       FOR zlift_asp-itemcode,        "Material
+    s_zbill_date     FOR zlift_asp-zbill_date,      "Created on
+    s_zonsignment_po FOR zlift_asp-zonsignment_po.  "Purchasing Doc.
+
+  SELECTION-SCREEN SKIP.
+
+  PARAMETERS: r2 RADIOBUTTON GROUP rb1 DEFAULT 'X',
+              r1 RADIOBUTTON GROUP rb1.
+
+SELECTION-SCREEN END OF BLOCK b1.
