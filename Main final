@@ -1,0 +1,314 @@
+*&---------------------------------------------------------------------*
+*& Include          ZMM_LIFTVF_F01
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& Form get_data
+*&---------------------------------------------------------------------*
+*  Fetch data from ZLIFT_ASP table based on selection criteria
+*----------------------------------------------------------------------*
+FORM get_data.
+
+  DATA: lt_zlift_asp TYPE TABLE OF zlift_asp.
+
+  "Fetch data from ZLIFT_ASP table
+  SELECT * FROM zlift_asp
+    INTO TABLE lt_zlift_asp
+    WHERE zp2pdetrno       IN s_zp2pdetrno
+      AND zaspwh           IN s_zaspwh
+      AND cgi_date         IN s_cgi_date
+      AND zinv_party       IN s_zinv_party
+      AND itemcode         IN s_itemcode
+      AND zbill_date       IN s_zbill_date
+      AND zonsignment_po   IN s_zonsignment_po.
+
+  IF sy-subrc = 0.
+    "Move data to output table
+    LOOP AT lt_zlift_asp INTO DATA(ls_zlift_asp).
+      APPEND INITIAL LINE TO gt_output ASSIGNING FIELD-SYMBOL(<fs_output>).
+      IF <fs_output> IS ASSIGNED.
+        <fs_output>-zonsignment_po   = ls_zlift_asp-zonsignment_po.
+        <fs_output>-zitemno          = ls_zlift_asp-zitemno.
+        <fs_output>-zaspwh           = ls_zlift_asp-zaspwh.
+        <fs_output>-zaspvendor       = ls_zlift_asp-zaspvendor.
+        <fs_output>-zp2pdetrno       = ls_zlift_asp-zp2pdetrno.
+        <fs_output>-werks            = ls_zlift_asp-werks.
+        <fs_output>-zinv_party       = ls_zlift_asp-zinv_party.
+        <fs_output>-zpickstack       = ls_zlift_asp-zpickstack.
+        <fs_output>-zpickbatch       = ls_zlift_asp-zpickbatch.
+        <fs_output>-zpickqty         = ls_zlift_asp-zpickqty.
+        <fs_output>-zbillno          = ls_zlift_asp-zbillno.
+        <fs_output>-zfeight          = ls_zlift_asp-zfeight.
+        <fs_output>-zbill_date       = ls_zlift_asp-zbill_date.
+        <fs_output>-zp2pdetruck      = ls_zlift_asp-zp2pdetruck.
+        <fs_output>-anugyano         = ls_zlift_asp-anugyano.
+        <fs_output>-anugyadt         = ls_zlift_asp-anugyadt.
+        <fs_output>-anugyapage       = ls_zlift_asp-anugyapage.
+        <fs_output>-zkanta           = ls_zlift_asp-zkanta.
+        <fs_output>-zbillwt          = ls_zlift_asp-zbillwt.
+        <fs_output>-zgrosswt         = ls_zlift_asp-zgrosswt.
+        <fs_output>-ztarewt          = ls_zlift_asp-ztarewt.
+        <fs_output>-znetwt           = ls_zlift_asp-znetwt.
+        <fs_output>-zbagwtperbag     = ls_zlift_asp-zbagwtperbag.
+        <fs_output>-ztotbagwt        = ls_zlift_asp-ztotbagwt.
+        <fs_output>-znetpaddywt      = ls_zlift_asp-znetpaddywt.
+        <fs_output>-zlabourbag       = ls_zlift_asp-zlabourbag.
+        <fs_output>-zmatdoc          = ls_zlift_asp-zmatdoc.
+        <fs_output>-itemcode         = ls_zlift_asp-itemcode.
+        <fs_output>-itemdesc         = ls_zlift_asp-itemdesc.
+        <fs_output>-gradetype        = ls_zlift_asp-gradetype.
+        <fs_output>-zdispatchbag     = ls_zlift_asp-zdispatchbag.
+        <fs_output>-zp2pdeba         = ls_zlift_asp-zp2pdeba.
+        <fs_output>-zavgbagwt        = ls_zlift_asp-zavgbagwt.
+        <fs_output>-zdispatchwt      = ls_zlift_asp-zdispatchwt.
+        <fs_output>-zuom             = ls_zlift_asp-zuom.
+        <fs_output>-zrate            = ls_zlift_asp-zrate.
+        <fs_output>-ztotamt          = ls_zlift_asp-ztotamt.
+        <fs_output>-ztaxcode         = ls_zlift_asp-ztaxcode.
+        <fs_output>-zunldngloc       = ls_zlift_asp-zunldngloc.
+        <fs_output>-brdgrade1        = ls_zlift_asp-brdgrade1.
+        <fs_output>-zshortbag        = ls_zlift_asp-zshortbag.
+        <fs_output>-zshortwt         = ls_zlift_asp-zshortwt.
+        <fs_output>-zrejbag          = ls_zlift_asp-zrejbag.
+        <fs_output>-zrejwt           = ls_zlift_asp-zrejwt.
+        <fs_output>-zappbag          = ls_zlift_asp-zappbag.
+        <fs_output>-zappwt           = ls_zlift_asp-zappwt.
+        <fs_output>-zsubmitgateind   = ls_zlift_asp-zsubmitgateind.
+        <fs_output>-zsubmitgateint   = ls_zlift_asp-zsubmitgateint.
+        <fs_output>-zcnfgateind      = ls_zlift_asp-zcnfgateind.
+        <fs_output>-zcnfgateint      = ls_zlift_asp-zcnfgateint.
+        <fs_output>-zunloadd         = ls_zlift_asp-zunloadd.
+        <fs_output>-zunloadt         = ls_zlift_asp-zunloadt.
+        <fs_output>-zcnfunloadd      = ls_zlift_asp-zcnfunloadd.
+        <fs_output>-zcnfunloadt      = ls_zlift_asp-zcnfunloadt.
+        <fs_output>-fi_doc           = ls_zlift_asp-fi_doc.
+        <fs_output>-mrko_status      = ls_zlift_asp-mrko_status.
+        <fs_output>-fi_doc_year      = ls_zlift_asp-fi_doc_year.
+        <fs_output>-charg            = ls_zlift_asp-charg.
+        <fs_output>-zstack1          = ls_zlift_asp-zstack1.
+        <fs_output>-zbinbag1         = ls_zlift_asp-zbinbag1.
+        <fs_output>-zstack2          = ls_zlift_asp-zstack2.
+        <fs_output>-zbinbag2         = ls_zlift_asp-zbinbag2.
+        <fs_output>-zstack3          = ls_zlift_asp-zstack3.
+        <fs_output>-zbinbag3         = ls_zlift_asp-zbinbag3.
+        <fs_output>-grnob            = ls_zlift_asp-grnob.
+        <fs_output>-grnobyear        = ls_zlift_asp-grnobyear.
+        <fs_output>-grnobdate        = ls_zlift_asp-grnobdate.
+        <fs_output>-brdtrfdocline    = ls_zlift_asp-brdtrfdocline.
+        <fs_output>-sgi_flag         = ls_zlift_asp-sgi_flag.
+        <fs_output>-cgi_flag         = ls_zlift_asp-cgi_flag.
+        <fs_output>-sul_flag         = ls_zlift_asp-sul_flag.
+        <fs_output>-cul_flag         = ls_zlift_asp-cul_flag.
+        <fs_output>-sweepage         = ls_zlift_asp-sweepage.
+        <fs_output>-ernam            = ls_zlift_asp-ernam.
+        <fs_output>-erdat            = ls_zlift_asp-erdat.
+        <fs_output>-erzet            = ls_zlift_asp-erzet.
+        <fs_output>-cgi_date         = ls_zlift_asp-cgi_date.
+        <fs_output>-cgi_time         = ls_zlift_asp-cgi_time.
+        <fs_output>-cul_date         = ls_zlift_asp-cul_date.
+        <fs_output>-cul_time         = ls_zlift_asp-cul_time.
+        <fs_output>-totbag           = ls_zlift_asp-totbag.
+        <fs_output>-gateinby         = ls_zlift_asp-gateinby.
+        <fs_output>-geno             = ls_zlift_asp-geno.
+        <fs_output>-outrecbag        = ls_zlift_asp-outrecbag.
+        <fs_output>-avgwt            = ls_zlift_asp-avgwt.
+        <fs_output>-line_index       = ls_zlift_asp-line_index.
+        <fs_output>-se16n_sort_index = ls_zlift_asp-se16n_sort_index.
+      ENDIF.
+    ENDLOOP.
+
+    MESSAGE |{ lines( gt_output ) } records found| TYPE 'S'.
+  ELSE.
+    MESSAGE 'No data found for given selection criteria' TYPE 'S' DISPLAY LIKE 'W'.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form build_fieldcat
+*&---------------------------------------------------------------------*
+*  Build field catalog for ALV display
+*----------------------------------------------------------------------*
+FORM build_fieldcat.
+
+  CLEAR: col_pos, fieldcat[], fieldcat.
+
+  "Macro to simplify field catalog creation
+  DEFINE add_field.
+    col_pos = col_pos + 1.
+    clear fieldcat.
+    fieldcat-col_pos       = col_pos.
+    fieldcat-fieldname     = &1.
+    fieldcat-seltext_l     = &2.
+    fieldcat-seltext_m     = &2.
+    fieldcat-seltext_s     = &2.
+    fieldcat-outputlen     = &3.
+    fieldcat-datatype      = &4.
+    if &4 = 'QUAN' or &4 = 'CURR' or &4 = 'DEC'.
+      fieldcat-do_sum      = 'X'.
+    endif.
+    append fieldcat.
+  END-OF-DEFINITION.
+
+  "Add all fields to field catalog
+  add_field 'ZONSIGNMENT_PO'   'Purchasing Document'     10 'CHAR'.
+  add_field 'ZITEMNO'          'Line Item'               5  'NUMC'.
+  add_field 'ZASPWH'           'Storage Location'        10 'CHAR'.
+  add_field 'ZASPVENDOR'       'Vendor'                  10 'CHAR'.
+  add_field 'ZP2PDETRNO'       'TR No.'                  20 'CHAR'.
+  add_field 'WERKS'            'Plant'                   4  'CHAR'.
+  add_field 'ZINV_PARTY'       'Invoicing Party'         10 'CHAR'.
+  add_field 'ZPICKSTACK'       'Stack No.'               10 'CHAR'.
+  add_field 'ZPICKBATCH'       'Batch'                   10 'CHAR'.
+  add_field 'ZPICKQTY'         'No. of Bags'             13 'QUAN'.
+  add_field 'ZBILLNO'          'B/L NO'                  20 'CHAR'.
+  add_field 'ZFEIGHT'          'Freight'                 13 'CURR'.
+  add_field 'ZBILL_DATE'       'Bill Date'               10 'DATS'.
+  add_field 'ZP2PDETRUCK'      'Truck No.'               20 'CHAR'.
+  add_field 'ANUGYANO'         'Anugya Number'           20 'CHAR'.
+  add_field 'ANUGYADT'         'Anugya Date'             10 'DATS'.
+  add_field 'ANUGYAPAGE'       'Anugya Page No.'         10 'CHAR'.
+  add_field 'ZKANTA'           'Kanta Parchi No.'        20 'CHAR'.
+  add_field 'ZBILLWT'          'Party Bill Weight'       13 'QUAN'.
+  add_field 'ZGROSSWT'         'Gross Weight'            13 'QUAN'.
+  add_field 'ZTAREWT'          'Tare Weight'             13 'QUAN'.
+  add_field 'ZNETWT'           'Net Weight'              13 'QUAN'.
+  add_field 'ZBAGWTPERBAG'     'Bag Weight Per Bag'      13 'QUAN'.
+  add_field 'ZTOTBAGWT'        'Total Bag Weight'        13 'QUAN'.
+  add_field 'ZNETPADDYWT'      'Net Paddy Weight'        13 'QUAN'.
+  add_field 'ZLABOURBAG'       'Labour Cost Per Bag'     13 'CURR'.
+  add_field 'ZMATDOC'          'Material Document'       10 'CHAR'.
+  add_field 'ITEMCODE'         'Material'                18 'CHAR'.
+  add_field 'ITEMDESC'         'Material Description'    40 'CHAR'.
+  add_field 'GRADETYPE'        'Grade Type'              10 'CHAR'.
+  add_field 'ZDISPATCHBAG'     'Dispatch Bags'           13 'QUAN'.
+  add_field 'ZP2PDEBA'         'Bharti(Actual)'          13 'QUAN'.
+  add_field 'ZAVGBAGWT'        'Avg. Bag Wt.'            13 'QUAN'.
+  add_field 'ZDISPATCHWT'      'Dispatch Weight'         13 'QUAN'.
+  add_field 'ZUOM'             'UOM'                     3  'UNIT'.
+  add_field 'ZRATE'            'Rate'                    13 'CURR'.
+  add_field 'ZTOTAMT'          'Total Amount'            13 'CURR'.
+  add_field 'ZTAXCODE'         'Tax Code'                2  'CHAR'.
+  add_field 'ZUNLDNGLOC'       'Unloading Location'      10 'CHAR'.
+  add_field 'BRDGRADE1'        'Bardana Grade'           10 'CHAR'.
+  add_field 'ZSHORTBAG'        'Short Bag'               13 'QUAN'.
+  add_field 'ZSHORTWT'         'Short Wt.'               13 'QUAN'.
+  add_field 'ZREJBAG'          'Rejected Bags'           13 'QUAN'.
+  add_field 'ZREJWT'           'Rejected Wt.'            13 'QUAN'.
+  add_field 'ZAPPBAG'          'Approved Bags'           13 'QUAN'.
+  add_field 'ZAPPWT'           'Approved Wt.'            13 'QUAN'.
+  add_field 'ZSUBMITGATEIND'   'Submit Gate In Date'     10 'DATS'.
+  add_field 'ZSUBMITGATEINT'   'Submit Gate In Time'     8  'TIMS'.
+  add_field 'ZCNFGATEIND'      'Confirm Gate In Date'    10 'DATS'.
+  add_field 'ZCNFGATEINT'      'Confirm Gate In Time'    8  'TIMS'.
+  add_field 'ZUNLOADD'         'Unload Date'             10 'DATS'.
+  add_field 'ZUNLOADT'         'Unload Time'             8  'TIMS'.
+  add_field 'ZCNFUNLOADD'      'Confirm Unload Date'     10 'DATS'.
+  add_field 'ZCNFUNLOADT'      'Confirm Unload Time'     8  'TIMS'.
+  add_field 'FI_DOC'           'FI Document'             10 'CHAR'.
+  add_field 'MRKO_STATUS'      'MRKO Status'             10 'CHAR'.
+  add_field 'FI_DOC_YEAR'      'Fiscal Year'             4  'NUMC'.
+  add_field 'CHARG'            'Batch'                   10 'CHAR'.
+  add_field 'ZSTACK1'          'Stack 1'                 10 'CHAR'.
+  add_field 'ZBINBAG1'         'Bin Bag 1'               13 'QUAN'.
+  add_field 'ZSTACK2'          'Stack 2'                 10 'CHAR'.
+  add_field 'ZBINBAG2'         'Bin Bag 2'               13 'QUAN'.
+  add_field 'ZSTACK3'          'Stack 3'                 10 'CHAR'.
+  add_field 'ZBINBAG3'         'Bin Bag 3'               13 'QUAN'.
+  add_field 'GRNOB'            'GRN Document'            10 'CHAR'.
+  add_field 'GRNOBYEAR'        'GRN Year'                4  'NUMC'.
+  add_field 'GRNOBDATE'        'GRN Date'                10 'DATS'.
+  add_field 'BRDTRFDOCLINE'    'Bardana Doc Line'        5  'NUMC'.
+  add_field 'SGI_FLAG'         'Submit Gate In Flag'     1  'CHAR'.
+  add_field 'CGI_FLAG'         'Confirm Gate In Flag'    1  'CHAR'.
+  add_field 'SUL_FLAG'         'Submit Unload Flag'      1  'CHAR'.
+  add_field 'CUL_FLAG'         'Confirm Unload Flag'     1  'CHAR'.
+  add_field 'SWEEPAGE'         'Sweepage'                13 'QUAN'.
+  add_field 'ERNAM'            'Created By'              12 'CHAR'.
+  add_field 'ERDAT'            'Created On'              10 'DATS'.
+  add_field 'ERZET'            'Created Time'            8  'TIMS'.
+  add_field 'CGI_DATE'         'CGI Date'                10 'DATS'.
+  add_field 'CGI_TIME'         'CGI Time'                8  'TIMS'.
+  add_field 'CUL_DATE'         'CUL Date'                10 'DATS'.
+  add_field 'CUL_TIME'         'CUL Time'                8  'TIMS'.
+  add_field 'TOTBAG'           'Total Bags'              13 'QUAN'.
+  add_field 'GATEINBY'         'Gate In By'              12 'CHAR'.
+  add_field 'GENO'             'Gate Entry No.'          20 'CHAR'.
+  add_field 'OUTRECBAG'        'Out Rec Bag'             13 'QUAN'.
+  add_field 'AVGWT'            'Avg Weight'              13 'QUAN'.
+  add_field 'LINE_INDEX'       'Line Index'              10 'INT4'.
+  add_field 'SE16N_SORT_INDEX' 'Sort Index'              10 'INT4'.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form display
+*&---------------------------------------------------------------------*
+*  Display ALV Grid
+*----------------------------------------------------------------------*
+FORM display.
+
+  "Check if data exists
+  IF gt_output[] IS INITIAL.
+    MESSAGE 'No data to display' TYPE 'S' DISPLAY LIKE 'E'.
+    RETURN.
+  ENDIF.
+
+  "Build field catalog
+  PERFORM build_fieldcat.
+
+  "Set layout
+  fs_layout-colwidth_optimize = 'X'.
+  fs_layout-zebra             = 'X'.
+
+  "Set variant
+  g_variant-report    = sy-repid.
+  g_variant-username  = sy-uname.
+
+  "Display ALV Grid
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'SET_PF_STATUS'
+      i_callback_user_command  = 'USER_COMMAND'
+      is_layout                = fs_layout
+      it_fieldcat              = fieldcat[]
+      i_save                   = 'A'
+      is_variant               = g_variant
+    TABLES
+      t_outtab                 = gt_output
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form SET_PF_STATUS
+*&---------------------------------------------------------------------*
+*  Set PF Status for ALV
+*----------------------------------------------------------------------*
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'STANDARD'.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form USER_COMMAND
+*&---------------------------------------------------------------------*
+*  Handle user commands in ALV
+*----------------------------------------------------------------------*
+FORM user_command USING r_ucomm LIKE sy-ucomm
+                        rs_selfield TYPE slis_selfield.
+
+  CASE r_ucomm.
+    WHEN '&IC1'.  "Double-click
+      "Add your double-click logic here if needed
+    WHEN OTHERS.
+  ENDCASE.
+
+ENDFORM.
