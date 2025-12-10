@@ -1,0 +1,51 @@
+*&---------------------------------------------------------------------*
+*& Report ZMM_LIFTVF
+*&---------------------------------------------------------------------*
+*& Lift ASP Verification Report
+*& Displays data from ZLIFT_ASP table in ALV format
+*&---------------------------------------------------------------------*
+*& Created by: [Your Name]
+*& Date: [Date]
+*&---------------------------------------------------------------------*
+
+REPORT zmm_liftvf.
+
+*--- Include TOP (Data Declarations)
+INCLUDE zmm_liftvf_top.
+
+*--- Include SEL (Selection Screen)
+INCLUDE zmm_liftvf_sel.
+
+*--- Include F01 (Subroutines)
+INCLUDE zmm_liftvf_f01.
+
+*----------------------------------------------------------------------*
+*  AT SELECTION-SCREEN Validation
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN ON BLOCK b1.
+
+  IF s_zp2pdetrno     IS INITIAL AND
+     s_zaspwh         IS INITIAL AND
+     s_cgi_date       IS INITIAL AND
+     s_zinv_party     IS INITIAL AND
+     s_itemcode       IS INITIAL AND
+     s_zbill_date     IS INITIAL AND
+     s_zonsignment_po IS INITIAL.
+    MESSAGE 'Enter at least one selection option' TYPE 'E'.
+  ENDIF.
+
+*----------------------------------------------------------------------*
+*  START-OF-SELECTION
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  "Fetch data from database
+  PERFORM get_data.
+
+*----------------------------------------------------------------------*
+*  END-OF-SELECTION
+*----------------------------------------------------------------------*
+END-OF-SELECTION.
+
+  "Display ALV report
+  PERFORM display.
