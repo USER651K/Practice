@@ -1,0 +1,88 @@
+*&---------------------------------------------------------------------*
+*& Include          ZMM_LIFTVF_F01
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& Form get_data
+*&---------------------------------------------------------------------*
+*  Fetch data from ZLIFT_ASP table
+*----------------------------------------------------------------------*
+FORM get_data.
+
+  "Fetch data with modern syntax
+  SELECT *
+    FROM zlift_asp
+    INTO TABLE @gt_output
+    WHERE zp2pdetrno       IN @s_zp2pdetrno
+      AND zaspwh           IN @s_zaspwh
+      AND cgi_date         IN @s_cgi_date
+      AND zinv_party       IN @s_zinv_party
+      AND itemcode         IN @s_itemcode
+      AND zbill_date       IN @s_zbill_date
+      AND zonsignment_po   IN @s_zonsignment_po.
+
+  IF sy-subrc = 0.
+    MESSAGE |{ lines( gt_output ) } records retrieved| TYPE 'S'.
+  ELSE.
+    MESSAGE 'No data found for selection criteria' TYPE 'S' DISPLAY LIKE 'W'.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form display_alv
+*&---------------------------------------------------------------------*
+*  Display data using modern SALV
+*----------------------------------------------------------------------*
+FORM display_alv.
+
+  DATA: lx_msg TYPE REF TO cx_salv_msg.
+
+  "Check data
+  IF gt_output IS INITIAL.
+    MESSAGE 'No data to display' TYPE 'S' DISPLAY LIKE 'E'.
+    RETURN.
+  ENDIF.
+
+  TRY.
+      "Create ALV object
+      cl_salv_table=>factory(
+        IMPORTING
+          r_salv_table = go_alv
+        CHANGING
+          t_table      = gt_output ).
+
+      "Enable all standard functions
+      DATA(lo_functions) = go_alv->get_functions( ).
+      lo_functions->set_all( abap_true ).
+
+      "Set column optimization
+      DATA(lo_columns) = go_alv->get_columns( ).
+      lo_columns->set_optimize( abap_true ).
+
+      "Set zebra pattern
+      DATA(lo_display) = go_alv->get_display_settings( ).
+      lo_display->set_striped_pattern( abap_true ).
+      lo_display->set_list_header( 'Lift ASP Verification Report' ).
+
+      "Enable layout save
+      DATA(lo_layout) = go_alv->get_layout( ).
+      lo_layout->set_key( VALUE #( report = sy-repid ) ).
+      lo_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+      "Customize specific columns (optional)
+      TRY.
+          DATA(lo_column) = lo_columns->get_column( 'ITEMDESC' ).
+          lo_column->set_medium_text( 'Material Desc' ).
+          lo_column->set_long_text( 'Material Description' ).
+        CATCH cx_salv_not_found.
+      ENDTRY.
+
+      "Display
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO lx_msg.
+      MESSAGE lx_msg->get_text( ) TYPE 'I'.
+  ENDTRY.
+
+ENDFORM.
