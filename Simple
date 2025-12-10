@@ -1,0 +1,108 @@
+*&---------------------------------------------------------------------*
+*& Report ZMM_LIFTVF
+*&---------------------------------------------------------------------*
+*& Lift ASP Verification Report - ULTRA SIMPLE (NO GUI STATUS NEEDED)
+*& Guaranteed to work immediately - zero configuration required
+*&---------------------------------------------------------------------*
+
+REPORT zmm_liftvf.
+
+*----------------------------------------------------------------------*
+*  Data Declarations
+*----------------------------------------------------------------------*
+TABLES: zlift_asp.
+
+DATA: gt_output TYPE STANDARD TABLE OF zlift_asp,
+      go_alv    TYPE REF TO cl_salv_table.
+
+*----------------------------------------------------------------------*
+*  Selection Screen
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+
+SELECT-OPTIONS:
+  s_zp2pdetrno     FOR zlift_asp-zp2pdetrno,
+  s_zaspwh         FOR zlift_asp-zaspwh,
+  s_cgi_date       FOR zlift_asp-cgi_date,
+  s_zinv_party     FOR zlift_asp-zinv_party,
+  s_itemcode       FOR zlift_asp-itemcode,
+  s_zbill_date     FOR zlift_asp-zbill_date,
+  s_zonsignment_po FOR zlift_asp-zonsignment_po.
+
+SELECTION-SCREEN END OF BLOCK b1.
+
+*----------------------------------------------------------------------*
+*  AT SELECTION-SCREEN
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN ON BLOCK b1.
+  IF     s_zp2pdetrno[]     IS INITIAL
+     AND s_zaspwh[]         IS INITIAL
+     AND s_cgi_date[]       IS INITIAL
+     AND s_zinv_party[]     IS INITIAL
+     AND s_itemcode[]       IS INITIAL
+     AND s_zbill_date[]     IS INITIAL
+     AND s_zonsignment_po[] IS INITIAL.
+    MESSAGE 'Enter at least one selection criterion' TYPE 'E'.
+  ENDIF.
+
+*----------------------------------------------------------------------*
+*  START-OF-SELECTION
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  "Fetch data from ZLIFT_ASP table
+  SELECT *
+    FROM zlift_asp
+    INTO TABLE @gt_output
+    WHERE zp2pdetrno       IN @s_zp2pdetrno
+      AND zaspwh           IN @s_zaspwh
+      AND cgi_date         IN @s_cgi_date
+      AND zinv_party       IN @s_zinv_party
+      AND itemcode         IN @s_itemcode
+      AND zbill_date       IN @s_zbill_date
+      AND zonsignment_po   IN @s_zonsignment_po.
+
+  "Check if data exists - CRITICAL for preventing dumps!
+  IF sy-subrc NE 0 OR gt_output IS INITIAL.
+    MESSAGE 'No data found for selection criteria' TYPE 'S' DISPLAY LIKE 'W'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  "Show success message
+  MESSAGE |{ lines( gt_output ) } records found| TYPE 'S'.
+
+*----------------------------------------------------------------------*
+*  END-OF-SELECTION
+*----------------------------------------------------------------------*
+END-OF-SELECTION.
+
+  "Final safety check before ALV
+  CHECK gt_output IS NOT INITIAL.
+
+  "Display ALV - Simple version with NO GUI Status needed
+  TRY.
+      "Create SALV table instance
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = go_alv
+        CHANGING  t_table      = gt_output ).
+
+      "Enable all standard ALV functions
+      go_alv->get_functions( )->set_all( abap_true ).
+
+      "Optimize column widths
+      go_alv->get_columns( )->set_optimize( abap_true ).
+
+      "Set zebra pattern
+      DATA(lo_display) = go_alv->get_display_settings( ).
+      lo_display->set_striped_pattern( abap_true ).
+
+      "Display - NO GUI Status needed!
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lx_msg).
+      MESSAGE lx_msg->get_text( ) TYPE 'I' DISPLAY LIKE 'E'.
+
+    CATCH cx_root INTO DATA(lx_root).
+      MESSAGE 'Error displaying ALV report' TYPE 'I' DISPLAY LIKE 'E'.
+
+  ENDTRY.
