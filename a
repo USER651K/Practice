@@ -1,204 +1,36 @@
-TABLES: vbrk, vbrp, vbkd, t151t, kna1, konv, vbbe, likp,  makt, vbak, t023t, t005u, tvgrt, bkpf, t171t ,rbkp,ekbe, ekpo,ekko, vttk , vbpa.
-
-
-"""""""""""""""""""""""""""""""CODE ADDED BY UJWAL ON 01.12.2025 - CORRECTED VERSION"""""""""""""""""""""""""""""""""""""""""""""
-
-TYPES: BEGIN OF ty_rbkp,
-         xblnr TYPE xblnr1,      "Reference Document Number
-         belnr TYPE belnr_d,     "MM Invoice Document Number
-         gjahr TYPE gjahr,       "Fiscal Year
-       END OF ty_rbkp.
-
-TYPES: BEGIN OF ty_rseg,         "*** CRITICAL NEW TYPE ***
-         belnr TYPE belnr_d,     "MM Invoice Document Number
-         gjahr TYPE gjahr,       "Fiscal Year
-         buzei TYPE buzei,       "Invoice Item Number
-         ebeln TYPE ebeln,       "Purchase Order Number
-         ebelp TYPE ebelp,       "Purchase Order Item
-       END OF ty_rseg.
-
-TYPES: BEGIN OF ty_ekpo,
-         ebeln TYPE ebeln,       "Purchase Document Number
-         ebelp TYPE ebelp,       "Item Number
-         konnr TYPE konnr,       "Contract Number
-         ktpnr TYPE ktpnr,       "Contract Item Number
-         ktmng TYPE ktmng,       "Target Quantity
-         submi TYPE submi,       "Collective Number
-         bednr TYPE bednr,       "Requirement Tracking Number
-       END OF ty_ekpo.
-
-TYPES: BEGIN OF ty_ekko,
-         ebeln TYPE ebeln,       "Purchase Document Number
-         bedat TYPE bedat,       "Purchase Order Date
-         kdatb TYPE kdatb,       "Validity Start Date
-         kdate TYPE kdate,       "Validity End Date
-         submi TYPE submi,       "Collective Number
-       END OF ty_ekko.
-
-DATA: gt_rbkp TYPE STANDARD TABLE OF ty_rbkp,
-      gs_rbkp TYPE ty_rbkp,
-
-      gt_rseg TYPE STANDARD TABLE OF ty_rseg,  "*** CRITICAL NEW DATA ***
-      gs_rseg TYPE ty_rseg,                     "*** CRITICAL NEW DATA ***
-
-      gt_ekpo TYPE STANDARD TABLE OF ty_ekpo,
-      gs_ekpo TYPE ty_ekpo,
-
-      gt_ekko TYPE STANDARD TABLE OF ty_ekko,
-      gs_ekko TYPE ty_ekko.
-
-"""""""""""""""""""""""""""""""End of CODE ADDED BY UJWAL ON 01.12.2025"""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-
-
-
-
-
-
-
-
-*----------------------------------------------------------------------*
-* FETCH PURCHASE DOCUMENT DATA - UJWAL 01.12.2025 - CORRECTED VERSION
-*----------------------------------------------------------------------*
-
-  " Collect unique pship values from main table
-  DATA: lt_pship_range TYPE RANGE OF vbeln,
-        ls_pship_range LIKE LINE OF lt_pship_range.
-
-  LOOP AT it_vbrp INTO wa_vbrp WHERE pship IS NOT INITIAL.
-    ls_pship_range-sign = 'I'.
-    ls_pship_range-option = 'EQ'.
-    ls_pship_range-low = wa_vbrp-pship.
-    COLLECT ls_pship_range INTO lt_pship_range.
-    CLEAR: wa_vbrp, ls_pship_range.
-  ENDLOOP.
-
-  IF lt_pship_range IS NOT INITIAL.
-
-    " Step 1: Get MM Invoice Header from RBKP using pship as reference
-    SELECT xblnr belnr gjahr
-      FROM rbkp
-      INTO TABLE gt_rbkp
-      WHERE xblnr IN lt_pship_range.
-
-    IF sy-subrc = 0.
-      SORT gt_rbkp BY xblnr belnr gjahr.
-      DELETE ADJACENT DUPLICATES FROM gt_rbkp COMPARING xblnr belnr gjahr.
-    ENDIF.
-
-    IF gt_rbkp IS NOT INITIAL.
-
-      " Step 2: Get MM Invoice Items from RSEG *** THIS IS THE KEY FIX ***
-      SELECT belnr gjahr buzei ebeln ebelp
-        FROM rseg
-        INTO TABLE gt_rseg
-        FOR ALL ENTRIES IN gt_rbkp
-        WHERE belnr = gt_rbkp-belnr
-          AND gjahr = gt_rbkp-gjahr
-          AND ebeln NE space.
-
-      IF sy-subrc = 0.
-        SORT gt_rseg BY belnr gjahr ebeln ebelp.
-        DELETE ADJACENT DUPLICATES FROM gt_rseg COMPARING belnr gjahr ebeln ebelp.
+"Apply view based on radio button selection
+      IF p_summ = 'X'.
+        "SUMMARY VIEW - Hide non-essential columns
+        TRY.
+            lo_columns->get_column( 'ZPICKSTACK' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZPICKBATCH' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZBILLNO' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZFEIGHT' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZP2PDETRUCK' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ANUGYANO' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ANUGYADT' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ANUGYAPAGE' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZKANTA' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZBILLWT' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZTAREWT' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZBAGWTPERBAG' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZTOTBAGWT' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZNETPADDYWT' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZLABOURBAG' )->set_visible( abap_false ).
+            lo_columns->get_column( 'GRADETYPE' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZDISPATCHBAG' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZP2PDEBA' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZAVGBAGWT' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZUNLDNGLOC' )->set_visible( abap_false ).
+            lo_columns->get_column( 'BRDGRADE1' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZSHORTBAG' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZSHORTWT' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZREJBAG' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZREJWT' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZAPPBAG' )->set_visible( abap_false ).
+            lo_columns->get_column( 'ZAPPWT' )->set_visible( abap_false ).
+          CATCH cx_salv_not_found.
+            "Column not found - ignore
+        ENDTRY.
       ENDIF.
-
-      IF gt_rseg IS NOT INITIAL.
-
-        " Step 3: Get Purchase Order Items from EKPO
-        SELECT ebeln ebelp konnr ktpnr ktmng submi bednr
-          FROM ekpo
-          INTO TABLE gt_ekpo
-          FOR ALL ENTRIES IN gt_rseg
-          WHERE ebeln = gt_rseg-ebeln
-            AND ebelp = gt_rseg-ebelp.
-
-        IF sy-subrc = 0.
-          SORT gt_ekpo BY ebeln ebelp.
-        ENDIF.
-
-        IF gt_ekpo IS NOT INITIAL.
-
-          " Step 4: Get Purchase Order Header from EKKO
-          SELECT ebeln bedat kdatb kdate submi
-            FROM ekko
-            INTO TABLE gt_ekko
-            FOR ALL ENTRIES IN gt_ekpo
-            WHERE ebeln = gt_ekpo-ebeln.
-
-          IF sy-subrc = 0.
-            SORT gt_ekko BY ebeln.
-          ENDIF.
-
-        ENDIF.
-      ENDIF.
-    ENDIF.
-  ENDIF.
-
-
-
-
-
-
-
-
-
-""""""""""""""""""""""""""Start of Ujwal Code 01.12.2025 - CORRECTED""""""""""""""""""""""""""
-
-  " Clear contract fields
-  CLEAR: wa_vbrp-preship_no, wa_vbrp-belnr2, wa_vbrp-gjahr2, wa_vbrp-ebeln,
-         wa_vbrp-ebelp, wa_vbrp-konnr, wa_vbrp-ktpnr, wa_vbrp-bedat,
-         wa_vbrp-kdatb, wa_vbrp-kdate, wa_vbrp-ktmng, wa_vbrp-submi, wa_vbrp-bednr.
-
-  " Populate preship number (from pship field)
-  wa_vbrp-preship_no = wa_vbrp-pship.
-
-  IF wa_vbrp-pship IS NOT INITIAL.
-    
-    " Get MM Invoice header using pship as reference
-    READ TABLE gt_rbkp INTO gs_rbkp
-      WITH KEY xblnr = wa_vbrp-pship
-      BINARY SEARCH.
-
-    IF sy-subrc = 0.
-      wa_vbrp-belnr2 = gs_rbkp-belnr.
-      wa_vbrp-gjahr2 = gs_rbkp-gjahr.
-
-      " Get MM Invoice item to find PO *** USING RSEG - KEY FIX ***
-      READ TABLE gt_rseg INTO gs_rseg
-        WITH KEY belnr = gs_rbkp-belnr
-                 gjahr = gs_rbkp-gjahr
-        BINARY SEARCH.
-
-      IF sy-subrc = 0.
-        wa_vbrp-ebeln = gs_rseg-ebeln.
-        wa_vbrp-ebelp = gs_rseg-ebelp.
-
-        " Get PO item details (contract info)
-        READ TABLE gt_ekpo INTO gs_ekpo
-          WITH KEY ebeln = gs_rseg-ebeln
-                   ebelp = gs_rseg-ebelp
-          BINARY SEARCH.
-
-        IF sy-subrc = 0.
-          wa_vbrp-konnr = gs_ekpo-konnr.
-          wa_vbrp-ktpnr = gs_ekpo-ktpnr.
-          wa_vbrp-ktmng = gs_ekpo-ktmng.
-          wa_vbrp-submi = gs_ekpo-submi.
-          wa_vbrp-bednr = gs_ekpo-bednr.
-        ENDIF.
-
-        " Get PO header details (dates)
-        READ TABLE gt_ekko INTO gs_ekko
-          WITH KEY ebeln = gs_rseg-ebeln
-          BINARY SEARCH.
-
-        IF sy-subrc = 0.
-          wa_vbrp-bedat = gs_ekko-bedat.
-          wa_vbrp-kdatb = gs_ekko-kdatb.
-          wa_vbrp-kdate = gs_ekko-kdate.
-        ENDIF.
-
-      ENDIF.
-    ENDIF.
-  ENDIF.
-
-""""""""""""""""""""""""""End Ujwal Code 01.12.2025 - CORRECTED""""""""""""""""""""""""""
+      "If p_detail = 'X', all columns remain visible (default)
