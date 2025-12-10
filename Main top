@@ -1,0 +1,104 @@
+*&---------------------------------------------------------------------*
+*& Include          ZMM_LIFTVF_TOP
+*&---------------------------------------------------------------------*
+
+TABLES: zlift_asp.
+
+TYPES: BEGIN OF ty_final,
+         zonsignment_po   TYPE zlift_asp-zonsignment_po,    "Purchasing Document
+         zitemno          TYPE zlift_asp-zitemno,           "Line item
+         zaspwh           TYPE zlift_asp-zaspwh,            "Storage location
+         zaspvendor       TYPE zlift_asp-zaspvendor,        "Vendor
+         zp2pdetrno       TYPE zlift_asp-zp2pdetrno,        "TR No.
+         werks            TYPE zlift_asp-werks,             "Plant
+         zinv_party       TYPE zlift_asp-zinv_party,        "Invoicing Party
+         zpickstack       TYPE zlift_asp-zpickstack,        "Stack No.
+         zpickbatch       TYPE zlift_asp-zpickbatch,        "Batch
+         zpickqty         TYPE zlift_asp-zpickqty,          "No. of Bags
+         zbillno          TYPE zlift_asp-zbillno,           "B/L  NO
+         zfeight          TYPE zlift_asp-zfeight,           "Freight
+         zbill_date       TYPE zlift_asp-zbill_date,        "Created on
+         zp2pdetruck      TYPE zlift_asp-zp2pdetruck,       "Truck No.
+         anugyano         TYPE zlift_asp-anugyano,          "Anugya Number
+         anugyadt         TYPE zlift_asp-anugyadt,          "Anugya Date
+         anugyapage       TYPE zlift_asp-anugyapage,        "Anugya Page Number
+         zkanta           TYPE zlift_asp-zkanta,            "Kanta Parchi No.
+         zbillwt          TYPE zlift_asp-zbillwt,           "Party Bill Weight
+         zgrosswt         TYPE zlift_asp-zgrosswt,          "Gross weight
+         ztarewt          TYPE zlift_asp-ztarewt,           "Quantity Field
+         znetwt           TYPE zlift_asp-znetwt,            "Net weight
+         zbagwtperbag     TYPE zlift_asp-zbagwtperbag,      "Bag Weight
+         ztotbagwt        TYPE zlift_asp-ztotbagwt,         "Bag Weight
+         znetpaddywt      TYPE zlift_asp-znetpaddywt,       "Paddy Weight
+         zlabourbag       TYPE zlift_asp-zlabourbag,        "Labour Cost Per Bag
+         zmatdoc          TYPE zlift_asp-zmatdoc,           "Material Document
+         itemcode         TYPE zlift_asp-itemcode,          "Material
+         itemdesc         TYPE zlift_asp-itemdesc,          "Material description
+         gradetype        TYPE zlift_asp-gradetype,         "Grade Type
+         zdispatchbag     TYPE zlift_asp-zdispatchbag,      "No. of Bags
+         zp2pdeba         TYPE zlift_asp-zp2pdeba,          "Bharti(Actual)
+         zavgbagwt        TYPE zlift_asp-zavgbagwt,         "Avg. Bag. Wt.
+         zdispatchwt      TYPE zlift_asp-zdispatchwt,       "Dispatch Weight
+         zuom             TYPE zlift_asp-zuom,              "Base Unit of Measure
+         zrate            TYPE zlift_asp-zrate,             "rate
+         ztotamt          TYPE zlift_asp-ztotamt,           "Total val. upon release
+         ztaxcode         TYPE zlift_asp-ztaxcode,          "Tax Code
+         zunldngloc       TYPE zlift_asp-zunldngloc,        "Storage location
+         brdgrade1        TYPE zlift_asp-brdgrade1,         "Rej. Bardana Grade
+         zshortbag        TYPE zlift_asp-zshortbag,         "Short Bag
+         zshortwt         TYPE zlift_asp-zshortwt,          "Short Wt.
+         zrejbag          TYPE zlift_asp-zrejbag,           "No. of Bags
+         zrejwt           TYPE zlift_asp-zrejwt,            "Rej. Wt.
+         zappbag          TYPE zlift_asp-zappbag,           "No. of Bags
+         zappwt           TYPE zlift_asp-zappwt,            "App. Wt.
+         zsubmitgateind   TYPE zlift_asp-zsubmitgateind,    "Created on
+         zsubmitgateint   TYPE zlift_asp-zsubmitgateint,    "Time
+         zcnfgateind      TYPE zlift_asp-zcnfgateind,       "Created on
+         zcnfgateint      TYPE zlift_asp-zcnfgateint,       "Time
+         zunloadd         TYPE zlift_asp-zunloadd,          "Created on
+         zunloadt         TYPE zlift_asp-zunloadt,          "Time
+         zcnfunloadd      TYPE zlift_asp-zcnfunloadd,       "Created on
+         zcnfunloadt      TYPE zlift_asp-zcnfunloadt,       "Time
+         fi_doc           TYPE zlift_asp-fi_doc,            "Document Number
+         mrko_status      TYPE zlift_asp-mrko_status,       "MRKO Status
+         fi_doc_year      TYPE zlift_asp-fi_doc_year,       "Fiscal Year
+         charg            TYPE zlift_asp-charg,             "Batch
+         zstack1          TYPE zlift_asp-zstack1,           "Stack No.
+         zbinbag1         TYPE zlift_asp-zbinbag1,          "No. Of Bags
+         zstack2          TYPE zlift_asp-zstack2,           "Stack No.
+         zbinbag2         TYPE zlift_asp-zbinbag2,          "No. Of Bags
+         zstack3          TYPE zlift_asp-zstack3,           "Stack No.
+         zbinbag3         TYPE zlift_asp-zbinbag3,          "No. Of Bags
+         grnob            TYPE zlift_asp-grnob,             "GR Material Document
+         grnobyear        TYPE zlift_asp-grnobyear,         "Material Doc. Year
+         grnobdate        TYPE zlift_asp-grnobdate,         "Posting Date
+         brdtrfdocline    TYPE zlift_asp-brdtrfdocline,     "Material Doc.Item
+         sgi_flag         TYPE zlift_asp-sgi_flag,          "Submit Gate In Flag
+         cgi_flag         TYPE zlift_asp-cgi_flag,          "Confirm Gate In Flag
+         sul_flag         TYPE zlift_asp-sul_flag,          "Submit Unload Flag
+         cul_flag         TYPE zlift_asp-cul_flag,          "Confirm Unload Flag
+         sweepage         TYPE zlift_asp-sweepage,          "Sweepage
+         ernam            TYPE zlift_asp-ernam,             "Created by
+         erdat            TYPE zlift_asp-erdat,             "Created on
+         erzet            TYPE zlift_asp-erzet,             "Time
+         cgi_date         TYPE zlift_asp-cgi_date,          "Date
+         cgi_time         TYPE zlift_asp-cgi_time,          "Time
+         cul_date         TYPE zlift_asp-cul_date,          "Date
+         cul_time         TYPE zlift_asp-cul_time,          "Time
+         totbag           TYPE zlift_asp-totbag,            "No. Of Bags
+         gateinby         TYPE zlift_asp-gateinby,          "User Name
+         geno             TYPE zlift_asp-geno,              "Gateentry Number
+         outrecbag        TYPE zlift_asp-outrecbag,         "No. Of Bags
+         avgwt            TYPE zlift_asp-avgwt,             "Net weight
+         line_index       TYPE zlift_asp-line_index,        "Number of Entries
+         se16n_sort_index TYPE zlift_asp-se16n_sort_index,  "Sort Field
+       END OF ty_final.
+
+DATA: gt_output TYPE TABLE OF ty_final.
+
+*--- ALV Variables
+DATA: col_pos    TYPE i VALUE 1,
+      lv_tab     TYPE char30,
+      fieldcat   TYPE slis_fieldcat_alv OCCURS 0 WITH HEADER LINE,
+      fs_layout  TYPE slis_layout_alv,
+      g_variant  LIKE disvariant.
