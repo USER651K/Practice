@@ -1,0 +1,361 @@
+*&---------------------------------------------------------------------*
+*& Report ZMM_LIFTVF
+*&---------------------------------------------------------------------*
+*& Lift ASP Verification Report - TRULY BULLETPROOF
+*& Groups ONLY by TR Number (ignores all other field differences)
+*&---------------------------------------------------------------------*
+
+REPORT zmm_liftvf.
+
+*----------------------------------------------------------------------*
+*  Type Definitions for Aggregated Output
+*----------------------------------------------------------------------*
+TYPES: BEGIN OF ty_aggregated,
+         "Primary Key - ONLY field that determines uniqueness
+         zp2pdetrno     TYPE zlift_asp-zp2pdetrno,      "TR Number
+         
+         "Other fields (first occurrence values)
+         zonsignment_po TYPE zlift_asp-zonsignment_po,  "PO Number (first)
+         zaspwh         TYPE zlift_asp-zaspwh,          "Storage Location (first)
+         zaspvendor     TYPE zlift_asp-zaspvendor,      "Vendor (first)
+         werks          TYPE zlift_asp-werks,           "Plant (first)
+         zinv_party     TYPE zlift_asp-zinv_party,      "Invoicing Party (first)
+         
+         "Summed Fields
+         zpickqty       TYPE zlift_asp-zpickqty,
+         znetpaddywt    TYPE zlift_asp-znetpaddywt,
+         zdispatchwt    TYPE zlift_asp-zdispatchwt,
+         znetwt         TYPE zlift_asp-znetwt,
+         zgrosswt       TYPE zlift_asp-zgrosswt,
+         ztotamt        TYPE zlift_asp-ztotamt,
+         zshortbag      TYPE zlift_asp-zshortbag,
+         zshortwt       TYPE zlift_asp-zshortwt,
+         zrejbag        TYPE zlift_asp-zrejbag,
+         zrejwt         TYPE zlift_asp-zrejwt,
+         zappbag        TYPE zlift_asp-zappbag,
+         zappwt         TYPE zlift_asp-zappwt,
+         line_count     TYPE i,
+       END OF ty_aggregated.
+
+*----------------------------------------------------------------------*
+*  Data Declarations
+*----------------------------------------------------------------------*
+TABLES: zlift_asp.
+
+DATA: gt_output      TYPE STANDARD TABLE OF zlift_asp,
+      gt_aggregated  TYPE SORTED TABLE OF ty_aggregated WITH UNIQUE KEY zp2pdetrno,
+      go_alv         TYPE REF TO cl_salv_table.
+
+*----------------------------------------------------------------------*
+*  Selection Screen
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+
+SELECT-OPTIONS:
+  s_zp2pdetrno     FOR zlift_asp-zp2pdetrno,
+  s_zaspwh         FOR zlift_asp-zaspwh,
+  s_cgi_date       FOR zlift_asp-cgi_date,
+  s_zinv_party     FOR zlift_asp-zinv_party,
+  s_itemcode       FOR zlift_asp-itemcode,
+  s_zbill_date     FOR zlift_asp-zbill_date,
+  s_zonsignment_po FOR zlift_asp-zonsignment_po.
+
+SELECTION-SCREEN END OF BLOCK b1.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE text-002.
+
+PARAMETERS:
+  p_detail RADIOBUTTON GROUP rb1 DEFAULT 'X' USER-COMMAND view,
+  p_summ   RADIOBUTTON GROUP rb1.
+
+SELECTION-SCREEN END OF BLOCK b2.
+
+*----------------------------------------------------------------------*
+*  AT SELECTION-SCREEN
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN ON BLOCK b1.
+  IF     s_zp2pdetrno[]     IS INITIAL
+     AND s_zaspwh[]         IS INITIAL
+     AND s_cgi_date[]       IS INITIAL
+     AND s_zinv_party[]     IS INITIAL
+     AND s_itemcode[]       IS INITIAL
+     AND s_zbill_date[]     IS INITIAL
+     AND s_zonsignment_po[] IS INITIAL.
+    MESSAGE 'Enter at least one selection criterion' TYPE 'E'.
+  ENDIF.
+
+*----------------------------------------------------------------------*
+*  START-OF-SELECTION
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  SELECT *
+    FROM zlift_asp
+    INTO TABLE @gt_output
+    WHERE zp2pdetrno       IN @s_zp2pdetrno
+      AND zaspwh           IN @s_zaspwh
+      AND cgi_date         IN @s_cgi_date
+      AND zinv_party       IN @s_zinv_party
+      AND itemcode         IN @s_itemcode
+      AND zbill_date       IN @s_zbill_date
+      AND zonsignment_po   IN @s_zonsignment_po.
+
+  IF sy-subrc NE 0 OR gt_output IS INITIAL.
+    MESSAGE 'No data found for selection criteria' TYPE 'S' DISPLAY LIKE 'W'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  MESSAGE |{ lines( gt_output ) } records found| TYPE 'S'.
+
+  IF p_summ = 'X'.
+    PERFORM aggregate_by_tr_only.
+  ENDIF.
+
+*----------------------------------------------------------------------*
+*  END-OF-SELECTION
+*----------------------------------------------------------------------*
+END-OF-SELECTION.
+
+  IF p_summ = 'X'.
+    CHECK gt_aggregated IS NOT INITIAL.
+    PERFORM display_aggregated_alv.
+  ELSE.
+    CHECK gt_output IS NOT INITIAL.
+    PERFORM display_detailed_alv.
+  ENDIF.
+
+*&---------------------------------------------------------------------*
+*&      Form  AGGREGATE_BY_TR_ONLY
+*&---------------------------------------------------------------------*
+*       Aggregate ONLY by TR Number
+*       Uses READ TABLE to check for existing TR
+*       If exists: SUM quantities
+*       If not: ADD new record
+*----------------------------------------------------------------------*
+FORM aggregate_by_tr_only.
+
+  DATA: ls_aggregated TYPE ty_aggregated,
+        ls_output     TYPE zlift_asp,
+        lv_tabix      TYPE sy-tabix.
+
+  CLEAR gt_aggregated.
+
+  LOOP AT gt_output INTO ls_output.
+
+    "Try to read existing TR Number from aggregated table
+    READ TABLE gt_aggregated WITH TABLE KEY zp2pdetrno = ls_output-zp2pdetrno
+                             ASSIGNING FIELD-SYMBOL(<fs_agg>).
+
+    IF sy-subrc = 0.
+      "TR Number already exists - SUM the quantities
+      <fs_agg>-zpickqty    = <fs_agg>-zpickqty    + ls_output-zpickqty.
+      <fs_agg>-znetpaddywt = <fs_agg>-znetpaddywt + ls_output-znetpaddywt.
+      <fs_agg>-zdispatchwt = <fs_agg>-zdispatchwt + ls_output-zdispatchwt.
+      <fs_agg>-znetwt      = <fs_agg>-znetwt      + ls_output-znetwt.
+      <fs_agg>-zgrosswt    = <fs_agg>-zgrosswt    + ls_output-zgrosswt.
+      <fs_agg>-ztotamt     = <fs_agg>-ztotamt     + ls_output-ztotamt.
+      <fs_agg>-zshortbag   = <fs_agg>-zshortbag   + ls_output-zshortbag.
+      <fs_agg>-zshortwt    = <fs_agg>-zshortwt    + ls_output-zshortwt.
+      <fs_agg>-zrejbag     = <fs_agg>-zrejbag     + ls_output-zrejbag.
+      <fs_agg>-zrejwt      = <fs_agg>-zrejwt      + ls_output-zrejwt.
+      <fs_agg>-zappbag     = <fs_agg>-zappbag     + ls_output-zappbag.
+      <fs_agg>-zappwt      = <fs_agg>-zappwt      + ls_output-zappwt.
+      <fs_agg>-line_count  = <fs_agg>-line_count  + 1.
+
+    ELSE.
+      "TR Number is new - create new record
+      CLEAR ls_aggregated.
+
+      "Set TR Number (primary key)
+      ls_aggregated-zp2pdetrno = ls_output-zp2pdetrno.
+
+      "Copy first occurrence values
+      ls_aggregated-zonsignment_po = ls_output-zonsignment_po.
+      ls_aggregated-zaspwh         = ls_output-zaspwh.
+      ls_aggregated-zaspvendor     = ls_output-zaspvendor.
+      ls_aggregated-werks          = ls_output-werks.
+      ls_aggregated-zinv_party     = ls_output-zinv_party.
+
+      "Initialize with first line quantities
+      ls_aggregated-zpickqty    = ls_output-zpickqty.
+      ls_aggregated-znetpaddywt = ls_output-znetpaddywt.
+      ls_aggregated-zdispatchwt = ls_output-zdispatchwt.
+      ls_aggregated-znetwt      = ls_output-znetwt.
+      ls_aggregated-zgrosswt    = ls_output-zgrosswt.
+      ls_aggregated-ztotamt     = ls_output-ztotamt.
+      ls_aggregated-zshortbag   = ls_output-zshortbag.
+      ls_aggregated-zshortwt    = ls_output-zshortwt.
+      ls_aggregated-zrejbag     = ls_output-zrejbag.
+      ls_aggregated-zrejwt      = ls_output-zrejwt.
+      ls_aggregated-zappbag     = ls_output-zappbag.
+      ls_aggregated-zappwt      = ls_output-zappwt.
+      ls_aggregated-line_count  = 1.
+
+      "Insert into sorted table (automatically sorts by TR Number)
+      INSERT ls_aggregated INTO TABLE gt_aggregated.
+
+    ENDIF.
+
+  ENDLOOP.
+
+  MESSAGE |✓ Aggregated to { lines( gt_aggregated ) } unique TR Numbers from { lines( gt_output ) } line items| TYPE 'S'.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_DETAILED_ALV
+*&---------------------------------------------------------------------*
+FORM display_detailed_alv.
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = go_alv
+        CHANGING  t_table      = gt_output ).
+
+      go_alv->get_functions( )->set_all( abap_true ).
+
+      DATA(lo_columns) = go_alv->get_columns( ).
+      lo_columns->set_optimize( abap_true ).
+
+      TRY.
+          lo_columns->get_column( 'MANDT' )->set_visible( abap_false ).
+        CATCH cx_salv_not_found.
+      ENDTRY.
+
+      DATA(lo_display) = go_alv->get_display_settings( ).
+      lo_display->set_striped_pattern( abap_true ).
+      lo_display->set_list_header( |Lift ASP Report - Detailed View ({ lines( gt_output ) } Line Items)| ).
+
+      DATA(lo_layout) = go_alv->get_layout( ).
+      DATA(ls_key) = VALUE salv_s_layout_key( report = sy-repid ).
+      lo_layout->set_key( ls_key ).
+      lo_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lx_msg).
+      MESSAGE lx_msg->get_text( ) TYPE 'I' DISPLAY LIKE 'E'.
+    CATCH cx_root INTO DATA(lx_root).
+      MESSAGE 'Error displaying ALV report' TYPE 'I' DISPLAY LIKE 'E'.
+  ENDTRY.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_AGGREGATED_ALV
+*&---------------------------------------------------------------------*
+FORM display_aggregated_alv.
+
+  TRY.
+      "CRITICAL: Display gt_aggregated (SORTED TABLE)
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = go_alv
+        CHANGING  t_table      = gt_aggregated ).
+
+      go_alv->get_functions( )->set_all( abap_true ).
+
+      DATA(lo_columns) = go_alv->get_columns( ).
+      lo_columns->set_optimize( abap_true ).
+
+      TRY.
+          DATA(lo_column) = lo_columns->get_column( 'ZP2PDETRNO' ).
+          lo_column->set_medium_text( 'TR Number' ).
+          lo_column->set_short_text( 'TR No.' ).
+          lo_column->set_key( abap_true ).
+
+          lo_column = lo_columns->get_column( 'ZONSIGNMENT_PO' ).
+          lo_column->set_medium_text( 'PO Number' ).
+          lo_column->set_short_text( 'PO No.' ).
+
+          lo_column = lo_columns->get_column( 'ZASPWH' ).
+          lo_column->set_medium_text( 'Storage Loc' ).
+
+          lo_column = lo_columns->get_column( 'ZASPVENDOR' ).
+          lo_column->set_medium_text( 'Vendor' ).
+
+          lo_column = lo_columns->get_column( 'WERKS' ).
+          lo_column->set_medium_text( 'Plant' ).
+
+          lo_column = lo_columns->get_column( 'ZINV_PARTY' ).
+          lo_column->set_medium_text( 'Inv Party' ).
+
+          lo_column = lo_columns->get_column( 'ZPICKQTY' ).
+          lo_column->set_medium_text( 'Total Bags' ).
+          lo_column->set_short_text( 'Tot Bags' ).
+
+          lo_column = lo_columns->get_column( 'ZNETPADDYWT' ).
+          lo_column->set_medium_text( 'Total Paddy Wt' ).
+
+          lo_column = lo_columns->get_column( 'ZDISPATCHWT' ).
+          lo_column->set_medium_text( 'Total Dispatch Wt' ).
+
+          lo_column = lo_columns->get_column( 'ZNETWT' ).
+          lo_column->set_medium_text( 'Total Net Wt' ).
+
+          lo_column = lo_columns->get_column( 'ZGROSSWT' ).
+          lo_column->set_medium_text( 'Total Gross Wt' ).
+
+          lo_column = lo_columns->get_column( 'ZTOTAMT' ).
+          lo_column->set_medium_text( 'Total Amount' ).
+
+          lo_column = lo_columns->get_column( 'ZSHORTBAG' ).
+          lo_column->set_medium_text( 'Total Short Bags' ).
+
+          lo_column = lo_columns->get_column( 'ZSHORTWT' ).
+          lo_column->set_medium_text( 'Total Short Wt' ).
+
+          lo_column = lo_columns->get_column( 'ZREJBAG' ).
+          lo_column->set_medium_text( 'Total Rej Bags' ).
+
+          lo_column = lo_columns->get_column( 'ZREJWT' ).
+          lo_column->set_medium_text( 'Total Rej Wt' ).
+
+          lo_column = lo_columns->get_column( 'ZAPPBAG' ).
+          lo_column->set_medium_text( 'Total App Bags' ).
+
+          lo_column = lo_columns->get_column( 'ZAPPWT' ).
+          lo_column->set_medium_text( 'Total App Wt' ).
+
+          lo_column = lo_columns->get_column( 'LINE_COUNT' ).
+          lo_column->set_medium_text( 'Line Items' ).
+          lo_column->set_short_text( 'Items' ).
+
+        CATCH cx_salv_not_found.
+      ENDTRY.
+
+      DATA(lo_display) = go_alv->get_display_settings( ).
+      lo_display->set_striped_pattern( abap_true ).
+      lo_display->set_list_header( |Lift ASP Report - Summary ({ lines( gt_aggregated ) } Unique TR Numbers)| ).
+
+      DATA(lo_aggregations) = go_alv->get_aggregations( ).
+      TRY.
+          lo_aggregations->add_aggregation( columnname = 'ZPICKQTY' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'ZNETPADDYWT' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'ZDISPATCHWT' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'ZNETWT' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'ZGROSSWT' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'ZTOTAMT' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'ZSHORTBAG' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'ZSHORTWT' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'ZREJBAG' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'ZREJWT' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'ZAPPBAG' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'ZAPPWT' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggregations->add_aggregation( columnname = 'LINE_COUNT' aggregation = if_salv_c_aggregation=>total ).
+        CATCH cx_salv_data_error cx_salv_not_found cx_salv_existing.
+      ENDTRY.
+
+      DATA(lo_layout) = go_alv->get_layout( ).
+      DATA(ls_key) = VALUE salv_s_layout_key( report = sy-repid ).
+      lo_layout->set_key( ls_key ).
+      lo_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lx_msg).
+      MESSAGE lx_msg->get_text( ) TYPE 'I' DISPLAY LIKE 'E'.
+    CATCH cx_root INTO DATA(lx_root).
+      MESSAGE 'Error displaying ALV report' TYPE 'I' DISPLAY LIKE 'E'.
+  ENDTRY.
+
+ENDFORM.
