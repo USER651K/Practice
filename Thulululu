@@ -1,0 +1,180 @@
+*&---------------------------------------------------------------------*
+*& Report ZUJPO_SMARTFORM_DRIVER
+*&---------------------------------------------------------------------*
+*& Purpose: Driver Program for PO SmartForm Display
+*&---------------------------------------------------------------------*
+REPORT zujpo_smartform_driver.
+
+*----------------------------------------------------------------------*
+* Type Declarations
+*----------------------------------------------------------------------*
+TYPES: BEGIN OF ty_po,
+         ebeln TYPE ekko-ebeln,      "Purchase Order Number
+         ebelp TYPE ekpo-ebelp,      "PO Item Number
+         netwr TYPE ekpo-netwr,      "Net Order Value
+         waers TYPE ekko-waers,      "Currency Key
+         aedat TYPE ekko-aedat,      "Created On
+         ernam TYPE ekko-ernam,      "Created By
+         laeda TYPE ekko-laeda,      "Changed On
+       END OF ty_po.
+
+*----------------------------------------------------------------------*
+* Data Declarations
+*----------------------------------------------------------------------*
+DATA: gt_po_data     TYPE STANDARD TABLE OF ty_po,
+      gs_po_data     TYPE ty_po,
+      gv_fm_name     TYPE rs38l_fnam,
+      gv_grand_total TYPE ekpo-netwr.
+
+*----------------------------------------------------------------------*
+* Selection Screen
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+PARAMETERS: p_ebeln TYPE ekko-ebeln OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b1.
+
+*----------------------------------------------------------------------*
+* Initialization
+*----------------------------------------------------------------------*
+INITIALIZATION.
+  TEXT-001 = 'Selection Parameters'.
+
+*----------------------------------------------------------------------*
+* Start of Selection
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+
+* Step 1: Fetch PO Data
+  SELECT k~ebeln
+         p~ebelp
+         p~netwr
+         k~waers
+         k~aedat
+         k~ernam
+         k~laeda
+    FROM ekko AS k
+    INNER JOIN ekpo AS p
+      ON k~ebeln = p~ebeln
+    INTO TABLE @gt_po_data
+    WHERE k~ebeln = @p_ebeln
+    ORDER BY k~ebeln, p~ebelp.
+
+  IF sy-subrc NE 0.
+    MESSAGE 'No Purchase Order found for the given number' TYPE 'S' DISPLAY LIKE 'E'.
+    RETURN.
+  ENDIF.
+
+* Step 2: Calculate Grand Total
+  CLEAR gv_grand_total.
+  LOOP AT gt_po_data INTO gs_po_data.
+    gv_grand_total = gv_grand_total + gs_po_data-netwr.
+  ENDLOOP.
+
+* Step 3: Call SmartForm
+  PERFORM call_smartform.
+
+*----------------------------------------------------------------------*
+* Form call_smartform
+*----------------------------------------------------------------------*
+FORM call_smartform.
+
+  DATA: lv_formname TYPE tdsfname VALUE 'ZUJPO_SMARTFORM',
+        ls_control  TYPE ssfctrlop,
+        ls_output   TYPE ssfcompop.
+
+* Control Parameters
+  ls_control-no_dialog = 'X'.
+  ls_control-preview   = 'X'.
+
+* Get Function Module Name
+  CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+    EXPORTING
+      formname           = lv_formname
+    IMPORTING
+      fm_name            = gv_fm_name
+    EXCEPTIONS
+      no_form            = 1
+      no_function_module = 2
+      OTHERS             = 3.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'SmartForm ZUJPO_SMARTFORM not found. Please create it first.' TYPE 'E'.
+    RETURN.
+  ENDIF.
+
+* Call the SmartForm Function Module
+  CALL FUNCTION gv_fm_name
+    EXPORTING
+      control_parameters = ls_control
+      output_options     = ls_output
+      it_po_data         = gt_po_data
+      iv_grand_total     = gv_grand_total
+    EXCEPTIONS
+      formatting_error   = 1
+      internal_error     = 2
+      send_error         = 3
+      user_canceled      = 4
+      OTHERS             = 5.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'Error while executing SmartForm' TYPE 'E'.
+  ENDIF.
+
+ENDFORM.
+```
+
+### **Step 4: Save, Check, and Activate**
+
+1. Press **Ctrl+S** (Save)
+2. Press **Ctrl+F2** (Check) - Should show **0 Errors**
+3. Press **Ctrl+F3** (Activate)
+
+✅ **Driver Program is DONE and WORKING!**
+
+---
+
+## **PHASE 2: CREATE THE SMARTFORM**
+
+Now let's create the SmartForm step by step.
+
+### **Step 1: Go to SMARTFORMS**
+
+1. Transaction: **SMARTFORMS**
+2. SmartForm Name: **ZUJPO_SMARTFORM**
+3. Click **Create**
+
+### **Step 2: Form Attributes**
+```
+Description: Purchase Order Display SmartForm
+```
+
+Click **Save** → Choose **Local Object**
+
+---
+
+### **Step 3: Define Form Interface**
+
+1. In the left tree, expand **Global Settings**
+2. Double-click **Form Interface**
+3. Click on **Import** tab
+
+**Add Two Parameters:**
+
+Click the **Insert Row** button (or click in empty row):
+
+**Parameter 1:**
+```
+Parameter Name:     IT_PO_DATA
+Type Assignment:    TYPE
+Associated Type:    (leave blank for now)
+Pass Value:         ☐ (unchecked)
+Optional:           ☐ (unchecked)
+```
+
+**Parameter 2:**
+```
+Parameter Name:     IV_GRAND_TOTAL
+Type Assignment:    TYPE
+Associated Type:    EKPO-NETWR
+Pass Value:         ☑ (checked)
+Optional:           ☐ (unchecked)
