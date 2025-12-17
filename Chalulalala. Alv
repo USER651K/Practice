@@ -513,3 +513,40 @@ CLASS lcl_event_handler IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+
+*&---------------------------------------------------------------------*
+*& Module STATUS_0100 OUTPUT
+*&---------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+  SET PF-STATUS 'STATUS_100'.
+  SET TITLEBAR 'TITLE_100'.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*& Module DISPLAY_ALV OUTPUT
+*&---------------------------------------------------------------------*
+MODULE display_alv OUTPUT.
+  PERFORM display_alv.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*& Module USER_COMMAND_0100 INPUT
+*&---------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+  CASE gv_okcode.
+    WHEN 'BACK' OR 'EXIT' OR 'CANCEL'.
+      IF go_alv_grid IS NOT INITIAL.
+        CALL METHOD go_alv_grid->free.
+        FREE go_alv_grid.
+      ENDIF.
+      IF go_container IS NOT INITIAL.
+        CALL METHOD go_container->free.
+        FREE go_container.
+      ENDIF.
+      LEAVE TO SCREEN 0.
+  ENDCASE.
+  CLEAR gv_okcode.
+ENDMODULE.
+
