@@ -1,0 +1,23 @@
+*&---------------------------------------------------------------------*
+*& Report ZFIVENDCD
+*&---------------------------------------------------------------------*
+REPORT zfivendcd.
+
+INCLUDE zfivendcd_top.   " Global Data Declarations
+INCLUDE zfivendcd_sel.   " Selection Screen
+INCLUDE zfivendcd_scr.   " Screen Events / Data Fetch
+INCLUDE zfivendcd_alv.   " ALV Display Logic
+
+*----------------------------------------------------------------------*
+* START-OF-SELECTION
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+  PERFORM fetch_and_process_data.
+
+*----------------------------------------------------------------------*
+* END-OF-SELECTION
+*----------------------------------------------------------------------*
+END-OF-SELECTION.
+  IF gv_data_fetched = 'X'.
+    CALL SCREEN 100.
+  ENDIF.
