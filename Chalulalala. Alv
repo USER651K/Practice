@@ -1,0 +1,515 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFIVENDCD_ALV
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& Form display_alv
+*&---------------------------------------------------------------------*
+FORM display_alv.
+
+  " Build field catalog
+  PERFORM build_fieldcat.
+
+  " Set layout
+  PERFORM set_layout.
+
+  " Create container and ALV grid
+  IF go_container IS INITIAL.
+
+    CREATE OBJECT go_container
+      EXPORTING
+        container_name = 'ALV_CONTAINER'
+      EXCEPTIONS
+        others         = 1.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'Error creating container' TYPE 'E'.
+      RETURN.
+    ENDIF.
+
+    CREATE OBJECT go_alv_grid
+      EXPORTING
+        i_parent = go_container
+      EXCEPTIONS
+        others   = 1.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'Error creating ALV grid' TYPE 'E'.
+      RETURN.
+    ENDIF.
+
+    " Register events
+    PERFORM register_events.
+
+    " Register edit events
+    CALL METHOD go_alv_grid->register_edit_event
+      EXPORTING
+        i_event_id = cl_gui_alv_grid=>mc_evt_modified.
+
+    " Set variant
+    gs_variant-report = sy-repid.
+
+    " Display ALV first time
+    CALL METHOD go_alv_grid->set_table_for_first_display
+      EXPORTING
+        is_layout       = gs_layout
+        i_save          = 'A'
+        is_variant      = gs_variant
+      CHANGING
+        it_outtab       = gt_credit
+        it_fieldcatalog = gt_fieldcat
+      EXCEPTIONS
+        others          = 1.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'Error displaying ALV' TYPE 'E'.
+    ENDIF.
+
+  ELSE.
+    " Refresh display
+    CALL METHOD go_alv_grid->refresh_table_display
+      EXCEPTIONS
+        others = 1.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form build_fieldcat
+*&---------------------------------------------------------------------*
+FORM build_fieldcat.
+
+  DATA: ls_fcat TYPE lvc_s_fcat.
+
+  CLEAR gt_fieldcat.
+
+  " CHECKMARK - Editable Checkbox
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'CHECKMARK'.
+  ls_fcat-coltext   = 'Select'.
+  ls_fcat-scrtext_s = 'Sel'.
+  ls_fcat-scrtext_m = 'Select'.
+  ls_fcat-scrtext_l = 'Select'.
+  ls_fcat-checkbox  = 'X'.
+  ls_fcat-edit      = 'X'.
+  ls_fcat-outputlen = 5.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " MANUAL_EDIT - Editable Checkbox
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'MANUAL_EDIT'.
+  ls_fcat-coltext   = 'Manual Edit'.
+  ls_fcat-scrtext_s = 'ManEdit'.
+  ls_fcat-scrtext_m = 'Manual Edit'.
+  ls_fcat-scrtext_l = 'Manual Edit'.
+  ls_fcat-checkbox  = 'X'.
+  ls_fcat-edit      = 'X'.
+  ls_fcat-outputlen = 6.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " PAYMENT_REASON
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'PAYMENT_REASON'.
+  ls_fcat-coltext   = 'Payment Reason'.
+  ls_fcat-scrtext_s = 'Pmnt Rsn'.
+  ls_fcat-scrtext_m = 'Payment Reason'.
+  ls_fcat-scrtext_l = 'Payment Reason Code'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " PAYMENT_TERM
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'PAYMENT_TERM'.
+  ls_fcat-coltext   = 'Payment Term'.
+  ls_fcat-scrtext_s = 'Pmnt Term'.
+  ls_fcat-scrtext_m = 'Payment Term'.
+  ls_fcat-scrtext_l = 'Payment Term'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " BUKRS
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'BUKRS'.
+  ls_fcat-coltext   = 'Company Code'.
+  ls_fcat-scrtext_s = 'Co.Code'.
+  ls_fcat-scrtext_m = 'Company Code'.
+  ls_fcat-scrtext_l = 'Company Code'.
+  ls_fcat-key       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " ZP2PDEMANDI
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'ZP2PDEMANDI'.
+  ls_fcat-coltext   = 'Mandi'.
+  ls_fcat-scrtext_s = 'Mandi'.
+  ls_fcat-scrtext_m = 'Mandi'.
+  ls_fcat-scrtext_l = 'Mandi'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " LIFNR
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'LIFNR'.
+  ls_fcat-coltext   = 'Vendor Code'.
+  ls_fcat-scrtext_s = 'Vendor'.
+  ls_fcat-scrtext_m = 'Vendor Code'.
+  ls_fcat-scrtext_l = 'Vendor Code'.
+  ls_fcat-key       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " VENDOR_NAME
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'VENDOR_NAME'.
+  ls_fcat-coltext   = 'Vendor Name'.
+  ls_fcat-scrtext_s = 'Vend.Name'.
+  ls_fcat-scrtext_m = 'Vendor Name'.
+  ls_fcat-scrtext_l = 'Vendor Name'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " GJAHR
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'GJAHR'.
+  ls_fcat-coltext   = 'Fiscal Year'.
+  ls_fcat-scrtext_s = 'Year'.
+  ls_fcat-scrtext_m = 'Fiscal Year'.
+  ls_fcat-scrtext_l = 'Fiscal Year'.
+  ls_fcat-key       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " BELNR
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'BELNR'.
+  ls_fcat-coltext   = 'Document No.'.
+  ls_fcat-scrtext_s = 'Doc.No.'.
+  ls_fcat-scrtext_m = 'Document No.'.
+  ls_fcat-scrtext_l = 'Document Number'.
+  ls_fcat-key       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " BUZEI
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'BUZEI'.
+  ls_fcat-coltext   = 'Line Item'.
+  ls_fcat-scrtext_s = 'Item'.
+  ls_fcat-scrtext_m = 'Line Item'.
+  ls_fcat-scrtext_l = 'Line Item'.
+  ls_fcat-key       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " BUDAT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'BUDAT'.
+  ls_fcat-coltext   = 'Posting Date'.
+  ls_fcat-scrtext_s = 'Pst.Date'.
+  ls_fcat-scrtext_m = 'Posting Date'.
+  ls_fcat-scrtext_l = 'Posting Date'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " BLDAT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'BLDAT'.
+  ls_fcat-coltext   = 'Document Date'.
+  ls_fcat-scrtext_s = 'Doc.Date'.
+  ls_fcat-scrtext_m = 'Document Date'.
+  ls_fcat-scrtext_l = 'Document Date'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " GSBER
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'GSBER'.
+  ls_fcat-coltext   = 'Business Area'.
+  ls_fcat-scrtext_s = 'Bus.Area'.
+  ls_fcat-scrtext_m = 'Business Area'.
+  ls_fcat-scrtext_l = 'Business Area'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " WAERS
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'WAERS'.
+  ls_fcat-coltext   = 'Currency'.
+  ls_fcat-scrtext_s = 'Curr.'.
+  ls_fcat-scrtext_m = 'Currency'.
+  ls_fcat-scrtext_l = 'Currency'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " WRBTR
+  CLEAR ls_fcat.
+  ls_fcat-fieldname  = 'WRBTR'.
+  ls_fcat-coltext    = 'Document Amount'.
+  ls_fcat-scrtext_s  = 'Doc.Amt'.
+  ls_fcat-scrtext_m  = 'Document Amount'.
+  ls_fcat-scrtext_l  = 'Amount in Document Currency'.
+  ls_fcat-datatype   = 'CURR'.
+  ls_fcat-cfieldname = 'WAERS'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " SKFBT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname  = 'SKFBT'.
+  ls_fcat-coltext    = 'CD Base'.
+  ls_fcat-scrtext_s  = 'CD Base'.
+  ls_fcat-scrtext_m  = 'CD Base'.
+  ls_fcat-scrtext_l  = 'Cash Discount Base'.
+  ls_fcat-datatype   = 'CURR'.
+  ls_fcat-cfieldname = 'WAERS'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " PAYMENT_AMT - Conditionally editable based on MANUAL_EDIT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname  = 'PAYMENT_AMT'.
+  ls_fcat-coltext    = 'Payment Amount'.
+  ls_fcat-scrtext_s  = 'Pmnt Amt'.
+  ls_fcat-scrtext_m  = 'Payment Amount'.
+  ls_fcat-scrtext_l  = 'Payment Amount'.
+  ls_fcat-datatype   = 'CURR'.
+  ls_fcat-cfieldname = 'WAERS'.
+  ls_fcat-edit       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " CD_LEVEL1_DAYS
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'CD_LEVEL1_DAYS'.
+  ls_fcat-coltext   = 'CD Level 1 Days'.
+  ls_fcat-scrtext_s = 'CD1 Days'.
+  ls_fcat-scrtext_m = 'CD Level 1 Days'.
+  ls_fcat-scrtext_l = 'Cash Discount Level 1 (Days)'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " CD_LEVEL1_PCT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'CD_LEVEL1_PCT'.
+  ls_fcat-coltext   = 'CD Level 1 %'.
+  ls_fcat-scrtext_s = 'CD1 %'.
+  ls_fcat-scrtext_m = 'CD Level 1 %'.
+  ls_fcat-scrtext_l = 'Cash Discount Level 1 (%)'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " CD_LEVEL2_DAYS
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'CD_LEVEL2_DAYS'.
+  ls_fcat-coltext   = 'CD Level 2 Days'.
+  ls_fcat-scrtext_s = 'CD2 Days'.
+  ls_fcat-scrtext_m = 'CD Level 2 Days'.
+  ls_fcat-scrtext_l = 'Cash Discount Level 2 (Days)'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " CD_LEVEL2_PCT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'CD_LEVEL2_PCT'.
+  ls_fcat-coltext   = 'CD Level 2 %'.
+  ls_fcat-scrtext_s = 'CD2 %'.
+  ls_fcat-scrtext_m = 'CD Level 2 %'.
+  ls_fcat-scrtext_l = 'Cash Discount Level 2 (%)'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " ZFBDT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'ZFBDT'.
+  ls_fcat-coltext   = 'Baseline Date'.
+  ls_fcat-scrtext_s = 'Base Date'.
+  ls_fcat-scrtext_m = 'Baseline Date'.
+  ls_fcat-scrtext_l = 'Baseline Date'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " PAYMENT_DUE_DATE
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'PAYMENT_DUE_DATE'.
+  ls_fcat-coltext   = 'Payment Due Date'.
+  ls_fcat-scrtext_s = 'Due Date'.
+  ls_fcat-scrtext_m = 'Payment Due Date'.
+  ls_fcat-scrtext_l = 'Payment Due Date'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " ZFBDT_DAYS
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'ZFBDT_DAYS'.
+  ls_fcat-coltext   = 'No. of Days'.
+  ls_fcat-scrtext_s = 'Days'.
+  ls_fcat-scrtext_m = 'No. of Days'.
+  ls_fcat-scrtext_l = 'Number of Days'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " APPLICABLE_CD_PCT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'APPLICABLE_CD_PCT'.
+  ls_fcat-coltext   = 'Applicable CD %'.
+  ls_fcat-scrtext_s = 'Appl.CD%'.
+  ls_fcat-scrtext_m = 'Applicable CD %'.
+  ls_fcat-scrtext_l = 'Applicable Cash Discount %'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " APPLICABLE_CD_AMT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname  = 'APPLICABLE_CD_AMT'.
+  ls_fcat-coltext    = 'Applicable CD Amt'.
+  ls_fcat-scrtext_s  = 'Appl.CD'.
+  ls_fcat-scrtext_m  = 'Applicable CD Amt'.
+  ls_fcat-scrtext_l  = 'Applicable Cash Discount Amount'.
+  ls_fcat-datatype   = 'CURR'.
+  ls_fcat-cfieldname = 'WAERS'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " REBZG
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'REBZG'.
+  ls_fcat-coltext   = 'Invoice Reference'.
+  ls_fcat-scrtext_s = 'Inv.Ref'.
+  ls_fcat-scrtext_m = 'Invoice Reference'.
+  ls_fcat-scrtext_l = 'Invoice Reference'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " REBZJ
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'REBZJ'.
+  ls_fcat-coltext   = 'Reference Year'.
+  ls_fcat-scrtext_s = 'Ref.Year'.
+  ls_fcat-scrtext_m = 'Reference Year'.
+  ls_fcat-scrtext_l = 'Reference Fiscal Year'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " REBZZ
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'REBZZ'.
+  ls_fcat-coltext   = 'Reference Item'.
+  ls_fcat-scrtext_s = 'Ref.Item'.
+  ls_fcat-scrtext_m = 'Reference Item'.
+  ls_fcat-scrtext_l = 'Reference Line Item'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " DEBIT_NOTE_NO
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'DEBIT_NOTE_NO'.
+  ls_fcat-coltext   = 'Debit Note No'.
+  ls_fcat-scrtext_s = 'Debit No.'.
+  ls_fcat-scrtext_m = 'Debit Note No'.
+  ls_fcat-scrtext_l = 'Debit Note Number'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " PAYMENT_DATE
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'PAYMENT_DATE'.
+  ls_fcat-coltext   = 'Payment Date'.
+  ls_fcat-scrtext_s = 'Pmnt Date'.
+  ls_fcat-scrtext_m = 'Payment Date'.
+  ls_fcat-scrtext_l = 'Payment Date'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form set_layout
+*&---------------------------------------------------------------------*
+FORM set_layout.
+
+  CLEAR gs_layout.
+  gs_layout-zebra      = 'X'.
+  gs_layout-cwidth_opt = 'X'.
+  gs_layout-sel_mode   = 'A'.
+  gs_layout-edit       = 'X'.
+  gs_layout-stylefname = 'CELLTAB'.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form register_events
+*&---------------------------------------------------------------------*
+FORM register_events.
+
+  DATA: lt_events TYPE cntl_simple_events,
+        ls_event  TYPE cntl_simple_event.
+
+  " Register DATA_CHANGED event
+  ls_event-eventid    = cl_gui_alv_grid=>mc_evt_modified.
+  ls_event-appl_event = 'X'.
+  APPEND ls_event TO lt_events.
+
+  CALL METHOD go_alv_grid->set_registered_events
+    EXPORTING
+      events = lt_events.
+
+  " Set event handler
+  SET HANDLER lcl_event_handler=>on_data_changed FOR go_alv_grid.
+  SET HANDLER lcl_event_handler=>on_toolbar FOR go_alv_grid.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& CLASS IMPLEMENTATION - Event Handler
+*&---------------------------------------------------------------------*
+CLASS lcl_event_handler IMPLEMENTATION.
+
+  METHOD on_data_changed.
+
+    DATA: ls_mod_cell TYPE lvc_s_modi,
+          ls_credit   TYPE ty_credit,
+          lt_celltab  TYPE lvc_t_styl,
+          ls_celltab  TYPE lvc_s_styl,
+          lv_tabix    TYPE sy-tabix,
+          lv_value    TYPE char1.
+
+    " Loop through all modified cells
+    LOOP AT er_data_changed->mt_mod_cells INTO ls_mod_cell.
+
+      " Check if MANUAL_EDIT checkbox was changed
+      IF ls_mod_cell-fieldname = 'MANUAL_EDIT'.
+
+        " Get the row index
+        lv_tabix = ls_mod_cell-row_id.
+
+        " Read the current row
+        READ TABLE gt_credit INTO ls_credit INDEX lv_tabix.
+        IF sy-subrc = 0.
+
+          " Get new checkbox value
+          lv_value = ls_mod_cell-value.
+
+          " Update manual_edit field
+          ls_credit-manual_edit = lv_value.
+
+          " Rebuild cell style table for PAYMENT_AMT
+          CLEAR: lt_celltab, ls_celltab.
+          ls_celltab-fieldname = 'PAYMENT_AMT'.
+
+          IF lv_value = 'X'.
+            " MANUAL_EDIT checked - Enable PAYMENT_AMT editing
+            ls_celltab-style = cl_gui_alv_grid=>mc_style_enabled.
+          ELSE.
+            " MANUAL_EDIT unchecked - Disable PAYMENT_AMT editing
+            ls_celltab-style = cl_gui_alv_grid=>mc_style_disabled.
+          ENDIF.
+
+          APPEND ls_celltab TO lt_celltab.
+          ls_credit-celltab = lt_celltab.
+
+          " Update internal table
+          MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+
+        ENDIF.
+
+      ENDIF.
+
+      " Handle CHECKMARK changes if needed
+      IF ls_mod_cell-fieldname = 'CHECKMARK'.
+        lv_tabix = ls_mod_cell-row_id.
+        READ TABLE gt_credit INTO ls_credit INDEX lv_tabix.
+        IF sy-subrc = 0.
+          ls_credit-checkmark = ls_mod_cell-value.
+          MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+        ENDIF.
+      ENDIF.
+
+    ENDLOOP.
+
+    " Refresh ALV to apply cell style changes
+    IF go_alv_grid IS NOT INITIAL.
+      CALL METHOD go_alv_grid->refresh_table_display
+        EXPORTING
+          is_stable = VALUE lvc_s_stbl( row = 'X' col = 'X' )
+        EXCEPTIONS
+          others    = 1.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD on_toolbar.
+    " Optional: Customize toolbar if needed
+  ENDMETHOD.
+
+ENDCLASS.
