@@ -1,0 +1,118 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFIVENDCD_TOP
+*&---------------------------------------------------------------------*
+
+*----------------------------------------------------------------------*
+* TABLES
+*----------------------------------------------------------------------*
+TABLES: bsik,
+        zp2pttruck.
+
+*----------------------------------------------------------------------*
+* Selection Screen Criteria Structure
+*----------------------------------------------------------------------*
+TYPES: BEGIN OF gty_sel,
+         zp2pdepa    TYPE zp2pttruck-zp2pdepa,
+         zp2pdemandi TYPE zp2pttruck-zp2pdemandi,
+         bukrs       TYPE bsik-bukrs,
+         destplant   TYPE zp2pttruck-destplant,
+         budat       TYPE bsik-budat,
+         lifnr       TYPE bsik-lifnr,
+       END OF gty_sel.
+
+DATA: gs_sel TYPE gty_sel.
+
+*----------------------------------------------------------------------*
+* TYPE DEFINITIONS
+*----------------------------------------------------------------------*
+TYPES: BEGIN OF ty_credit,
+         checkmark         TYPE char1,
+         manual_edit       TYPE char1,
+         payment_reason    TYPE bseg-rstgr,
+         bukrs             TYPE bsik-bukrs,
+         zp2pdemandi       TYPE zp2pttruck-zp2pdemandi,
+         lifnr             TYPE bsik-lifnr,
+         vendor_name       TYPE lfa1-name1,
+         gjahr             TYPE bsik-gjahr,
+         belnr             TYPE bsik-belnr,
+         buzei             TYPE bsik-buzei,
+         budat             TYPE bsik-budat,
+         bldat             TYPE bsik-bldat,
+         gsber             TYPE bsik-gsber,
+         waers             TYPE bsik-waers,
+         wrbtr             TYPE bsik-wrbtr,
+         skfbt             TYPE bsik-skfbt,
+         payment_term      TYPE bsik-zterm,
+         zfbdt             TYPE bsik-zfbdt,
+         cd_level1_days    TYPE bsik-zbd1t,
+         cd_level1_pct     TYPE bsik-zbd1p,
+         cd_level2_days    TYPE bsik-zbd2t,
+         cd_level2_pct     TYPE bsik-zbd2p,
+         payment_amt       TYPE bsik-wrbtr,
+         payment_due_date  TYPE bsik-zfbdt,
+         rebzg             TYPE bsik-rebzg,
+         rebzj             TYPE bsik-rebzj,
+         rebzz             TYPE bsik-rebzz,
+         zfbdt_days        TYPE i,
+         applicable_cd_pct TYPE p DECIMALS 3,
+         applicable_cd_amt TYPE bsik-wrbtr,
+         debit_note_no     TYPE bsik-rebzg,
+         payment_date      TYPE bsik-augdt,
+         celltab           TYPE lvc_t_styl,  "<<< ADDED BACK
+       END OF ty_credit.
+
+*----------------------------------------------------------------------*
+* INTERNAL TABLES
+*----------------------------------------------------------------------*
+DATA: gt_credit TYPE TABLE OF ty_credit,
+      gs_credit TYPE ty_credit.
+
+DATA: lt_bsik_temp TYPE STANDARD TABLE OF bsik,
+      ls_bsik_temp TYPE bsik.
+
+DATA: lt_lfa1  TYPE STANDARD TABLE OF lfa1,
+      ls_lfa1  TYPE lfa1.
+
+DATA: lt_mandi TYPE STANDARD TABLE OF zp2pttruck,
+      ls_mandi TYPE zp2pttruck.
+
+DATA: lt_bseg  TYPE STANDARD TABLE OF bseg,
+      ls_bseg_data TYPE bseg.
+
+DATA: lt_bkpf  TYPE STANDARD TABLE OF bkpf,
+      ls_bkpf  TYPE bkpf.
+
+*----------------------------------------------------------------------*
+* ALV GRID DECLARATIONS (CHANGED FROM CL_SALV_TABLE)
+*----------------------------------------------------------------------*
+DATA: go_container TYPE REF TO cl_gui_custom_container,
+      go_alv_grid  TYPE REF TO cl_gui_alv_grid.
+
+DATA: gt_fieldcat TYPE lvc_t_fcat,
+      gs_layout   TYPE lvc_s_layo,
+      gs_variant  TYPE disvariant.
+
+DATA: gv_okcode TYPE sy-ucomm.
+
+*----------------------------------------------------------------------*
+* GLOBAL VARIABLES
+*----------------------------------------------------------------------*
+DATA: gv_count        TYPE i,
+      gv_data_fetched TYPE c.  "Flag to check if data is fetched
+
+*----------------------------------------------------------------------*
+* CONSTANTS
+*----------------------------------------------------------------------*
+CONSTANTS: gc_x TYPE c VALUE 'X'.
+
+*----------------------------------------------------------------------*
+* LOCAL CLASS DEFINITION FOR EVENT HANDLER
+*----------------------------------------------------------------------*
+CLASS lcl_event_handler DEFINITION.
+  PUBLIC SECTION.
+    CLASS-METHODS:
+      on_data_changed FOR EVENT data_changed OF cl_gui_alv_grid
+        IMPORTING er_data_changed e_onf4 e_onf4_before e_onf4_after e_ucomm,
+      on_toolbar FOR EVENT toolbar OF cl_gui_alv_grid
+        IMPORTING e_object e_interactive.
+ENDCLASS.
