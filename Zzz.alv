@@ -1,0 +1,867 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFIVENDCD_ALV
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& Form display_alv
+*&---------------------------------------------------------------------*
+FORM display_alv.
+
+  PERFORM build_fieldcat.
+  PERFORM set_layout.
+
+  IF go_container IS INITIAL.
+
+    CREATE OBJECT go_container
+      EXPORTING
+        container_name = 'ALV_CONTAINER'
+      EXCEPTIONS
+        others         = 1.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'Error creating container' TYPE 'E'.
+      RETURN.
+    ENDIF.
+
+    CREATE OBJECT go_alv_grid
+      EXPORTING
+        i_parent = go_container
+      EXCEPTIONS
+        others   = 1.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'Error creating ALV grid' TYPE 'E'.
+      RETURN.
+    ENDIF.
+
+    PERFORM register_events.
+
+    CALL METHOD go_alv_grid->register_edit_event
+      EXPORTING
+        i_event_id = cl_gui_alv_grid=>mc_evt_modified.
+
+    gs_variant-report = sy-repid.
+
+    CALL METHOD go_alv_grid->set_table_for_first_display
+      EXPORTING
+        is_layout       = gs_layout
+        i_save          = 'A'
+        is_variant      = gs_variant
+      CHANGING
+        it_outtab       = gt_credit
+        it_fieldcatalog = gt_fieldcat
+      EXCEPTIONS
+        others          = 1.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'Error displaying ALV' TYPE 'E'.
+    ENDIF.
+
+  ELSE.
+    CALL METHOD go_alv_grid->refresh_table_display
+      EXCEPTIONS
+        others = 1.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form build_fieldcat
+*&---------------------------------------------------------------------*
+FORM build_fieldcat.
+
+  DATA: ls_fcat TYPE lvc_s_fcat.
+
+  CLEAR gt_fieldcat.
+
+  " CHECKMARK
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'CHECKMARK'.
+  ls_fcat-coltext   = 'Select'.
+  ls_fcat-scrtext_s = 'Sel'.
+  ls_fcat-scrtext_m = 'Select'.
+  ls_fcat-scrtext_l = 'Select'.
+  ls_fcat-checkbox  = 'X'.
+  ls_fcat-edit      = 'X'.
+  ls_fcat-outputlen = 5.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " MANUAL_EDIT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'MANUAL_EDIT'.
+  ls_fcat-coltext   = 'Manual Edit'.
+  ls_fcat-scrtext_s = 'ManEdit'.
+  ls_fcat-scrtext_m = 'Manual Edit'.
+  ls_fcat-scrtext_l = 'Manual Edit'.
+  ls_fcat-checkbox  = 'X'.
+  ls_fcat-edit      = 'X'.
+  ls_fcat-outputlen = 6.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " POSTED
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'POSTED'.
+  ls_fcat-coltext   = 'Posted'.
+  ls_fcat-scrtext_s = 'Posted'.
+  ls_fcat-scrtext_m = 'Posted'.
+  ls_fcat-scrtext_l = 'Already Posted'.
+  ls_fcat-checkbox  = 'X'.
+  ls_fcat-edit      = ''.
+  ls_fcat-outputlen = 6.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " POST_DOC_NO
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'POST_DOC_NO'.
+  ls_fcat-coltext   = 'Posted Doc'.
+  ls_fcat-scrtext_s = 'Post Doc'.
+  ls_fcat-scrtext_m = 'Posted Doc No'.
+  ls_fcat-scrtext_l = 'Posted Document Number'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " POST_MESSAGE
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'POST_MESSAGE'.
+  ls_fcat-coltext   = 'Status Message'.
+  ls_fcat-scrtext_s = 'Status'.
+  ls_fcat-scrtext_m = 'Status Message'.
+  ls_fcat-scrtext_l = 'Posting Status Message'.
+  ls_fcat-outputlen = 50.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " BUKRS
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'BUKRS'.
+  ls_fcat-coltext   = 'Company Code'.
+  ls_fcat-scrtext_s = 'Co.Code'.
+  ls_fcat-scrtext_m = 'Company Code'.
+  ls_fcat-scrtext_l = 'Company Code'.
+  ls_fcat-key       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " ZP2PDEMANDI
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'ZP2PDEMANDI'.
+  ls_fcat-coltext   = 'Mandi'.
+  ls_fcat-scrtext_s = 'Mandi'.
+  ls_fcat-scrtext_m = 'Mandi'.
+  ls_fcat-scrtext_l = 'Mandi'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " LIFNR
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'LIFNR'.
+  ls_fcat-coltext   = 'Vendor Code'.
+  ls_fcat-scrtext_s = 'Vendor'.
+  ls_fcat-scrtext_m = 'Vendor Code'.
+  ls_fcat-scrtext_l = 'Vendor Code'.
+  ls_fcat-key       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " VENDOR_NAME
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'VENDOR_NAME'.
+  ls_fcat-coltext   = 'Vendor Name'.
+  ls_fcat-scrtext_s = 'Vend.Name'.
+  ls_fcat-scrtext_m = 'Vendor Name'.
+  ls_fcat-scrtext_l = 'Vendor Name'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " GJAHR
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'GJAHR'.
+  ls_fcat-coltext   = 'Fiscal Year'.
+  ls_fcat-scrtext_s = 'Year'.
+  ls_fcat-scrtext_m = 'Fiscal Year'.
+  ls_fcat-scrtext_l = 'Fiscal Year'.
+  ls_fcat-key       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " BELNR
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'BELNR'.
+  ls_fcat-coltext   = 'Document No.'.
+  ls_fcat-scrtext_s = 'Doc.No.'.
+  ls_fcat-scrtext_m = 'Document No.'.
+  ls_fcat-scrtext_l = 'Document Number'.
+  ls_fcat-key       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " BUZEI
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'BUZEI'.
+  ls_fcat-coltext   = 'Line Item'.
+  ls_fcat-scrtext_s = 'Item'.
+  ls_fcat-scrtext_m = 'Line Item'.
+  ls_fcat-scrtext_l = 'Line Item'.
+  ls_fcat-key       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " BUDAT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'BUDAT'.
+  ls_fcat-coltext   = 'Posting Date'.
+  ls_fcat-scrtext_s = 'Pst.Date'.
+  ls_fcat-scrtext_m = 'Posting Date'.
+  ls_fcat-scrtext_l = 'Posting Date'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " BLDAT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'BLDAT'.
+  ls_fcat-coltext   = 'Document Date'.
+  ls_fcat-scrtext_s = 'Doc.Date'.
+  ls_fcat-scrtext_m = 'Document Date'.
+  ls_fcat-scrtext_l = 'Document Date'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " GSBER
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'GSBER'.
+  ls_fcat-coltext   = 'Business Area'.
+  ls_fcat-scrtext_s = 'Bus.Area'.
+  ls_fcat-scrtext_m = 'Business Area'.
+  ls_fcat-scrtext_l = 'Business Area'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " WAERS
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'WAERS'.
+  ls_fcat-coltext   = 'Currency'.
+  ls_fcat-scrtext_s = 'Curr.'.
+  ls_fcat-scrtext_m = 'Currency'.
+  ls_fcat-scrtext_l = 'Currency'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " WRBTR
+  CLEAR ls_fcat.
+  ls_fcat-fieldname  = 'WRBTR'.
+  ls_fcat-coltext    = 'Document Amount'.
+  ls_fcat-scrtext_s  = 'Doc.Amt'.
+  ls_fcat-scrtext_m  = 'Document Amount'.
+  ls_fcat-scrtext_l  = 'Amount in Document Currency'.
+  ls_fcat-datatype   = 'CURR'.
+  ls_fcat-cfieldname = 'WAERS'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " SKFBT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname  = 'SKFBT'.
+  ls_fcat-coltext    = 'CD Base'.
+  ls_fcat-scrtext_s  = 'CD Base'.
+  ls_fcat-scrtext_m  = 'CD Base'.
+  ls_fcat-scrtext_l  = 'Cash Discount Base'.
+  ls_fcat-datatype   = 'CURR'.
+  ls_fcat-cfieldname = 'WAERS'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " PAYMENT_AMT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname  = 'PAYMENT_AMT'.
+  ls_fcat-coltext    = 'Payment Amount'.
+  ls_fcat-scrtext_s  = 'Pmnt Amt'.
+  ls_fcat-scrtext_m  = 'Payment Amount'.
+  ls_fcat-scrtext_l  = 'Payment Amount'.
+  ls_fcat-datatype   = 'CURR'.
+  ls_fcat-cfieldname = 'WAERS'.
+  ls_fcat-edit       = 'X'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " APPLICABLE_CD_PCT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'APPLICABLE_CD_PCT'.
+  ls_fcat-coltext   = 'Applicable CD %'.
+  ls_fcat-scrtext_s = 'Appl.CD%'.
+  ls_fcat-scrtext_m = 'Applicable CD %'.
+  ls_fcat-scrtext_l = 'Applicable Cash Discount %'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " APPLICABLE_CD_AMT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname  = 'APPLICABLE_CD_AMT'.
+  ls_fcat-coltext    = 'Applicable CD Amt'.
+  ls_fcat-scrtext_s  = 'Appl.CD'.
+  ls_fcat-scrtext_m  = 'Applicable CD Amt'.
+  ls_fcat-scrtext_l  = 'Applicable Cash Discount Amount'.
+  ls_fcat-datatype   = 'CURR'.
+  ls_fcat-cfieldname = 'WAERS'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " PAYMENT_TERM
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'PAYMENT_TERM'.
+  ls_fcat-coltext   = 'Payment Term'.
+  ls_fcat-scrtext_s = 'Pmnt Term'.
+  ls_fcat-scrtext_m = 'Payment Term'.
+  ls_fcat-scrtext_l = 'Payment Term'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " ZFBDT
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'ZFBDT'.
+  ls_fcat-coltext   = 'Baseline Date'.
+  ls_fcat-scrtext_s = 'Base Date'.
+  ls_fcat-scrtext_m = 'Baseline Date'.
+  ls_fcat-scrtext_l = 'Baseline Date'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " PAYMENT_DUE_DATE
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'PAYMENT_DUE_DATE'.
+  ls_fcat-coltext   = 'Payment Due Date'.
+  ls_fcat-scrtext_s = 'Due Date'.
+  ls_fcat-scrtext_m = 'Payment Due Date'.
+  ls_fcat-scrtext_l = 'Payment Due Date'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " ZFBDT_DAYS
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'ZFBDT_DAYS'.
+  ls_fcat-coltext   = 'No. of Days'.
+  ls_fcat-scrtext_s = 'Days'.
+  ls_fcat-scrtext_m = 'No. of Days'.
+  ls_fcat-scrtext_l = 'Number of Days'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " REBZG
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'REBZG'.
+  ls_fcat-coltext   = 'Invoice Reference'.
+  ls_fcat-scrtext_s = 'Inv.Ref'.
+  ls_fcat-scrtext_m = 'Invoice Reference'.
+  ls_fcat-scrtext_l = 'Invoice Reference'.
+  APPEND ls_fcat TO gt_fieldcat.
+
+  " HKONT (G/L Account for reference)
+  CLEAR ls_fcat.
+  ls_fcat-fieldname = 'HKONT'.
+  ls_fcat-coltext   = 'G/L Account'.
+  ls_fcat-scrtext_s = 'G/L Acct'.
+  ls_fcat-scrtext_m = 'G/L Account'.
+  ls_fcat-scrtext_l = 'G/L Account'.
+  ls_fcat-no_out    = 'X'.  " Hidden by default
+  APPEND ls_fcat TO gt_fieldcat.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form set_layout
+*&---------------------------------------------------------------------*
+FORM set_layout.
+
+  CLEAR gs_layout.
+  gs_layout-zebra      = 'X'.
+  gs_layout-cwidth_opt = 'X'.
+  gs_layout-sel_mode   = 'A'.
+  gs_layout-edit       = 'X'.
+  gs_layout-stylefname = 'CELLTAB'.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form register_events
+*&---------------------------------------------------------------------*
+FORM register_events.
+
+  DATA: lt_events TYPE cntl_simple_events,
+        ls_event  TYPE cntl_simple_event.
+
+  ls_event-eventid    = cl_gui_alv_grid=>mc_evt_modified.
+  ls_event-appl_event = 'X'.
+  APPEND ls_event TO lt_events.
+
+  CALL METHOD go_alv_grid->set_registered_events
+    EXPORTING
+      events = lt_events.
+
+  SET HANDLER lcl_event_handler=>on_data_changed FOR go_alv_grid.
+  SET HANDLER lcl_event_handler=>on_toolbar FOR go_alv_grid.
+  SET HANDLER lcl_event_handler=>on_user_command FOR go_alv_grid.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& CLASS IMPLEMENTATION - Event Handler
+*&---------------------------------------------------------------------*
+CLASS lcl_event_handler IMPLEMENTATION.
+
+  METHOD on_data_changed.
+
+    DATA: ls_mod_cell TYPE lvc_s_modi,
+          ls_credit   TYPE ty_credit,
+          lt_celltab  TYPE lvc_t_styl,
+          ls_celltab  TYPE lvc_s_styl,
+          lv_tabix    TYPE sy-tabix,
+          lv_value    TYPE char1.
+
+    DATA: ls_stable TYPE lvc_s_stbl.
+
+    LOOP AT er_data_changed->mt_mod_cells INTO ls_mod_cell.
+
+      IF ls_mod_cell-fieldname = 'MANUAL_EDIT'.
+
+        lv_tabix = ls_mod_cell-row_id.
+
+        READ TABLE gt_credit INTO ls_credit INDEX lv_tabix.
+        IF sy-subrc = 0.
+
+          lv_value = ls_mod_cell-value.
+          ls_credit-manual_edit = lv_value.
+
+          CLEAR: lt_celltab, ls_celltab.
+          ls_celltab-fieldname = 'PAYMENT_AMT'.
+
+          IF lv_value = 'X'.
+            ls_celltab-style = cl_gui_alv_grid=>mc_style_enabled.
+          ELSE.
+            ls_celltab-style = cl_gui_alv_grid=>mc_style_disabled.
+          ENDIF.
+
+          APPEND ls_celltab TO lt_celltab.
+
+          " Keep checkmark disabled if already posted
+          IF ls_credit-posted = 'X'.
+            CLEAR ls_celltab.
+            ls_celltab-fieldname = 'CHECKMARK'.
+            ls_celltab-style     = cl_gui_alv_grid=>mc_style_disabled.
+            APPEND ls_celltab TO lt_celltab.
+          ENDIF.
+
+          ls_credit-celltab = lt_celltab.
+          MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+
+        ENDIF.
+
+      ENDIF.
+
+      IF ls_mod_cell-fieldname = 'CHECKMARK'.
+        lv_tabix = ls_mod_cell-row_id.
+        READ TABLE gt_credit INTO ls_credit INDEX lv_tabix.
+        IF sy-subrc = 0.
+          ls_credit-checkmark = ls_mod_cell-value.
+          MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+        ENDIF.
+      ENDIF.
+
+    ENDLOOP.
+
+    IF go_alv_grid IS NOT INITIAL.
+      ls_stable-row = 'X'.
+      ls_stable-col = 'X'.
+      CALL METHOD go_alv_grid->refresh_table_display
+        EXPORTING
+          is_stable = ls_stable
+        EXCEPTIONS
+          others    = 1.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD on_toolbar.
+
+    DATA: ls_button TYPE stb_button.
+
+    " Separator
+    CLEAR ls_button.
+    ls_button-butn_type = 3.
+    APPEND ls_button TO e_object->mt_toolbar.
+
+    " POST button
+    CLEAR ls_button.
+    ls_button-function  = 'POST'.
+    ls_button-icon      = icon_execute_object.
+    ls_button-quickinfo = 'Post Selected Documents'.
+    ls_button-text      = 'Post'.
+    ls_button-disabled  = ''.
+    APPEND ls_button TO e_object->mt_toolbar.
+
+    " SELECT ALL button
+    CLEAR ls_button.
+    ls_button-function  = 'SELALL'.
+    ls_button-icon      = icon_select_all.
+    ls_button-quickinfo = 'Select All'.
+    ls_button-text      = 'Select All'.
+    APPEND ls_button TO e_object->mt_toolbar.
+
+    " DESELECT ALL button
+    CLEAR ls_button.
+    ls_button-function  = 'DESELALL'.
+    ls_button-icon      = icon_deselect_all.
+    ls_button-quickinfo = 'Deselect All'.
+    ls_button-text      = 'Deselect All'.
+    APPEND ls_button TO e_object->mt_toolbar.
+
+  ENDMETHOD.
+
+  METHOD on_user_command.
+
+    DATA: lv_count   TYPE i,
+          lv_answer  TYPE c,
+          lv_message TYPE string,
+          ls_credit  TYPE ty_credit.
+
+    DATA: ls_stable TYPE lvc_s_stbl.
+
+    CASE e_ucomm.
+
+      WHEN 'POST'.
+        " First flush any pending changes
+        CALL METHOD go_alv_grid->check_changed_data.
+
+        " Count selected items
+        CLEAR lv_count.
+        LOOP AT gt_credit INTO ls_credit
+          WHERE checkmark = 'X' AND posted <> 'X'.
+          lv_count = lv_count + 1.
+        ENDLOOP.
+
+        IF lv_count = 0.
+          MESSAGE 'No items selected for posting' TYPE 'S' DISPLAY LIKE 'W'.
+          RETURN.
+        ENDIF.
+
+        " Confirm posting
+        CONCATENATE 'Post' lv_count 'selected document(s)?'
+          INTO lv_message SEPARATED BY space.
+
+        CALL FUNCTION 'POPUP_TO_CONFIRM'
+          EXPORTING
+            titlebar              = 'Confirm Posting'
+            text_question         = lv_message
+            text_button_1         = 'Yes'
+            text_button_2         = 'No'
+            default_button        = '2'
+            display_cancel_button = 'X'
+          IMPORTING
+            answer                = lv_answer.
+
+        IF lv_answer = '1'.
+          PERFORM post_selected_documents.
+
+          " Refresh ALV
+          ls_stable-row = 'X'.
+          ls_stable-col = 'X'.
+          CALL METHOD go_alv_grid->refresh_table_display
+            EXPORTING
+              is_stable = ls_stable.
+
+          " Show result message
+          CONCATENATE 'Posted:' gv_post_count ', Errors:' gv_error_count
+            INTO lv_message SEPARATED BY space.
+          MESSAGE lv_message TYPE 'S'.
+        ENDIF.
+
+      WHEN 'SELALL'.
+        LOOP AT gt_credit INTO ls_credit.
+          IF ls_credit-posted <> 'X'.
+            ls_credit-checkmark = 'X'.
+            MODIFY gt_credit FROM ls_credit.
+          ENDIF.
+        ENDLOOP.
+        CALL METHOD go_alv_grid->refresh_table_display.
+
+      WHEN 'DESELALL'.
+        LOOP AT gt_credit INTO ls_credit.
+          ls_credit-checkmark = ''.
+          MODIFY gt_credit FROM ls_credit.
+        ENDLOOP.
+        CALL METHOD go_alv_grid->refresh_table_display.
+
+    ENDCASE.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+*&---------------------------------------------------------------------*
+*& Form post_selected_documents
+*&---------------------------------------------------------------------*
+FORM post_selected_documents.
+
+  DATA: lv_tabix      TYPE sy-tabix,
+        lv_posted_doc TYPE belnr_d,
+        lv_message    TYPE char100,
+        lv_success    TYPE c,
+        ls_credit     TYPE ty_credit,
+        lt_celltab    TYPE lvc_t_styl,
+        ls_celltab    TYPE lvc_s_styl.
+
+  CLEAR: gv_post_count, gv_error_count.
+
+  LOOP AT gt_credit INTO ls_credit
+    WHERE checkmark = 'X' AND posted <> 'X'.
+
+    lv_tabix = sy-tabix.
+
+    " Check if applicable CD amount > 0
+    IF ls_credit-applicable_cd_amt <= 0.
+      ls_credit-post_message = 'No CD amount to post'.
+      MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+      gv_error_count = gv_error_count + 1.
+      CONTINUE.
+    ENDIF.
+
+    " Check if G/L account exists
+    IF ls_credit-hkont IS INITIAL.
+      ls_credit-post_message = 'G/L account not found'.
+      MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+      gv_error_count = gv_error_count + 1.
+      CONTINUE.
+    ENDIF.
+
+    " Call BAPI to post document
+    PERFORM call_bapi_acc_document_post
+      USING    ls_credit
+      CHANGING lv_posted_doc
+               lv_message
+               lv_success.
+
+    IF lv_success = 'X'.
+      " Update ALV
+      ls_credit-posted       = 'X'.
+      ls_credit-post_doc_no  = lv_posted_doc.
+      ls_credit-post_message = lv_message.
+      ls_credit-checkmark    = ''.
+
+      " Update cell style to disable checkmark
+      lt_celltab = ls_credit-celltab.
+      CLEAR ls_celltab.
+      ls_celltab-fieldname = 'CHECKMARK'.
+      ls_celltab-style     = cl_gui_alv_grid=>mc_style_disabled.
+      APPEND ls_celltab TO lt_celltab.
+      ls_credit-celltab = lt_celltab.
+
+      MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+
+      " Insert/Update ZFI_VENDCD_DOC
+      PERFORM update_vendcd_doc USING ls_credit.
+
+      gv_post_count = gv_post_count + 1.
+    ELSE.
+      ls_credit-post_message = lv_message.
+      MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+      gv_error_count = gv_error_count + 1.
+    ENDIF.
+
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form call_bapi_acc_document_post
+*&---------------------------------------------------------------------*
+FORM call_bapi_acc_document_post
+  USING    ps_credit   TYPE ty_credit
+  CHANGING pv_doc_no   TYPE belnr_d
+           pv_message  TYPE char100
+           pv_success  TYPE c.
+
+  DATA: lv_item_text TYPE bapiacgl09-item_text,
+        lv_fiscyear  TYPE gjahr,
+        lv_fiscper   TYPE monat,
+        lv_amt_pos   TYPE bapiaccr09-amt_doccur,
+        lv_amt_neg   TYPE bapiaccr09-amt_doccur,
+        lv_item_text2 TYPE bapiacap09-item_text.
+
+  CLEAR: gs_doc_header, gt_accountgl, gt_accountpay, gt_currencyamt, gt_return,
+         gv_obj_key, pv_doc_no, pv_message, pv_success.
+
+  " Get fiscal year and period
+  CALL FUNCTION 'FI_PERIOD_DETERMINE'
+    EXPORTING
+      i_budat = sy-datum
+      i_bukrs = ps_credit-bukrs
+    IMPORTING
+      e_gjahr = lv_fiscyear
+      e_monat = lv_fiscper
+    EXCEPTIONS
+      OTHERS  = 1.
+
+  IF sy-subrc <> 0.
+    lv_fiscyear = sy-datum+0(4).
+    lv_fiscper  = sy-datum+4(2).
+  ENDIF.
+
+  "------------------------------------------------------------
+  " 1. DOCUMENT HEADER
+  "------------------------------------------------------------
+  gs_doc_header-obj_type   = gc_obj_type.
+  gs_doc_header-obj_sys    = sy-sysid.
+  gs_doc_header-bus_act    = gc_bus_act.
+  gs_doc_header-username   = sy-uname.
+  gs_doc_header-header_txt = 'Debit Note for Cash Discount'.
+  gs_doc_header-comp_code  = ps_credit-bukrs.
+  gs_doc_header-doc_date   = sy-datum.
+  gs_doc_header-pstng_date = sy-datum.
+  gs_doc_header-fisc_year  = lv_fiscyear.
+  gs_doc_header-fis_period = lv_fiscper.
+  gs_doc_header-doc_type   = gc_doc_type.
+  gs_doc_header-ref_doc_no = ps_credit-belnr.
+
+  "------------------------------------------------------------
+  " 2. ACCOUNTGL (Line 11 - Credit G/L Account)
+  "------------------------------------------------------------
+  CLEAR gs_accountgl.
+  gs_accountgl-itemno_acc = '0000000011'.
+  gs_accountgl-gl_account = ps_credit-hkont.
+  gs_accountgl-comp_code  = ps_credit-bukrs.
+  gs_accountgl-bus_area   = ps_credit-gsber.
+  gs_accountgl-pstng_date = sy-datum.
+  gs_accountgl-tax_code   = ps_credit-mwskz.
+  gs_accountgl-costcenter = ps_credit-kostl.
+  gs_accountgl-profit_ctr = ps_credit-prctr.
+
+  " Build item text
+  WRITE ps_credit-applicable_cd_amt TO lv_item_text LEFT-JUSTIFIED.
+  CONCATENATE 'CD on INR' lv_item_text '@' ps_credit-applicable_cd_pct '%'
+    INTO gs_accountgl-item_text SEPARATED BY space.
+
+  APPEND gs_accountgl TO gt_accountgl.
+
+  "------------------------------------------------------------
+  " 3. ACCOUNTPAYABLE (Line 10 - Debit Vendor)
+  "------------------------------------------------------------
+  CLEAR gs_accountpay.
+  gs_accountpay-itemno_acc = '0000000010'.
+  gs_accountpay-vendor_no  = ps_credit-lifnr.
+  gs_accountpay-comp_code  = ps_credit-bukrs.
+  gs_accountpay-bus_area   = ps_credit-gsber.
+  gs_accountpay-pmnttrms   = ps_credit-payment_term.
+  gs_accountpay-bline_date = sy-datum.
+
+  CONCATENATE 'Cash Discount Against Doc' ps_credit-belnr
+    INTO gs_accountpay-item_text SEPARATED BY space.
+
+  APPEND gs_accountpay TO gt_accountpay.
+
+  "------------------------------------------------------------
+  " 4. CURRENCYAMOUNT (2 Lines)
+  "------------------------------------------------------------
+  " Line 10 - Debit Vendor (Positive amount)
+  CLEAR gs_currencyamt.
+  gs_currencyamt-itemno_acc   = '0000000010'.
+  gs_currencyamt-currency     = ps_credit-waers.
+  gs_currencyamt-currency_iso = ps_credit-waers.
+  lv_amt_pos = ps_credit-applicable_cd_amt.
+  gs_currencyamt-amt_doccur   = lv_amt_pos.
+  APPEND gs_currencyamt TO gt_currencyamt.
+
+  " Line 11 - Credit G/L (Negative amount)
+  CLEAR gs_currencyamt.
+  gs_currencyamt-itemno_acc   = '0000000011'.
+  gs_currencyamt-currency     = ps_credit-waers.
+  gs_currencyamt-currency_iso = ps_credit-waers.
+  lv_amt_neg = ps_credit-applicable_cd_amt * -1.
+  gs_currencyamt-amt_doccur   = lv_amt_neg.
+  APPEND gs_currencyamt TO gt_currencyamt.
+
+  "------------------------------------------------------------
+  " 5. CALL BAPI
+  "------------------------------------------------------------
+  CALL FUNCTION 'BAPI_ACC_DOCUMENT_POST'
+    EXPORTING
+      documentheader = gs_doc_header
+    IMPORTING
+      obj_key        = gv_obj_key
+    TABLES
+      accountgl      = gt_accountgl
+      accountpayable = gt_accountpay
+      currencyamount = gt_currencyamt
+      return         = gt_return.
+
+  " Check for errors
+  READ TABLE gt_return INTO gs_return WITH KEY type = 'E'.
+  IF sy-subrc = 0.
+    " Error occurred
+    pv_message = gs_return-message.
+    pv_success = ''.
+    " Rollback
+    CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+  ELSE.
+    " Also check for 'A' (Abort) type messages
+    READ TABLE gt_return INTO gs_return WITH KEY type = 'A'.
+    IF sy-subrc = 0.
+      pv_message = gs_return-message.
+      pv_success = ''.
+      CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+    ELSE.
+      " Success - Commit
+      CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+        EXPORTING
+          wait = 'X'.
+
+      " Extract document number from obj_key
+      " Format: BUKRS(4) + BELNR(10) + GJAHR(4) = 18 chars
+      pv_doc_no = gv_obj_key+4(10).
+      CONCATENATE 'Document' pv_doc_no 'posted successfully'
+        INTO pv_message SEPARATED BY space.
+      pv_success = 'X'.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form update_vendcd_doc
+*&---------------------------------------------------------------------*
+FORM update_vendcd_doc USING ps_credit TYPE ty_credit.
+
+  DATA: ls_vendcd_doc TYPE zfi_vendcd_doc.
+
+  CLEAR ls_vendcd_doc.
+
+  " Move matching fields
+  MOVE-CORRESPONDING ps_credit TO ls_vendcd_doc.
+
+  " Ensure checkmark is 'X' for posted document
+  ls_vendcd_doc-checkmark = 'X'.
+
+  " Modify (insert or update) custom table
+  MODIFY zfi_vendcd_doc FROM ls_vendcd_doc.
+
+  IF sy-subrc <> 0.
+    " Log error - but don't fail the process
+    MESSAGE 'Error updating ZFI_VENDCD_DOC' TYPE 'S' DISPLAY LIKE 'W'.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Module STATUS_0100 OUTPUT
+*&---------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+  SET PF-STATUS 'STATUS_100'.
+  SET TITLEBAR 'TITLE_100'.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*& Module DISPLAY_ALV OUTPUT
+*&---------------------------------------------------------------------*
+MODULE display_alv OUTPUT.
+  PERFORM display_alv.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*& Module USER_COMMAND_0100 INPUT
+*&---------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+
+  DATA: lv_okcode TYPE sy-ucomm.
+
+  lv_okcode = gv_okcode.
+  CLEAR gv_okcode.
+
+  CASE lv_okcode.
+    WHEN 'BACK' OR 'EXIT' OR 'CANCEL'.
+      IF go_alv_grid IS NOT INITIAL.
+        CALL METHOD go_alv_grid->free.
+        FREE go_alv_grid.
+      ENDIF.
+      IF go_container IS NOT INITIAL.
+        CALL METHOD go_container->free.
+        FREE go_container.
+      ENDIF.
+      LEAVE TO SCREEN 0.
+  ENDCASE.
+
+ENDMODULE.
