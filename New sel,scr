@@ -1,0 +1,413 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFIVENDCD_SEL
+*&---------------------------------------------------------------------*
+*& Selection Screen Definition
+*&---------------------------------------------------------------------*
+
+*----------------------------------------------------------------------*
+* SELECTION SCREEN
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+  SELECT-OPTIONS: s_zp2pde FOR gs_sel-zp2pdepa,
+                  s_zp2p   FOR gs_sel-zp2pdemandi,
+                  s_bukrs  FOR gs_sel-bukrs,
+                  s_destpl FOR gs_sel-destplant,
+                  s_budat  FOR gs_sel-budat.
+SELECTION-SCREEN END OF BLOCK b1.
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZFIVENDCD_SCR
+*&---------------------------------------------------------------------*
+*& Data Fetch and Processing Logic
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& Form FETCH_AND_PROCESS_DATA
+*&---------------------------------------------------------------------*
+FORM fetch_and_process_data.
+
+  DATA: lv_orig_blart       TYPE bkpf-blart,
+        lv_vendor_name      TYPE lfa1-name1,
+        lv_mandi            TYPE zp2pttruck-zp2pdemandi,
+        lv_payment_reason   TYPE bseg-rstgr,
+        lv_days             TYPE i,
+        lv_payment_due_date TYPE bsik-zfbdt,
+        lv_zuonr_10         TYPE char10.
+
+  DATA: lt_cellstyle TYPE lvc_t_styl,
+        ls_cellstyle TYPE lvc_s_styl.
+
+  " Clear all internal tables
+  CLEAR: gt_credit, gt_bsik_temp, gt_lfa1, gt_mandi, gt_bseg, gt_bkpf,
+         gt_bseg_gl, gt_vendcd_doc, gt_zuonr_lookup, gt_zuonr_range.
+
+  REFRESH: gt_credit, gt_bsik_temp, gt_lfa1, gt_mandi, gt_bseg, gt_bkpf,
+           gt_bseg_gl, gt_vendcd_doc, gt_zuonr_lookup, gt_zuonr_range.
+
+  "------------------------------------------------------------
+  " 1. SELECT FROM BSIK (Main Data)
+  "------------------------------------------------------------
+  SELECT bukrs lifnr gjahr belnr buzei budat bldat gsber waers
+         wrbtr skfbt zfbdt rebzg rebzj rebzz shkzg blart zterm
+         zbd1t zbd2t zbd3t zbd1p zbd2p augdt zuonr
+    FROM bsik
+    INTO CORRESPONDING FIELDS OF TABLE gt_bsik_temp
+    WHERE bukrs IN s_bukrs
+      AND lifnr IN s_zp2pde
+      AND budat IN s_budat
+      AND gsber IN s_destpl
+      AND shkzg = 'H'
+      AND blart IN ('RE', 'KR', 'AB').
+
+  IF gt_bsik_temp[] IS INITIAL.
+    CLEAR gv_data_fetched.
+    MESSAGE 'No data found for selection criteria' TYPE 'S'.
+    RETURN.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " 2. Build ZUONR Lookup Table (Fix for substring issue)
+  "------------------------------------------------------------
+  LOOP AT gt_bsik_temp INTO gs_bsik_temp.
+    " Build lookup table
+    CLEAR gs_zuonr_lookup.
+    gs_zuonr_lookup-zuonr_10 = gs_bsik_temp-zuonr(10).
+    gs_zuonr_lookup-bukrs    = gs_bsik_temp-bukrs.
+    gs_zuonr_lookup-belnr    = gs_bsik_temp-belnr.
+    gs_zuonr_lookup-gjahr    = gs_bsik_temp-gjahr.
+    gs_zuonr_lookup-buzei    = gs_bsik_temp-buzei.
+    APPEND gs_zuonr_lookup TO gt_zuonr_lookup.
+
+    " Build unique ZUONR range for Mandi fetch
+    CLEAR gs_zuonr_range.
+    gs_zuonr_range-zuonr_10 = gs_bsik_temp-zuonr(10).
+    COLLECT gs_zuonr_range INTO gt_zuonr_range.
+  ENDLOOP.
+
+  SORT gt_zuonr_lookup BY zuonr_10.
+
+  "------------------------------------------------------------
+  " 3. Fetch BKPF Data (Document Header)
+  "------------------------------------------------------------
+  IF gt_bsik_temp[] IS NOT INITIAL.
+    SELECT bukrs belnr gjahr blart
+      FROM bkpf
+      INTO CORRESPONDING FIELDS OF TABLE gt_bkpf
+      FOR ALL ENTRIES IN gt_bsik_temp
+      WHERE bukrs = gt_bsik_temp-bukrs
+        AND belnr = gt_bsik_temp-rebzg
+        AND gjahr = gt_bsik_temp-rebzj.
+
+    SORT gt_bkpf BY bukrs belnr gjahr.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " 4. Fetch LFA1 Data (Vendor Master)
+  "------------------------------------------------------------
+  IF gt_bsik_temp[] IS NOT INITIAL.
+    SELECT lifnr name1
+      FROM lfa1
+      INTO CORRESPONDING FIELDS OF TABLE gt_lfa1
+      FOR ALL ENTRIES IN gt_bsik_temp
+      WHERE lifnr = gt_bsik_temp-lifnr.
+
+    SORT gt_lfa1 BY lifnr.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " 5. Fetch Mandi Data (ZP2PTTRUCK)
+  "------------------------------------------------------------
+  IF gt_zuonr_range[] IS NOT INITIAL.
+    SELECT zp2pdetrno zp2pdemandi
+      FROM zp2pttruck
+      INTO CORRESPONDING FIELDS OF TABLE gt_mandi
+      FOR ALL ENTRIES IN gt_zuonr_range
+      WHERE zp2pdetrno = gt_zuonr_range-zuonr_10.
+
+    SORT gt_mandi BY zp2pdetrno.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " 6. Fetch BSEG Data (Vendor Line - Payment Reason)
+  "------------------------------------------------------------
+  IF gt_bsik_temp[] IS NOT INITIAL.
+    SELECT bukrs belnr gjahr buzei rstgr koart
+      FROM bseg
+      INTO CORRESPONDING FIELDS OF TABLE gt_bseg
+      FOR ALL ENTRIES IN gt_bsik_temp
+      WHERE bukrs = gt_bsik_temp-bukrs
+        AND belnr = gt_bsik_temp-belnr
+        AND gjahr = gt_bsik_temp-gjahr
+        AND buzei = gt_bsik_temp-buzei
+        AND koart = 'K'.
+
+    SORT gt_bseg BY bukrs belnr gjahr buzei.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " 7. Fetch BSEG Data for BAPI (G/L Line)
+  "------------------------------------------------------------
+  IF gt_bsik_temp[] IS NOT INITIAL.
+    SELECT bukrs belnr gjahr buzei hkont kostl prctr mwskz gsber
+      FROM bseg
+      INTO CORRESPONDING FIELDS OF TABLE gt_bseg_gl
+      FOR ALL ENTRIES IN gt_bsik_temp
+      WHERE bukrs = gt_bsik_temp-bukrs
+        AND belnr = gt_bsik_temp-belnr
+        AND gjahr = gt_bsik_temp-gjahr
+        AND koart = 'S'.
+
+    SORT gt_bseg_gl BY bukrs belnr gjahr buzei.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " 8. Fetch Already Posted Documents (ZFI_VENDCD_DOC)
+  "------------------------------------------------------------
+  IF gt_bsik_temp[] IS NOT INITIAL.
+    SELECT *
+      FROM zfi_vendcd_doc
+      INTO TABLE gt_vendcd_doc
+      FOR ALL ENTRIES IN gt_bsik_temp
+      WHERE bukrs = gt_bsik_temp-bukrs
+        AND belnr = gt_bsik_temp-belnr
+        AND gjahr = gt_bsik_temp-gjahr
+        AND buzei = gt_bsik_temp-buzei
+        AND checkmark = 'X'.
+
+    SORT gt_vendcd_doc BY bukrs belnr gjahr buzei.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " 9. Process Data and Build Output Table
+  "------------------------------------------------------------
+  LOOP AT gt_bsik_temp INTO gs_bsik_temp.
+
+    CLEAR: lv_orig_blart, lv_vendor_name, lv_mandi, lv_payment_reason,
+           lv_days, lv_payment_due_date, lv_zuonr_10, gs_credit.
+    CLEAR: lt_cellstyle, ls_cellstyle.
+    REFRESH lt_cellstyle.
+
+    " 9.1 - Handle AB Documents
+    IF gs_bsik_temp-blart = 'AB'.
+      READ TABLE gt_bkpf INTO gs_bkpf
+        WITH KEY bukrs = gs_bsik_temp-bukrs
+                 belnr = gs_bsik_temp-rebzg
+                 gjahr = gs_bsik_temp-rebzj
+        BINARY SEARCH.
+
+      IF sy-subrc = 0.
+        lv_orig_blart = gs_bkpf-blart.
+      ENDIF.
+
+      IF lv_orig_blart <> 'RE' AND lv_orig_blart <> 'KR'.
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    " 9.2 - Get Vendor Name
+    READ TABLE gt_lfa1 INTO gs_lfa1
+      WITH KEY lifnr = gs_bsik_temp-lifnr
+      BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      lv_vendor_name = gs_lfa1-name1.
+    ENDIF.
+
+    " 9.3 - Get Mandi
+    lv_zuonr_10 = gs_bsik_temp-zuonr(10).
+    READ TABLE gt_mandi INTO gs_mandi
+      WITH KEY zp2pdetrno = lv_zuonr_10
+      BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      lv_mandi = gs_mandi-zp2pdemandi.
+    ELSE.
+      CONTINUE.  " Skip if no Mandi found
+    ENDIF.
+
+    " 9.4 - Filter by Mandi Selection
+    IF s_zp2p[] IS NOT INITIAL.
+      CHECK lv_mandi IN s_zp2p.
+    ENDIF.
+
+    " 9.5 - Get Payment Reason
+    READ TABLE gt_bseg INTO gs_bseg
+      WITH KEY bukrs = gs_bsik_temp-bukrs
+               belnr = gs_bsik_temp-belnr
+               gjahr = gs_bsik_temp-gjahr
+               buzei = gs_bsik_temp-buzei
+      BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      lv_payment_reason = gs_bseg-rstgr.
+    ENDIF.
+
+    " 9.6 - Get G/L Line Data for BAPI
+    CLEAR gs_bseg_gl.
+    READ TABLE gt_bseg_gl INTO gs_bseg_gl
+      WITH KEY bukrs = gs_bsik_temp-bukrs
+               belnr = gs_bsik_temp-belnr
+               gjahr = gs_bsik_temp-gjahr
+      BINARY SEARCH.
+
+    " 9.7 - Calculate Payment Due Date
+    IF gs_bsik_temp-zbd3t IS NOT INITIAL.
+      lv_payment_due_date = gs_bsik_temp-zfbdt + gs_bsik_temp-zbd3t.
+    ELSEIF gs_bsik_temp-zbd2t IS NOT INITIAL.
+      lv_payment_due_date = gs_bsik_temp-zfbdt + gs_bsik_temp-zbd2t.
+    ELSEIF gs_bsik_temp-zbd1t IS NOT INITIAL.
+      lv_payment_due_date = gs_bsik_temp-zfbdt + gs_bsik_temp-zbd1t.
+    ELSE.
+      lv_payment_due_date = gs_bsik_temp-zfbdt.
+    ENDIF.
+
+    " 9.8 - Calculate Days from Baseline Date
+    lv_days = sy-datum - gs_bsik_temp-zfbdt.
+
+    " 9.9 - Populate Output Structure
+    gs_credit-checkmark        = ' '.
+    gs_credit-manual_edit      = ' '.
+    gs_credit-payment_reason   = lv_payment_reason.
+    gs_credit-payment_term     = gs_bsik_temp-zterm.
+    gs_credit-payment_amt      = gs_bsik_temp-wrbtr.
+    gs_credit-cd_level1_days   = gs_bsik_temp-zbd1t.
+    gs_credit-cd_level1_pct    = gs_bsik_temp-zbd1p.
+    gs_credit-cd_level2_days   = gs_bsik_temp-zbd2t.
+    gs_credit-cd_level2_pct    = gs_bsik_temp-zbd2p.
+    gs_credit-zfbdt            = gs_bsik_temp-zfbdt.
+    gs_credit-payment_due_date = lv_payment_due_date.
+    gs_credit-payment_date     = gs_bsik_temp-augdt.
+    gs_credit-zfbdt_days       = lv_days.
+
+    " 9.10 - Calculate Applicable CD
+    PERFORM calculate_applicable_cd USING gs_bsik_temp-zfbdt
+                                          gs_bsik_temp-zbd1t
+                                          gs_bsik_temp-zbd2t
+                                          gs_bsik_temp-zbd1p
+                                          gs_bsik_temp-zbd2p
+                                          gs_bsik_temp-wrbtr
+                                          lv_payment_due_date
+                                 CHANGING gs_credit-applicable_cd_pct
+                                          gs_credit-applicable_cd_amt.
+
+    " 9.11 - Populate Remaining Fields
+    gs_credit-rebzg         = gs_bsik_temp-rebzg.
+    gs_credit-rebzj         = gs_bsik_temp-rebzj.
+    gs_credit-rebzz         = gs_bsik_temp-rebzz.
+    gs_credit-debit_note_no = gs_bsik_temp-rebzg.
+    gs_credit-bukrs         = gs_bsik_temp-bukrs.
+    gs_credit-zp2pdemandi   = lv_mandi.
+    gs_credit-lifnr         = gs_bsik_temp-lifnr.
+    gs_credit-vendor_name   = lv_vendor_name.
+    gs_credit-gjahr         = gs_bsik_temp-gjahr.
+    gs_credit-belnr         = gs_bsik_temp-belnr.
+    gs_credit-buzei         = gs_bsik_temp-buzei.
+    gs_credit-budat         = gs_bsik_temp-budat.
+    gs_credit-bldat         = gs_bsik_temp-bldat.
+    gs_credit-gsber         = gs_bsik_temp-gsber.
+    gs_credit-waers         = gs_bsik_temp-waers.
+    gs_credit-wrbtr         = gs_bsik_temp-wrbtr.
+    gs_credit-skfbt         = gs_bsik_temp-skfbt.
+
+    " 9.12 - Store BSEG G/L Data for BAPI
+    IF gs_bseg_gl IS NOT INITIAL.
+      gs_credit-hkont = gs_bseg_gl-hkont.
+      gs_credit-kostl = gs_bseg_gl-kostl.
+      gs_credit-prctr = gs_bseg_gl-prctr.
+      gs_credit-mwskz = gs_bseg_gl-mwskz.
+    ENDIF.
+
+    " 9.13 - Check if Already Posted
+    CLEAR gs_vendcd_doc.
+    READ TABLE gt_vendcd_doc INTO gs_vendcd_doc
+      WITH KEY bukrs = gs_bsik_temp-bukrs
+               belnr = gs_bsik_temp-belnr
+               gjahr = gs_bsik_temp-gjahr
+               buzei = gs_bsik_temp-buzei
+      BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      gs_credit-posted = 'X'.
+      gs_credit-post_message = 'Already Posted'.
+    ELSE.
+      gs_credit-posted = ' '.
+      CLEAR gs_credit-post_message.
+    ENDIF.
+
+    " 9.14 - Initialize Cell Styles
+    " PAYMENT_AMT - Disabled by default
+    CLEAR ls_cellstyle.
+    ls_cellstyle-fieldname = 'PAYMENT_AMT'.
+    ls_cellstyle-style     = cl_gui_alv_grid=>mc_style_disabled.
+    APPEND ls_cellstyle TO lt_cellstyle.
+
+    " If already posted, disable CHECKMARK
+    IF gs_credit-posted = 'X'.
+      CLEAR ls_cellstyle.
+      ls_cellstyle-fieldname = 'CHECKMARK'.
+      ls_cellstyle-style     = cl_gui_alv_grid=>mc_style_disabled.
+      APPEND ls_cellstyle TO lt_cellstyle.
+    ENDIF.
+
+    gs_credit-celltab = lt_cellstyle.
+
+    " 9.15 - Append to Output Table
+    APPEND gs_credit TO gt_credit.
+
+  ENDLOOP.
+
+  " Set data fetched flag
+  IF gt_credit[] IS NOT INITIAL.
+    gv_data_fetched = 'X'.
+  ELSE.
+    CLEAR gv_data_fetched.
+    MESSAGE 'No data to display after filters' TYPE 'S'.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form CALCULATE_APPLICABLE_CD
+*&---------------------------------------------------------------------*
+FORM calculate_applicable_cd USING p_zfbdt    TYPE bsik-zfbdt
+                                   p_zbd1t    TYPE bsik-zbd1t
+                                   p_zbd2t    TYPE bsik-zbd2t
+                                   p_zbd1p    TYPE bsik-zbd1p
+                                   p_zbd2p    TYPE bsik-zbd2p
+                                   p_amount   TYPE bsik-wrbtr
+                                   p_due_date TYPE bsik-zfbdt
+                          CHANGING p_cd_pct   TYPE p
+                                   p_cd_amt   TYPE bsik-wrbtr.
+
+  DATA: lv_cd_level1_date TYPE sy-datum,
+        lv_cd_level2_date TYPE sy-datum.
+
+  CLEAR: p_cd_pct, p_cd_amt.
+
+  " Calculate CD level dates
+  lv_cd_level1_date = p_zfbdt + p_zbd1t.
+  lv_cd_level2_date = p_zfbdt + p_zbd2t.
+
+  " Determine applicable CD percentage
+  IF sy-datum <= lv_cd_level1_date AND p_zbd1p IS NOT INITIAL.
+    p_cd_pct = p_zbd1p.
+  ELSEIF sy-datum > lv_cd_level1_date AND
+         sy-datum <= lv_cd_level2_date AND
+         p_zbd2p IS NOT INITIAL.
+    p_cd_pct = p_zbd2p.
+  ELSE.
+    p_cd_pct = 0.
+  ENDIF.
+
+  " Calculate CD amount
+  IF p_cd_pct > 0.
+    p_cd_amt = ( p_amount * p_cd_pct ) / 100.
+  ELSE.
+    p_cd_amt = 0.
+  ENDIF.
+
+ENDFORM.
