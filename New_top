@@ -1,0 +1,216 @@
+*&---------------------------------------------------------------------*
+*& Include          ZFIVENDCD_TOP
+*&---------------------------------------------------------------------*
+*& Global Declarations for Vendor Credit Note Report
+*&---------------------------------------------------------------------*
+
+*----------------------------------------------------------------------*
+* TYPE-POOLS
+*----------------------------------------------------------------------*
+TYPE-POOLS: icon.
+
+*----------------------------------------------------------------------*
+* TABLES
+*----------------------------------------------------------------------*
+TABLES: bsik,
+        zp2pttruck.
+
+*----------------------------------------------------------------------*
+* SELECTION SCREEN CRITERIA STRUCTURE
+*----------------------------------------------------------------------*
+TYPES: BEGIN OF gty_sel,
+         zp2pdepa    TYPE zp2pttruck-zp2pdepa,
+         zp2pdemandi TYPE zp2pttruck-zp2pdemandi,
+         bukrs       TYPE bsik-bukrs,
+         destplant   TYPE zp2pttruck-destplant,
+         budat       TYPE bsik-budat,
+         lifnr       TYPE bsik-lifnr,
+       END OF gty_sel.
+
+DATA: gs_sel TYPE gty_sel.
+
+*----------------------------------------------------------------------*
+* TYPE DEFINITIONS - MAIN OUTPUT STRUCTURE
+*----------------------------------------------------------------------*
+TYPES: BEGIN OF ty_credit,
+         " Editable Checkboxes
+         checkmark         TYPE char1,
+         manual_edit       TYPE char1,
+         " Document Data
+         payment_reason    TYPE bseg-rstgr,
+         bukrs             TYPE bsik-bukrs,
+         zp2pdemandi       TYPE zp2pttruck-zp2pdemandi,
+         lifnr             TYPE bsik-lifnr,
+         vendor_name       TYPE lfa1-name1,
+         gjahr             TYPE bsik-gjahr,
+         belnr             TYPE bsik-belnr,
+         buzei             TYPE bsik-buzei,
+         budat             TYPE bsik-budat,
+         bldat             TYPE bsik-bldat,
+         gsber             TYPE bsik-gsber,
+         waers             TYPE bsik-waers,
+         wrbtr             TYPE bsik-wrbtr,
+         skfbt             TYPE bsik-skfbt,
+         payment_term      TYPE bsik-zterm,
+         zfbdt             TYPE bsik-zfbdt,
+         cd_level1_days    TYPE bsik-zbd1t,
+         cd_level1_pct     TYPE bsik-zbd1p,
+         cd_level2_days    TYPE bsik-zbd2t,
+         cd_level2_pct     TYPE bsik-zbd2p,
+         payment_amt       TYPE bsik-wrbtr,
+         payment_due_date  TYPE bsik-zfbdt,
+         rebzg             TYPE bsik-rebzg,
+         rebzj             TYPE bsik-rebzj,
+         rebzz             TYPE bsik-rebzz,
+         zfbdt_days        TYPE i,
+         applicable_cd_pct TYPE p DECIMALS 3,
+         applicable_cd_amt TYPE bsik-wrbtr,
+         debit_note_no     TYPE bsik-rebzg,
+         payment_date      TYPE bsik-augdt,
+         " Cell Style for Conditional Editing
+         celltab           TYPE lvc_t_styl,
+         " BAPI Related Fields
+         posted            TYPE char1,
+         post_doc_no       TYPE belnr_d,
+         post_message      TYPE char100,
+         " BSEG Data for BAPI
+         hkont             TYPE bseg-hkont,
+         kostl             TYPE bseg-kostl,
+         prctr             TYPE bseg-prctr,
+         mwskz             TYPE bseg-mwskz,
+       END OF ty_credit.
+
+*----------------------------------------------------------------------*
+* TYPE DEFINITIONS - BSEG DATA FOR BAPI
+*----------------------------------------------------------------------*
+TYPES: BEGIN OF ty_bseg_bapi,
+         bukrs TYPE bseg-bukrs,
+         belnr TYPE bseg-belnr,
+         gjahr TYPE bseg-gjahr,
+         buzei TYPE bseg-buzei,
+         hkont TYPE bseg-hkont,
+         kostl TYPE bseg-kostl,
+         prctr TYPE bseg-prctr,
+         mwskz TYPE bseg-mwskz,
+         gsber TYPE bseg-gsber,
+       END OF ty_bseg_bapi.
+
+*----------------------------------------------------------------------*
+* TYPE DEFINITIONS - ZUONR LOOKUP
+*----------------------------------------------------------------------*
+TYPES: BEGIN OF ty_zuonr_lookup,
+         zuonr_10 TYPE char10,
+         bukrs    TYPE bukrs,
+         belnr    TYPE belnr_d,
+         gjahr    TYPE gjahr,
+         buzei    TYPE buzei,
+       END OF ty_zuonr_lookup.
+
+*----------------------------------------------------------------------*
+* TYPE DEFINITIONS - ZUONR RANGE
+*----------------------------------------------------------------------*
+TYPES: BEGIN OF ty_zuonr_range,
+         zuonr_10 TYPE char10,
+       END OF ty_zuonr_range.
+
+*----------------------------------------------------------------------*
+* INTERNAL TABLES - MAIN DATA
+*----------------------------------------------------------------------*
+DATA: gt_credit TYPE TABLE OF ty_credit,
+      gs_credit TYPE ty_credit.
+
+*----------------------------------------------------------------------*
+* INTERNAL TABLES - BSIK DATA
+*----------------------------------------------------------------------*
+DATA: gt_bsik_temp TYPE STANDARD TABLE OF bsik,
+      gs_bsik_temp TYPE bsik.
+
+*----------------------------------------------------------------------*
+* INTERNAL TABLES - RELATED DATA
+*----------------------------------------------------------------------*
+DATA: gt_lfa1  TYPE STANDARD TABLE OF lfa1,
+      gs_lfa1  TYPE lfa1.
+
+DATA: gt_mandi TYPE STANDARD TABLE OF zp2pttruck,
+      gs_mandi TYPE zp2pttruck.
+
+DATA: gt_bseg  TYPE STANDARD TABLE OF bseg,
+      gs_bseg  TYPE bseg.
+
+DATA: gt_bkpf  TYPE STANDARD TABLE OF bkpf,
+      gs_bkpf  TYPE bkpf.
+
+DATA: gt_bseg_gl TYPE STANDARD TABLE OF ty_bseg_bapi,
+      gs_bseg_gl TYPE ty_bseg_bapi.
+
+DATA: gt_zuonr_lookup TYPE STANDARD TABLE OF ty_zuonr_lookup,
+      gs_zuonr_lookup TYPE ty_zuonr_lookup.
+
+DATA: gt_zuonr_range TYPE STANDARD TABLE OF ty_zuonr_range,
+      gs_zuonr_range TYPE ty_zuonr_range.
+
+*----------------------------------------------------------------------*
+* INTERNAL TABLES - CUSTOM TABLES
+*----------------------------------------------------------------------*
+DATA: gt_vendcd_doc TYPE STANDARD TABLE OF zfi_vendcd_doc,
+      gs_vendcd_doc TYPE zfi_vendcd_doc.
+
+*----------------------------------------------------------------------*
+* BAPI STRUCTURES
+*----------------------------------------------------------------------*
+DATA: gs_doc_header  TYPE bapiache09,
+      gt_accountgl   TYPE STANDARD TABLE OF bapiacgl09,
+      gs_accountgl   TYPE bapiacgl09,
+      gt_accountpay  TYPE STANDARD TABLE OF bapiacap09,
+      gs_accountpay  TYPE bapiacap09,
+      gt_currencyamt TYPE STANDARD TABLE OF bapiaccr09,
+      gs_currencyamt TYPE bapiaccr09,
+      gt_return      TYPE STANDARD TABLE OF bapiret2,
+      gs_return      TYPE bapiret2,
+      gv_obj_key     TYPE bapiache09-obj_key.
+
+*----------------------------------------------------------------------*
+* ALV GRID DECLARATIONS
+*----------------------------------------------------------------------*
+DATA: go_container TYPE REF TO cl_gui_custom_container,
+      go_alv_grid  TYPE REF TO cl_gui_alv_grid.
+
+DATA: gt_fieldcat TYPE lvc_t_fcat,
+      gs_fieldcat TYPE lvc_s_fcat,
+      gs_layout   TYPE lvc_s_layo,
+      gs_variant  TYPE disvariant.
+
+*----------------------------------------------------------------------*
+* OK CODE - IMPORTANT: Must match Screen 100 Element
+*----------------------------------------------------------------------*
+DATA: gv_okcode TYPE sy-ucomm.
+
+*----------------------------------------------------------------------*
+* GLOBAL VARIABLES
+*----------------------------------------------------------------------*
+DATA: gv_count        TYPE i,
+      gv_data_fetched TYPE char1,
+      gv_post_count   TYPE i,
+      gv_error_count  TYPE i.
+
+*----------------------------------------------------------------------*
+* CONSTANTS
+*----------------------------------------------------------------------*
+CONSTANTS: gc_x         TYPE char1 VALUE 'X',
+           gc_doc_type  TYPE blart VALUE 'KG',
+           gc_obj_type  TYPE bapiache09-obj_type VALUE 'BKPFF',
+           gc_bus_act   TYPE bapiache09-bus_act VALUE 'RFBU'.
+
+*----------------------------------------------------------------------*
+* CLASS DEFINITION - EVENT HANDLER
+*----------------------------------------------------------------------*
+CLASS lcl_event_handler DEFINITION.
+  PUBLIC SECTION.
+    CLASS-METHODS:
+      on_data_changed FOR EVENT data_changed OF cl_gui_alv_grid
+        IMPORTING er_data_changed e_onf4 e_onf4_before e_onf4_after e_ucomm,
+      on_toolbar FOR EVENT toolbar OF cl_gui_alv_grid
+        IMPORTING e_object e_interactive,
+      on_user_command FOR EVENT user_command OF cl_gui_alv_grid
+        IMPORTING e_ucomm.
+ENDCLASS.
