@@ -1,7 +1,5 @@
 FORM display_alv.
 
-  DATA: lv_msg TYPE string.
-
   " Build Field Catalog
   PERFORM build_fieldcat.
 
@@ -24,15 +22,9 @@ FORM display_alv.
         OTHERS                      = 6.
 
     IF sy-subrc <> 0.
-      " Show detailed error
-      MESSAGE 'Container creation failed' TYPE 'I' DISPLAY LIKE 'E'.
-      CONCATENATE 'Container Error: SY-SUBRC =' sy-subrc
-        INTO lv_msg SEPARATED BY space.
-      MESSAGE lv_msg TYPE 'I' DISPLAY LIKE 'E'.
+      MESSAGE 'Container creation failed - Check ALV_CONTAINER name' TYPE 'I' DISPLAY LIKE 'E'.
       LEAVE TO SCREEN 0.
       RETURN.
-    ELSE.
-      MESSAGE 'Container created successfully' TYPE 'S'.
     ENDIF.
 
     " Create ALV Grid
@@ -48,13 +40,8 @@ FORM display_alv.
 
     IF sy-subrc <> 0.
       MESSAGE 'ALV Grid creation failed' TYPE 'I' DISPLAY LIKE 'E'.
-      CONCATENATE 'ALV Error: SY-SUBRC =' sy-subrc
-        INTO lv_msg SEPARATED BY space.
-      MESSAGE lv_msg TYPE 'I' DISPLAY LIKE 'E'.
       LEAVE TO SCREEN 0.
       RETURN.
-    ELSE.
-      MESSAGE 'ALV Grid created successfully' TYPE 'S'.
     ENDIF.
 
     " Register Events
@@ -87,12 +74,7 @@ FORM display_alv.
         OTHERS                        = 4.
 
     IF sy-subrc <> 0.
-      MESSAGE 'ALV Display failed' TYPE 'I' DISPLAY LIKE 'E'.
-      CONCATENATE 'Display Error: SY-SUBRC =' sy-subrc
-        INTO lv_msg SEPARATED BY space.
-      MESSAGE lv_msg TYPE 'I' DISPLAY LIKE 'E'.
-    ELSE.
-      MESSAGE 'ALV displayed successfully' TYPE 'S'.
+      MESSAGE 'ALV display failed - Check field catalog' TYPE 'I' DISPLAY LIKE 'E'.
     ENDIF.
 
   ELSE.
@@ -103,4 +85,5 @@ FORM display_alv.
         OTHERS   = 2.
   ENDIF.
 
+ENDFORM.
 ENDFORM.
