@@ -1,0 +1,88 @@
+*&---------------------------------------------------------------------*
+*& Form DISPLAY_ALV
+*&---------------------------------------------------------------------*
+FORM display_alv.
+
+  " Build Field Catalog
+  PERFORM build_fieldcat.
+
+  " Set Layout
+  PERFORM set_layout.
+
+  " Create Container and ALV Grid
+  IF go_container IS INITIAL.
+
+    CREATE OBJECT go_container
+      EXPORTING
+        side      = cl_gui_docking_container=>dock_at_bottom
+        extension = 2000
+      EXCEPTIONS
+        cntl_error                  = 1
+        cntl_system_error           = 2
+        create_error                = 3
+        lifetime_error              = 4
+        lifetime_dynpro_dynpro_link = 5
+        OTHERS                      = 6.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'Error creating container' TYPE 'E'.
+      RETURN.
+    ENDIF.
+
+    CREATE OBJECT go_alv_grid
+      EXPORTING
+        i_parent          = go_container
+      EXCEPTIONS
+        error_cntl_create = 1
+        error_cntl_init   = 2
+        error_cntl_link   = 3
+        error_dp_create   = 4
+        OTHERS            = 5.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'Error creating ALV grid' TYPE 'E'.
+      RETURN.
+    ENDIF.
+
+    " Register Events
+    PERFORM register_events.
+
+    " Register Edit Event
+    CALL METHOD go_alv_grid->register_edit_event
+      EXPORTING
+        i_event_id = cl_gui_alv_grid=>mc_evt_modified
+      EXCEPTIONS
+        error      = 1
+        OTHERS     = 2.
+
+    " Set Variant
+    gs_variant-report = sy-repid.
+
+    " Display ALV for First Time
+    CALL METHOD go_alv_grid->set_table_for_first_display
+      EXPORTING
+        is_layout                     = gs_layout
+        i_save                        = 'A'
+        is_variant                    = gs_variant
+      CHANGING
+        it_outtab                     = gt_credit
+        it_fieldcatalog               = gt_fieldcat
+      EXCEPTIONS
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        OTHERS                        = 4.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'Error displaying ALV' TYPE 'E'.
+    ENDIF.
+
+  ELSE.
+    " Refresh ALV Display
+    CALL METHOD go_alv_grid->refresh_table_display
+      EXCEPTIONS
+        finished = 1
+        OTHERS   = 2.
+  ENDIF.
+
+ENDFORM.
