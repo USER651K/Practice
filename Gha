@@ -71,3 +71,36 @@ IF wa_vbrp-pship IS NOT INITIAL.
   ENDIF.
 ENDIF.
 """"""""""""""""""""""""""End Ujwal Code 01.12.2025""""""""""""""""""""""""""
+
+
+
+" Get CD Terms from ZFI_VENDCD_TERM
+    " First try: Match by BUKRS + LIFNR + ZP2PDEMANDI (Mandi)
+    CLEAR gs_vendcd_term.
+    READ TABLE gt_vendcd_term INTO gs_vendcd_term
+      WITH KEY bukrs       = gs_bsik_temp-bukrs
+               lifnr       = gs_bsik_temp-lifnr
+               zp2pdemandi = lv_mandi
+      BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      " Found with Mandi
+      lv_cd_pct     = gs_vendcd_term-cd_percent.
+      lv_cd_days    = gs_vendcd_term-cd_days.
+      lv_grace_days = gs_vendcd_term-grace_days.
+      lv_net_days   = gs_vendcd_term-net_days.
+    ELSE.
+      " Second try: Match by BUKRS + LIFNR only (without Mandi)
+      LOOP AT gt_vendcd_term INTO gs_vendcd_term
+        WHERE bukrs = gs_bsik_temp-bukrs
+          AND lifnr = gs_bsik_temp-lifnr.
+        EXIT.  " Take first match
+      ENDLOOP.
+
+      IF sy-subrc = 0.
+        lv_cd_pct     = gs_vendcd_term-cd_percent.
+        lv_cd_days    = gs_vendcd_term-cd_days.
+        lv_grace_days = gs_vendcd_term-grace_days.
+        lv_net_days   = gs_vendcd_term-net_days.
+      ENDIF.
+    ENDIF.
