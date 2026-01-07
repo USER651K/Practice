@@ -1,0 +1,19 @@
+FORM update_vendcd_doc USING ps_credit TYPE ty_credit.
+
+  DATA: ls_vendcd_doc TYPE zfi_vendcd_doc.
+
+  CLEAR ls_vendcd_doc.
+
+  " Only key fields + posting result
+  ls_vendcd_doc-bukrs        = ps_credit-bukrs.
+  ls_vendcd_doc-gjahr        = ps_credit-gjahr.
+  ls_vendcd_doc-belnr        = ps_credit-belnr.
+  ls_vendcd_doc-buzei        = ps_credit-buzei.
+  ls_vendcd_doc-checkmark    = 'X'.
+  ls_vendcd_doc-posted       = 'X'.
+  ls_vendcd_doc-post_doc_no  = ps_credit-post_doc_no.
+  ls_vendcd_doc-post_message = ps_credit-post_message.
+
+  MODIFY zfi_vendcd_doc FROM ls_vendcd_doc.
+
+ENDFORM.
