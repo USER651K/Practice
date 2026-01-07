@@ -261,3 +261,80 @@ FORM calculate_applicable_cd USING p_zfbdt    TYPE bsik-zfbdt
   ENDIF.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+FORM post_selected_documents.
+
+  DATA: lv_tabix      TYPE sy-tabix,
+        lv_posted_doc TYPE belnr_d,
+        lv_message    TYPE char100,
+        lv_success    TYPE char1,
+        lt_celltab    TYPE lvc_t_styl,
+        ls_celltab    TYPE lvc_s_styl.
+
+  FIELD-SYMBOLS: <fs_credit> TYPE ty_credit.
+
+  CLEAR: gv_post_count, gv_error_count.
+
+  LOOP AT gt_credit ASSIGNING <fs_credit>.
+
+    " Skip if not selected or already posted
+    IF <fs_credit>-checkmark <> 'X' OR <fs_credit>-posted = 'X'.
+      CONTINUE.
+    ENDIF.
+
+    " Validate: Payment amount must be > 0
+    IF <fs_credit>-payment_amt <= 0.
+      <fs_credit>-post_message = 'No Payment amount to post'.
+      gv_error_count = gv_error_count + 1.
+      CONTINUE.
+    ENDIF.
+
+    " Call BAPI to post document
+    CLEAR: lv_posted_doc, lv_message, lv_success.
+    PERFORM call_bapi_acc_document_post
+      USING    <fs_credit>
+      CHANGING lv_posted_doc
+               lv_message
+               lv_success.
+
+    IF lv_success = 'X'.
+      " Update row directly via field-symbol
+      <fs_credit>-posted       = 'X'.
+      <fs_credit>-post_doc_no  = lv_posted_doc.
+      <fs_credit>-post_message = lv_message.
+      <fs_credit>-checkmark    = ' '.
+
+      " Update cell style to disable checkmark
+      CLEAR lt_celltab.
+      CLEAR ls_celltab.
+      ls_celltab-fieldname = 'CHECKMARK'.
+      ls_celltab-style     = cl_gui_alv_grid=>mc_style_disabled.
+      APPEND ls_celltab TO lt_celltab.
+      <fs_credit>-celltab = lt_celltab.
+
+      " Update custom table
+      PERFORM update_vendcd_doc USING <fs_credit>.
+
+      gv_post_count = gv_post_count + 1.
+    ELSE.
+      <fs_credit>-post_message = lv_message.
+      gv_error_count = gv_error_count + 1.
+    ENDIF.
+
+  ENDLOOP.
+
+ENDFORM.
