@@ -1,0 +1,167 @@
+FORM call_bapi_acc_document_post
+  USING    ps_credit   TYPE ty_credit
+  CHANGING pv_doc_no   TYPE belnr_d
+           pv_message  TYPE char100
+           pv_success  TYPE char1.
+
+  DATA: lv_fiscyear  TYPE gjahr,
+        lv_fiscper   TYPE monat,
+        lv_amt_pos   TYPE bapiaccr09-amt_doccur,
+        lv_amt_neg   TYPE bapiaccr09-amt_doccur,
+        lv_cd_pct    TYPE char10,
+        lv_cd_amt    TYPE char20,
+        lv_kostl     TYPE bseg-kostl.
+
+  CLEAR: gs_doc_header, gv_obj_key, pv_doc_no, pv_message, pv_success.
+  CLEAR: gt_accountgl, gt_accountpay, gt_currencyamt, gt_return.
+  REFRESH: gt_accountgl, gt_accountpay, gt_currencyamt, gt_return.
+
+  " Get fiscal year and period
+  CALL FUNCTION 'FI_PERIOD_DETERMINE'
+    EXPORTING
+      i_budat = sy-datum
+      i_bukrs = ps_credit-bukrs
+    IMPORTING
+      e_gjahr = lv_fiscyear
+      e_monat = lv_fiscper
+    EXCEPTIONS
+      OTHERS  = 1.
+
+  IF sy-subrc <> 0.
+    lv_fiscyear = sy-datum+0(4).
+    lv_fiscper  = sy-datum+4(2).
+  ENDIF.
+
+  " Build KOSTL = GSBER + '01G500'
+  CONCATENATE ps_credit-gsber '01G500' INTO lv_kostl.
+
+  "------------------------------------------------------------
+  " 1. DOCUMENT HEADER
+  "------------------------------------------------------------
+  gs_doc_header-obj_type   = 'BKPFF'.
+  gs_doc_header-obj_sys    = sy-sysid.
+  gs_doc_header-bus_act    = 'RFBU'.
+  gs_doc_header-username   = sy-uname.
+  gs_doc_header-header_txt = 'Debit Note for Cash Discount'.
+  gs_doc_header-comp_code  = ps_credit-bukrs.
+  gs_doc_header-doc_date   = sy-datum.
+  gs_doc_header-pstng_date = sy-datum.
+  gs_doc_header-fisc_year  = lv_fiscyear.
+  gs_doc_header-fis_period = lv_fiscper.
+  gs_doc_header-doc_type   = 'KG'.
+  gs_doc_header-doc_status = '2'.
+
+  IF ps_credit-xblnr IS NOT INITIAL.
+    gs_doc_header-ref_doc_no = ps_credit-xblnr.
+  ELSE.
+    gs_doc_header-ref_doc_no = ps_credit-belnr.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " 2. ACCOUNTPAYABLE (Line 10 - Debit Vendor)
+  "------------------------------------------------------------
+  CLEAR gs_accountpay.
+  gs_accountpay-itemno_acc    = '0000000010'.
+  gs_accountpay-vendor_no     = ps_credit-lifnr.
+  gs_accountpay-comp_code     = ps_credit-bukrs.
+  gs_accountpay-bus_area      = ps_credit-gsber.
+  gs_accountpay-pmnttrms      = ps_credit-payment_term.
+  gs_accountpay-bline_date    = sy-datum.
+  gs_accountpay-businessplace = ps_credit-bupla.
+  gs_accountpay-profit_ctr    = 'PC01'.  " Hardcode for testing
+
+  IF ps_credit-xblnr IS NOT INITIAL.
+    CONCATENATE 'CD Against' ps_credit-xblnr INTO gs_accountpay-item_text SEPARATED BY space.
+  ELSE.
+    CONCATENATE 'CD Against' ps_credit-belnr INTO gs_accountpay-item_text SEPARATED BY space.
+  ENDIF.
+  APPEND gs_accountpay TO gt_accountpay.
+
+  "------------------------------------------------------------
+  " 3. ACCOUNTGL (Line 11 - Credit G/L Account)
+  "------------------------------------------------------------
+  CLEAR gs_accountgl.
+  gs_accountgl-itemno_acc = '0000000011'.
+  gs_accountgl-gl_account = '4000000018'.  " Hardcode for testing
+  gs_accountgl-comp_code  = ps_credit-bukrs.
+  gs_accountgl-bus_area   = ps_credit-gsber.
+  gs_accountgl-pstng_date = sy-datum.
+  gs_accountgl-tax_code   = ps_credit-mwskz.
+  gs_accountgl-costcenter = lv_kostl.      " GSBER + '01G500'
+  gs_accountgl-profit_ctr = 'PC01'.        " Hardcode for testing
+
+  WRITE ps_credit-payment_amt TO lv_cd_amt LEFT-JUSTIFIED.
+  WRITE ps_credit-cd_pct TO lv_cd_pct LEFT-JUSTIFIED.
+  CONDENSE: lv_cd_amt NO-GAPS, lv_cd_pct NO-GAPS.
+  CONCATENATE 'CD INR' lv_cd_amt '@' lv_cd_pct '%' INTO gs_accountgl-item_text SEPARATED BY space.
+  APPEND gs_accountgl TO gt_accountgl.
+
+  "------------------------------------------------------------
+  " 4. CURRENCYAMOUNT
+  "------------------------------------------------------------
+  " Line 10 - Debit Vendor (Positive)
+  CLEAR gs_currencyamt.
+  gs_currencyamt-itemno_acc   = '0000000010'.
+  gs_currencyamt-currency     = ps_credit-waers.
+  gs_currencyamt-currency_iso = ps_credit-waers.
+  gs_currencyamt-amt_doccur   = ps_credit-payment_amt.
+  APPEND gs_currencyamt TO gt_currencyamt.
+
+  " Line 11 - Credit G/L (Negative)
+  CLEAR gs_currencyamt.
+  gs_currencyamt-itemno_acc   = '0000000011'.
+  gs_currencyamt-currency     = ps_credit-waers.
+  gs_currencyamt-currency_iso = ps_credit-waers.
+  lv_amt_neg = ps_credit-payment_amt * -1.
+  gs_currencyamt-amt_doccur   = lv_amt_neg.
+  APPEND gs_currencyamt TO gt_currencyamt.
+
+  "------------------------------------------------------------
+  " 5. CALL BAPI
+  "------------------------------------------------------------
+  CALL FUNCTION 'BAPI_ACC_DOCUMENT_POST'
+    EXPORTING
+      documentheader = gs_doc_header
+    IMPORTING
+      obj_key        = gv_obj_key
+    TABLES
+      accountgl      = gt_accountgl
+      accountpayable = gt_accountpay
+      currencyamount = gt_currencyamt
+      return         = gt_return.
+
+  "------------------------------------------------------------
+  " 6. DEBUG - Remove after testing
+  "------------------------------------------------------------
+  LOOP AT gt_return INTO gs_return.
+    WRITE: / 'BAPI:', gs_return-type, gs_return-id, gs_return-number, gs_return-message.
+  ENDLOOP.
+  WRITE: / 'OBJ_KEY:', gv_obj_key.
+
+  "------------------------------------------------------------
+  " 7. CHECK RESULT
+  "------------------------------------------------------------
+  LOOP AT gt_return INTO gs_return WHERE type = 'E' OR type = 'A'.
+    pv_message = gs_return-message.
+    pv_success = ' '.
+    CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+    RETURN.
+  ENDLOOP.
+
+  IF gv_obj_key IS INITIAL.
+    pv_message = 'BAPI returned no document'.
+    pv_success = ' '.
+    CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+    RETURN.
+  ENDIF.
+
+  " Success
+  CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+    EXPORTING
+      wait = 'X'.
+
+  pv_doc_no = gv_obj_key+4(10).
+  CONCATENATE 'Document' pv_doc_no 'posted' INTO pv_message SEPARATED BY space.
+  pv_success = 'X'.
+
+ENDFORM.
