@@ -17,3 +17,88 @@ FORM update_vendcd_doc USING ps_credit TYPE ty_credit.
   MODIFY zfi_vendcd_doc FROM ls_vendcd_doc.
 
 ENDFORM.
+
+
+
+
+FORM update_vendcd_doc USING ps_credit TYPE ty_credit.
+
+  DATA: ls_vendcd_doc TYPE zfi_vendcd_doc.
+
+  CLEAR ls_vendcd_doc.
+
+  " Key fields
+  ls_vendcd_doc-bukrs        = ps_credit-bukrs.
+  ls_vendcd_doc-gjahr        = ps_credit-gjahr.
+  ls_vendcd_doc-belnr        = ps_credit-belnr.
+  ls_vendcd_doc-buzei        = ps_credit-buzei.
+
+  " Posting result
+  ls_vendcd_doc-checkmark    = 'X'.
+  ls_vendcd_doc-posted       = 'X'.
+  ls_vendcd_doc-post_doc_no  = ps_credit-post_doc_no.
+  ls_vendcd_doc-post_message = ps_credit-post_message.
+
+  " Vendor info
+  ls_vendcd_doc-lifnr        = ps_credit-lifnr.
+  ls_vendcd_doc-vendor_name  = ps_credit-vendor_name.
+  ls_vendcd_doc-zp2pdemandi  = ps_credit-zp2pdemandi.
+
+  " Document info
+  ls_vendcd_doc-budat        = ps_credit-budat.
+  ls_vendcd_doc-bldat        = ps_credit-bldat.
+  ls_vendcd_doc-gsber        = ps_credit-gsber.
+  ls_vendcd_doc-waers        = ps_credit-waers.
+  ls_vendcd_doc-rebzg        = ps_credit-rebzg.
+  ls_vendcd_doc-rebzj        = ps_credit-rebzj.
+  ls_vendcd_doc-rebzz        = ps_credit-rebzz.
+
+  " Amount fields
+  ls_vendcd_doc-wrbtr        = ps_credit-wrbtr.
+  ls_vendcd_doc-skfbt        = ps_credit-skfbt.
+  ls_vendcd_doc-payment_amt  = ps_credit-payment_amt.
+  ls_vendcd_doc-applicable_cd_am = ps_credit-applicable_cd_amt.
+
+  " Payment info
+  ls_vendcd_doc-payment_term   = ps_credit-payment_term.
+  ls_vendcd_doc-payment_reason = ps_credit-payment_reason.
+  ls_vendcd_doc-manual_edit    = ps_credit-manual_edit.
+  ls_vendcd_doc-payment_date   = ps_credit-payment_date.
+  ls_vendcd_doc-debit_note_no  = ps_credit-debit_note_no.
+
+  " G/L info
+  ls_vendcd_doc-hkont = ps_credit-hkont.
+  ls_vendcd_doc-kostl = ps_credit-kostl.
+  ls_vendcd_doc-prctr = ps_credit-prctr.
+  ls_vendcd_doc-mwskz = ps_credit-mwskz.
+
+  " DEC fields with overflow protection
+  IF ps_credit-cd_pct <= 99.
+    ls_vendcd_doc-cd_percent = ps_credit-cd_pct.
+  ENDIF.
+
+  IF ps_credit-cd_days <= 999.
+    ls_vendcd_doc-cddays = ps_credit-cd_days.
+  ENDIF.
+
+  IF ps_credit-grace_days <= 999.
+    ls_vendcd_doc-grace_days = ps_credit-grace_days.
+  ENDIF.
+
+  IF ps_credit-net_days <= 999.
+    ls_vendcd_doc-net_days = ps_credit-net_days.
+  ENDIF.
+
+  IF ps_credit-zfbdt_days <= 999 AND ps_credit-zfbdt_days >= -99.
+    ls_vendcd_doc-zfbdt_days = ps_credit-zfbdt_days.
+  ENDIF.
+
+  IF ps_credit-applicable_cd_pct <= 99.
+    ls_vendcd_doc-applicable_cd_pc = ps_credit-applicable_cd_pct.
+  ENDIF.
+
+  " SKIP: zfbdt, payment_due_date (type mismatch DATE vs DEC)
+
+  MODIFY zfi_vendcd_doc FROM ls_vendcd_doc.
+
+ENDFORM.
