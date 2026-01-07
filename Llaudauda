@@ -1,0 +1,65 @@
+FORM update_vendcd_doc USING ps_credit TYPE ty_credit.
+
+  DATA: ls_vendcd_doc TYPE zfi_vendcd_doc.
+
+  CLEAR ls_vendcd_doc.
+
+  " Key fields
+  ls_vendcd_doc-bukrs = ps_credit-bukrs.
+  ls_vendcd_doc-gjahr = ps_credit-gjahr.
+  ls_vendcd_doc-belnr = ps_credit-belnr.
+  ls_vendcd_doc-buzei = ps_credit-buzei.
+
+  " Document data
+  ls_vendcd_doc-checkmark      = 'X'.
+  ls_vendcd_doc-manual_edit    = ps_credit-manual_edit.
+  ls_vendcd_doc-payment_reason = ps_credit-payment_reason.
+  ls_vendcd_doc-zp2pdemandi    = ps_credit-zp2pdemandi.
+  ls_vendcd_doc-lifnr          = ps_credit-lifnr.
+  ls_vendcd_doc-vendor_name    = ps_credit-vendor_name.
+  ls_vendcd_doc-budat          = ps_credit-budat.
+  ls_vendcd_doc-bldat          = ps_credit-bldat.
+  ls_vendcd_doc-gsber          = ps_credit-gsber.
+  ls_vendcd_doc-waers          = ps_credit-waers.
+  ls_vendcd_doc-wrbtr          = ps_credit-wrbtr.
+  ls_vendcd_doc-skfbt          = ps_credit-skfbt.
+  ls_vendcd_doc-payment_term   = ps_credit-payment_term.
+  ls_vendcd_doc-zfbdt          = ps_credit-zfbdt.
+  ls_vendcd_doc-cd_percent     = ps_credit-cd_pct.
+  ls_vendcd_doc-cddays         = ps_credit-cd_days.
+  ls_vendcd_doc-grace_days     = ps_credit-grace_days.
+  ls_vendcd_doc-net_days       = ps_credit-net_days.
+  ls_vendcd_doc-payment_amt    = ps_credit-payment_amt.
+  ls_vendcd_doc-payment_due_date = ps_credit-payment_due_date.
+  ls_vendcd_doc-rebzg          = ps_credit-rebzg.
+  ls_vendcd_doc-rebzj          = ps_credit-rebzj.
+  ls_vendcd_doc-rebzz          = ps_credit-rebzz.
+  
+  " ZFBDT_DAYS - Limit to max 999 to avoid overflow
+  IF ps_credit-zfbdt_days > 999.
+    ls_vendcd_doc-zfbdt_days = 999.
+  ELSEIF ps_credit-zfbdt_days < -99.
+    ls_vendcd_doc-zfbdt_days = -99.
+  ELSE.
+    ls_vendcd_doc-zfbdt_days = ps_credit-zfbdt_days.
+  ENDIF.
+
+  ls_vendcd_doc-applicable_cd_pc = ps_credit-applicable_cd_pct.
+  ls_vendcd_doc-applicable_cd_am = ps_credit-applicable_cd_amt.
+  ls_vendcd_doc-debit_note_no    = ps_credit-debit_note_no.
+  ls_vendcd_doc-payment_date     = ps_credit-payment_date.
+  ls_vendcd_doc-posted           = 'X'.
+  ls_vendcd_doc-post_doc_no      = ps_credit-post_doc_no.
+  ls_vendcd_doc-post_message     = ps_credit-post_message.
+  ls_vendcd_doc-hkont            = ps_credit-hkont.
+  ls_vendcd_doc-kostl            = ps_credit-kostl.
+  ls_vendcd_doc-prctr            = ps_credit-prctr.
+  ls_vendcd_doc-mwskz            = ps_credit-mwskz.
+
+  MODIFY zfi_vendcd_doc FROM ls_vendcd_doc.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'Error updating ZFI_VENDCD_DOC' TYPE 'S' DISPLAY LIKE 'W'.
+  ENDIF.
+
+ENDFORM.
