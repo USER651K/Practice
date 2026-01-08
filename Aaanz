@@ -102,3 +102,66 @@ FORM update_vendcd_doc USING ps_credit TYPE ty_credit.
   MODIFY zfi_vendcd_doc FROM ls_vendcd_doc.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Report ZBAPI_PO_DETAIL_DEMO
+*&---------------------------------------------------------------------*
+REPORT zbapi_po_detail_demo.
+
+PARAMETERS: p_ebeln TYPE ebeln OBLIGATORY.
+
+DATA: ls_header   TYPE bapiekkol,
+      lt_items    TYPE TABLE OF bapiekpol,
+      ls_item     TYPE bapiekpol,
+      lt_return   TYPE TABLE OF bapiret2,
+      ls_return   TYPE bapiret2.
+
+START-OF-SELECTION.
+
+  CALL FUNCTION 'BAPI_PO_GETDETAIL'
+    EXPORTING
+      purchaseorder = p_ebeln
+    IMPORTING
+      po_header     = ls_header
+    TABLES
+      po_items      = lt_items
+      return        = lt_return.
+
+  " Check errors
+  READ TABLE lt_return INTO ls_return WITH KEY type = 'E'.
+  IF sy-subrc = 0.
+    WRITE: / 'Error:', ls_return-message.
+    RETURN.
+  ENDIF.
+
+  " Header info
+  WRITE: / '=== PO Header ==='.
+  WRITE: / 'PO Number   :', ls_header-po_number.
+  WRITE: / 'Vendor      :', ls_header-vendor.
+  WRITE: / 'Doc Date    :', ls_header-doc_date.
+  WRITE: / 'Purch Org   :', ls_header-purch_org.
+
+  " Line items
+  SKIP.
+  WRITE: / '=== Line Items ==='.
+  WRITE: / 'Item', 'Material', 'Qty', 'Unit', 'Net Price'.
+  ULINE.
+
+  LOOP AT lt_items INTO ls_item.
+    WRITE: / ls_item-po_item,
+             ls_item-material,
+             ls_item-quantity,
+             ls_item-po_unit,
+             ls_item-net_price.
+  ENDLOOP.
