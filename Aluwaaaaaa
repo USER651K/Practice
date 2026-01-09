@@ -1,0 +1,10 @@
+DATA: lv_zonttype TYPE zcont_type-zonttype.
+
+
+* Read Container Type from ZCONT_TYPE
+SELECT SINGLE zonttype
+  FROM zcont_type
+  INTO lv_zonttype.
+
+lw_vbakkoz-zonttype = lv_zonttype.
+lw_vbak-zonttype    = lv_zonttype.
