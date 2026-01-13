@@ -1,0 +1,45 @@
+*BOC UJWAL-- 13.01.2026. Requirement: ZZPORT and ZONTTYPE
+* 1. Read Container Type from ZCONT_TYPE
+    CLEAR lv_zonttype.
+    SELECT SINGLE zonttype
+      FROM zcont_type
+      INTO lv_zonttype
+      WHERE zdefault = 'X'.
+
+* 2. Read ZE11 text from quotation, lookup ZPPRT_EWM to get ZZPORT
+    CLEAR: lt_tlines_ze11, lv_zzport, lv_pod_desc.
+    DATA(lv_tdname_ze11) = CONV tdobname( ls_vbak-vbeln ).
+    CONDENSE lv_tdname_ze11.
+    
+    CALL FUNCTION 'READ_TEXT'
+      EXPORTING
+        client   = sy-mandt
+        id       = 'ZE11'
+        language = 'E'
+        name     = lv_tdname_ze11
+        object   = 'VBBK'
+      TABLES
+        lines    = lt_tlines_ze11
+      EXCEPTIONS
+        OTHERS   = 8.
+
+    IF sy-subrc = 0.
+      READ TABLE lt_tlines_ze11 INTO ls_tlines_ze11 INDEX 1.
+      IF sy-subrc = 0 AND ls_tlines_ze11-tdline IS NOT INITIAL.
+*       Split at comma to get port name (e.g., "MUNDRA, INDIA" -> "MUNDRA")
+        IF ls_tlines_ze11-tdline CS ','.
+          SPLIT ls_tlines_ze11-tdline AT ',' INTO lv_pod_desc DATA(lv_dummy).
+        ELSE.
+          lv_pod_desc = ls_tlines_ze11-tdline.
+        ENDIF.
+        CONDENSE lv_pod_desc.
+        
+*       Lookup ZPPRT_EWM using ZE11 value as ZZPORTDESC
+        SELECT SINGLE zzport
+          FROM zpprt_ewm
+          INTO lv_zzport
+          WHERE zzportdesc = lv_pod_desc.
+      ENDIF.
+    ENDIF.
+    CLEAR: lt_tlines_ze11.
+*EOC UJWAL-- 13.01.2026.
