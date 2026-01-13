@@ -1,0 +1,20 @@
+*ExtensionIN data
+    ls_vbakkoz-zstuff_date  = lv_datum.
+    ls_vbakkoz-zsob_date    = lv_stuff_date.
+    ls_vbakkoz-zzport       = lv_zzport.      "+UJWAL 13.01.2026
+    ls_vbakkoz-zonttype     = lv_zonttype.    "+UJWAL 13.01.2026
+
+    ls_vbakkozx-zstuff_date = abap_true.
+    ls_vbakkozx-zsob_date   = abap_true.
+    ls_vbakkozx-zzport      = abap_true.      "+UJWAL 13.01.2026
+    ls_vbakkozx-zonttype    = abap_true.      "+UJWAL 13.01.2026
+
+    ls_vbak_bape-zstuff_date  = lv_datum.
+    ls_vbak_bape-zsob_date    = lv_stuff_date.
+    ls_vbak_bape-zzport       = lv_zzport.    "+UJWAL 13.01.2026
+    ls_vbak_bape-zonttype     = lv_zonttype.  "+UJWAL 13.01.2026
+
+    ls_vbak_bapex-zstuff_date = abap_true.
+    ls_vbak_bapex-zsob_date   = abap_true.
+    ls_vbak_bapex-zzport      = abap_true.    "+UJWAL 13.01.2026
+    ls_vbak_bapex-zonttype    = abap_true.    "+UJWAL 13.01.2026
