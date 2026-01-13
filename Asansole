@@ -1,0 +1,5 @@
+DATA: lv_zzport      TYPE zpprt_ewm-zzport,
+      lv_zonttype    TYPE zcont_type-zonttype,
+      lt_tlines_ze11 TYPE STANDARD TABLE OF tline,
+      ls_tlines_ze11 TYPE tline,
+      lv_pod_desc    TYPE char100.
