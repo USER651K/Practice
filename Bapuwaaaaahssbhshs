@@ -1,0 +1,123 @@
+*&---------------------------------------------------------------------*
+*& SPECIFIC CODE CHANGES FOR TAX CODE IMPLEMENTATION
+*&---------------------------------------------------------------------*
+
+*=======================================================================
+* CHANGE 1: Uncomment and activate tax code assignment for Customer accounts
+*=======================================================================
+* In your DO_UPLOAD form, around line where you handle Customer accounts:
+
+ELSEIF ls_data-koart = 'D'.
+  ls_accountreceivable-itemno_acc = lv_count.
+  ls_accountreceivable-customer = ls_data-hkont.
+  ls_accountreceivable-profit_ctr = ls_data-prctr.
+  ls_accountreceivable-bus_area = ls_data-gsber.
+  ls_accountreceivable-comp_code = ls_data-bukrs.
+  ls_accountreceivable-item_text = ls_data-sgtxt.
+  " UNCOMMENT THIS LINE:
+  ls_accountreceivable-tax_code = ls_data-tax_code.
+  ls_accountreceivable-alloc_nmbr = ls_data-zuonr.
+  APPEND ls_accountreceivable TO lt_accountreceivable.
+
+*=======================================================================
+* CHANGE 2: Add tax code for GL accounts
+*=======================================================================
+* In your GL account section (koart = 'S'), add this line:
+
+IF ls_data-koart = 'S'.
+  ls_accountgl-itemno_acc = lv_count.
+  ls_accountgl-gl_account = ls_data-hkont.
+  ls_accountgl-item_text = ls_data-sgtxt.
+  ls_accountgl-acct_type = ls_data-koart.
+  ls_accountgl-bus_area = ls_data-gsber.
+  ls_accountgl-alloc_nmbr = ls_data-zuonr.
+  ls_accountgl-costcenter = ls_data-kostl.
+  ls_accountgl-profit_ctr = ls_data-prctr.
+  ls_accountgl-orderid = ls_data-aufnr.
+  " ADD THIS LINE:
+  ls_accountgl-tax_code = ls_data-tax_code.
+  APPEND ls_accountgl TO lt_accountgl.
+
+*=======================================================================
+* CHANGE 3: Uncomment tax code for Vendor accounts
+*=======================================================================
+* In your Vendor account section (koart = 'K'):
+
+ELSEIF ls_data-koart = 'K'.
+  ls_accountpayable-itemno_acc = lv_count.
+  ls_accountpayable-vendor_no = ls_data-hkont.
+  ls_accountpayable-profit_ctr = ls_data-prctr.
+  ls_accountpayable-bus_area = ls_data-gsber.
+  " UNCOMMENT THIS LINE:
+  ls_accountpayable-w_tax_code = ls_data-tax_code.
+  ls_accountpayable-item_text = ls_data-sgtxt.
+  ls_accountpayable-alloc_nmbr = ls_data-zuonr.
+  APPEND ls_accountpayable TO lt_accountpayable.
+
+*=======================================================================
+* CHANGE 4: Add validation for tax codes (Optional but recommended)
+*=======================================================================
+* Add this validation in your UPLOAD_FILE_VALIDATE form, after the main loop:
+
+FORM upload_file_validate.
+  " ... existing code ...
+  
+  " Add tax code validation after the main conversion loop:
+  LOOP AT gt_data INTO gs_data.
+    IF gs_data-tax_code IS NOT INITIAL.
+      " Validate tax code exists
+      SELECT SINGLE mwskz FROM t007a 
+             INTO @DATA(lv_tax_check)
+             WHERE kalsm = 'TAXIN'  " Change as per your tax calculation procedure
+               AND mwskz = @gs_data-tax_code.
+      IF sy-subrc <> 0.
+        MESSAGE e001(z_custom) WITH 'Invalid tax code:' gs_data-tax_code.
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM.
+
+*=======================================================================
+* CHANGE 5: Enhanced Withholding Tax Logic (Replace existing)
+*=======================================================================
+* Replace your existing withholding tax section with this enhanced version:
+
+" Enhanced withholding tax logic
+IF ls_data-tax_code IS NOT INITIAL.
+  " Check if it's a withholding tax code
+  SELECT SINGLE * FROM t059z 
+         WHERE bukrs = @ls_data-bukrs AND 
+               witht = @ls_data-tax_code.
+  IF sy-subrc = 0.
+    ls_with-itemno_acc = lv_count.
+    ls_with-wt_code = ls_data-tax_code.
+    ls_with-wt_type = ls_data-tax_code.
+    " Add base amount for withholding tax calculation
+    ls_with-wt_qsshb = ls_data-dmbtr.
+    APPEND ls_with TO lt_with.
+    CLEAR ls_with.
+  ENDIF.
+ENDIF.
+
+*=======================================================================
+* ADDITIONAL RECOMMENDATIONS
+*=======================================================================
+
+1. Create a dropdown in your selection screen for common tax codes:
+   PARAMETERS: p_taxcd TYPE mwskz AS LISTBOX VISIBLE LENGTH 10.
+
+2. Add tax code to your ALV output for verification:
+   In FIELDCAT form, add:
+   PERFORM f_build USING : 'TAX_CODE' 'GT_DATA' 'Tax Code' ' ' ' '.
+
+3. For better error handling, add specific tax code validation:
+   - Check company code specific tax codes
+   - Validate tax percentage is correctly calculated
+   - Ensure proper GL account assignment
+
+4. Test with these scenarios:
+   - GL account with standard tax code (V1, A1)
+   - Customer account with input tax
+   - Vendor account with withholding tax
+   - Mixed document with different tax codes per line
