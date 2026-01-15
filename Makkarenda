@@ -47,9 +47,9 @@ DATA: gt_bsid_data    TYPE tt_bsid_data,
 *----------------------------------------------------------------------*
 SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
 PARAMETERS: p_bukrs TYPE bukrs DEFAULT '1000' OBLIGATORY,
-            p_kunnr TYPE kunnr-low,
             p_gjahr TYPE gjahr DEFAULT sy-datum(4) OBLIGATORY.
-SELECT-OPTIONS: s_belnr FOR gt_bsid_data-belnr,
+SELECT-OPTIONS: s_kunnr FOR gt_bsid_data-kunnr,
+                s_belnr FOR gt_bsid_data-belnr,
                 s_bldat FOR gt_bsid_data-bldat.
 SELECTION-SCREEN END OF BLOCK b1.
 
@@ -97,12 +97,371 @@ FORM f_fetch_open_items.
     FROM bsid
     INTO CORRESPONDING FIELDS OF TABLE @gt_bsid_data
     WHERE bukrs = @p_bukrs
-      AND kunnr = @p_kunnr
+      AND kunnr IN @s_kunnr
       AND gjahr = @p_gjahr
       AND belnr IN @s_belnr
       AND bldat IN @s_bldat
       AND augdt = ''               " Only open items
     ORDER BY kunnr, belnr, buzei.
+
+  IF lines( gt_bsid_data ) = 0.
+    MESSAGE 'No open items found for selection criteria' TYPE 'I'.
+    LEAVE PROGRAM.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_display_selection_screen
+*&---------------------------------------------------------------------*
+FORM f_display_selection_screen.
+  DATA: lo_alv TYPE REF TO cl_salv_table,
+        lo_events TYPE REF TO cl_salv_events_table.
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING
+          r_salv_table = lo_alv
+        CHANGING
+          t_table      = gt_bsid_data ).
+
+      " Set ALV functions
+      lo_alv->get_functions( )->set_all( ).
+      
+      " Set selection column
+      lo_alv->get_columns( )->get_column( 'SELECTED' )->set_cell_type( 
+        if_salv_c_cell_type=>checkbox_hotspot ).
+      
+      " Set column texts
+      lo_alv->get_columns( )->get_column( 'BUKRS' )->set_long_text( 'Company Code' ).
+      lo_alv->get_columns( )->get_column( 'KUNNR' )->set_long_text( 'Customer' ).
+      lo_alv->get_columns( )->get_column( 'BELNR' )->set_long_text( 'Document' ).
+      lo_alv->get_columns( )->get_column( 'WRBTR' )->set_long_text( 'Amount' ).
+      lo_alv->get_columns( )->get_column( 'WAERS' )->set_long_text( 'Currency' ).
+
+      " Set event handler
+      lo_events = lo_alv->get_event( ).
+      CREATE OBJECT go_event_handler.
+      SET HANDLER go_event_handler->handle_user_command FOR lo_events.
+      
+      " Add toolbar button
+      lo_alv->get_functions( )->add_function(
+        name     = 'CLEAR_ITEMS'
+        icon     = '@17@'
+        text     = 'Clear Selected Items'
+        tooltip  = 'Clear selected items against bank account'
+        position = if_salv_c_function_position=>right_of_salv_functions ).
+
+      lo_alv->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lo_error).
+      MESSAGE lo_error->get_text( ) TYPE 'E'.
+  ENDTRY.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Event Handler for ALV
+*&---------------------------------------------------------------------*
+CLASS lcl_event_handler DEFINITION.
+  PUBLIC SECTION.
+    METHODS: handle_user_command FOR EVENT added_function OF cl_salv_events
+               IMPORTING e_salv_function.
+ENDCLASS.
+
+CLASS lcl_event_handler IMPLEMENTATION.
+  METHOD handle_user_command.
+    CASE e_salv_function.
+      WHEN 'CLEAR_ITEMS'.
+        PERFORM f_process_clearing.
+    ENDCASE.
+  ENDMETHOD.
+ENDCLASS.
+
+DATA: go_event_handler TYPE REF TO lcl_event_handler.
+
+*&---------------------------------------------------------------------*
+*& Form f_process_clearing
+*&---------------------------------------------------------------------*
+FORM f_process_clearing.
+  DATA: lt_selected TYPE tt_bsid_data,
+        lv_total_amount TYPE wrbtr,
+        lv_answer TYPE char1.
+
+  " Get selected items
+  LOOP AT gt_bsid_data INTO DATA(ls_bsid) WHERE selected = 'X'.
+    APPEND ls_bsid TO lt_selected.
+    lv_total_amount = lv_total_amount + ls_bsid-wrbtr.
+  ENDLOOP.
+
+  IF lines( lt_selected ) = 0.
+    MESSAGE 'Please select at least one item for clearing' TYPE 'I'.
+    RETURN.
+  ENDIF.
+
+  " Confirmation dialog
+  CALL FUNCTION 'POPUP_TO_CONFIRM'
+    EXPORTING
+      titlebar              = 'Clearing Confirmation'
+      text_question         = |Clear { lines( lt_selected ) } items totaling { lv_total_amount } { p_waers }?|
+      text_button_1         = 'Yes'
+      text_button_2         = 'No'
+      default_button        = '2'
+    IMPORTING
+      answer                = lv_answer
+    EXCEPTIONS
+      text_not_found        = 1
+      OTHERS                = 2.
+
+  IF lv_answer = '1'.
+    " Prepare data and execute clearing
+    PERFORM f_prepare_clearing_data USING lt_selected lv_total_amount.
+    PERFORM f_execute_clearing.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_prepare_clearing_data
+*&---------------------------------------------------------------------*
+FORM f_prepare_clearing_data USING lt_selected TYPE tt_bsid_data
+                                   lv_total_amount TYPE wrbtr.
+  DATA: ls_ftclear TYPE ftclear,
+        ls_ftpost  TYPE ftpost,
+        lv_counter TYPE i.
+
+  CLEAR: gt_ftclear[], gt_ftpost[].
+
+  " Prepare FTCLEAR entries for customer accounts
+  LOOP AT lt_selected INTO DATA(ls_selected).
+    lv_counter = lv_counter + 1.
+    
+    " Customer entry in FTCLEAR
+    CLEAR ls_ftclear.
+    ls_ftclear-agkoa = 'D'.                    " Account type: Customer
+    ls_ftclear-agkon = ls_selected-kunnr.      " Customer number
+    ls_ftclear-agbuk = ls_selected-bukrs.      " Company code
+    ls_ftclear-xnops = 'X'.                    " No posting indicator
+    ls_ftclear-selfd = |CUST{ lv_counter }|.   " Selection field
+    ls_ftclear-wrbtr = ls_selected-wrbtr * -1. " Amount (negative for debit)
+    ls_ftclear-dmbtr = ls_selected-dmbtr * -1. " Amount in local currency
+    ls_ftclear-waers = ls_selected-waers.      " Currency
+    ls_ftclear-zuonr = 'CLEARING'.             " Assignment number
+    
+    " Document reference for clearing
+    CONCATENATE ls_selected-belnr ls_selected-gjahr ls_selected-buzei
+      INTO ls_ftclear-selvon.
+    ls_ftclear-selbis = ls_selected-belnr.
+    
+    APPEND ls_ftclear TO gt_ftclear.
+
+    " Corresponding FTPOST entry for audit trail
+    CLEAR ls_ftpost.
+    ls_ftpost-stype  = 'K'.                   " Customer
+    ls_ftpost-count  = lv_counter.
+    ls_ftpost-fnam   = 'RF05A-KUNNR'.
+    ls_ftpost-fval   = ls_selected-kunnr.
+    APPEND ls_ftpost TO gt_ftpost.
+    
+    ls_ftpost-fnam   = 'BSEG-WRBTR'.
+    ls_ftpost-fval   = ls_selected-wrbtr * -1.
+    APPEND ls_ftpost TO gt_ftpost.
+    
+    ls_ftpost-fnam   = 'BSEG-SGTXT'.
+    ls_ftpost-fval   = 'Customer clearing'.
+    APPEND ls_ftpost TO gt_ftpost.
+  ENDLOOP.
+
+  " Add bank account entry
+  lv_counter = lv_counter + 1.
+  CLEAR ls_ftclear.
+  ls_ftclear-agkoa = 'S'.                      " Account type: G/L Account
+  ls_ftclear-agkon = p_bank.                   " Bank account
+  ls_ftclear-agbuk = p_bukrs.                  " Company code
+  ls_ftclear-xnops = 'X'.                      " No posting indicator
+  ls_ftclear-selfd = 'BANK'.                   " Selection field
+  ls_ftclear-wrbtr = lv_total_amount.          " Total amount (positive for credit)
+  ls_ftclear-dmbtr = lv_total_amount.          " Amount in local currency
+  ls_ftclear-waers = p_waers.                  " Currency
+  ls_ftclear-zuonr = 'CLEARING'.               " Assignment number
+  
+  APPEND ls_ftclear TO gt_ftclear.
+
+  " Bank account FTPOST entry
+  CLEAR ls_ftpost.
+  ls_ftpost-stype  = 'G'.                     " G/L Account
+  ls_ftpost-count  = lv_counter.
+  ls_ftpost-fnam   = 'RF05A-NEWKO'.
+  ls_ftpost-fval   = p_bank.
+  APPEND ls_ftpost TO gt_ftpost.
+  
+  ls_ftpost-fnam   = 'BSEG-WRBTR'.
+  ls_ftpost-fval   = lv_total_amount.
+  APPEND ls_ftpost TO gt_ftpost.
+  
+  ls_ftpost-fnam   = 'BSEG-SGTXT'.
+  ls_ftpost-fval   = 'Bank clearing entry'.
+  APPEND ls_ftpost TO gt_ftpost.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_execute_clearing
+*&---------------------------------------------------------------------*
+FORM f_execute_clearing.
+  
+  " Step 1: Start posting interface
+  PERFORM f_posting_interface_start.
+  
+  IF gv_success_flag = 'X'.
+    " Step 2: Execute clearing
+    PERFORM f_posting_interface_clearing.
+    
+    IF gv_success_flag = 'X'.
+      " Step 3: End posting interface
+      PERFORM f_posting_interface_end.
+      
+      IF gv_success_flag = 'X'.
+        MESSAGE |Clearing successful! Document: { gv_clearing_doc }| TYPE 'S'.
+        " Refresh data
+        PERFORM f_fetch_open_items.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+  
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_posting_interface_start
+*&---------------------------------------------------------------------*
+FORM f_posting_interface_start.
+  
+  CALL FUNCTION 'POSTING_INTERFACE_START'
+    EXPORTING
+      i_function         = 'C'                 " Call transaction
+      i_mode             = COND #( WHEN p_test = 'X' THEN 'E' ELSE 'N' )
+      i_update           = 'S'                 " Synchronous update
+    EXCEPTIONS
+      client_incorrect   = 1
+      function_invalid   = 2
+      group_name_missing = 3
+      mode_invalid       = 4
+      update_invalid     = 5
+      OTHERS             = 6.
+
+  IF sy-subrc = 0.
+    gv_success_flag = 'X'.
+  ELSE.
+    MESSAGE |Error in POSTING_INTERFACE_START: { sy-subrc }| TYPE 'E'.
+    gv_success_flag = ''.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_posting_interface_clearing
+*&---------------------------------------------------------------------*
+FORM f_posting_interface_clearing.
+  
+  CALL FUNCTION 'POSTING_INTERFACE_CLEARING'
+    EXPORTING
+      i_auglv                    = '049'       " Clearing level
+      i_tcode                    = 'FB05'      " Transaction code
+      i_sgfunc                   = 'C'         " Function: Clear
+    IMPORTING
+      e_belnr                    = gv_clearing_doc
+    TABLES
+      ft_clear                   = gt_ftclear
+      ft_post                    = gt_ftpost
+    EXCEPTIONS
+      clearing_procedure_invalid = 1
+      clearing_procedure_unknown = 2
+      account_not_found          = 3
+      account_not_open           = 4
+      account_is_not_customer    = 5
+      account_is_not_vendor      = 6
+      posting_key_invalid        = 7
+      posting_key_not_found      = 8
+      record_exist               = 9
+      order_number_missing       = 10
+      OTHERS                     = 11.
+
+  IF sy-subrc = 0.
+    gv_success_flag = 'X'.
+    WRITE: / 'Clearing executed successfully.'.
+    WRITE: / 'Clearing document:', gv_clearing_doc.
+  ELSE.
+    MESSAGE |Error in POSTING_INTERFACE_CLEARING: { sy-subrc }| TYPE 'E'.
+    gv_success_flag = ''.
+    
+    " Additional error handling
+    CASE sy-subrc.
+      WHEN 1.
+        MESSAGE 'Clearing procedure invalid' TYPE 'E'.
+      WHEN 2.
+        MESSAGE 'Clearing procedure unknown' TYPE 'E'.
+      WHEN 3.
+        MESSAGE 'Account not found' TYPE 'E'.
+      WHEN 4.
+        MESSAGE 'Account not open for posting' TYPE 'E'.
+      WHEN OTHERS.
+        MESSAGE |Clearing error: { sy-subrc }| TYPE 'E'.
+    ENDCASE.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_posting_interface_end
+*&---------------------------------------------------------------------*
+FORM f_posting_interface_end.
+  
+  CALL FUNCTION 'POSTING_INTERFACE_END'
+    EXCEPTIONS
+      session_not_processable = 1
+      OTHERS                  = 2.
+
+  IF sy-subrc = 0.
+    gv_success_flag = 'X'.
+    IF p_test = ''.
+      COMMIT WORK.
+    ENDIF.
+  ELSE.
+    MESSAGE |Error in POSTING_INTERFACE_END: { sy-subrc }| TYPE 'E'.
+    gv_success_flag = ''.
+    ROLLBACK WORK.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_validate_clearing_data
+*&---------------------------------------------------------------------*
+FORM f_validate_clearing_data.
+  DATA: lv_total_debit  TYPE wrbtr,
+        lv_total_credit TYPE wrbtr.
+
+  " Validate that debits and credits balance
+  LOOP AT gt_ftclear INTO DATA(ls_clear).
+    IF ls_clear-wrbtr > 0.
+      lv_total_credit = lv_total_credit + ls_clear-wrbtr.
+    ELSE.
+      lv_total_debit = lv_total_debit + ( ls_clear-wrbtr * -1 ).
+    ENDIF.
+  ENDLOOP.
+
+  IF lv_total_debit <> lv_total_credit.
+    MESSAGE 'Clearing amounts do not balance' TYPE 'E'.
+    gv_success_flag = ''.
+  ELSE.
+    gv_success_flag = 'X'.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& End of Program
+*&---------------------------------------------------------------------*    ORDER BY kunnr, belnr, buzei.
 
   IF lines( gt_bsid_data ) = 0.
     MESSAGE 'No open items found for selection criteria' TYPE 'I'.
