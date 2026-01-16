@@ -1,32 +1,36 @@
-*   VALIDATION: Check ZZPORT constraints
+*   VALIDATION: Check ZZPORT constraints (LOG ONLY - NO INTERRUPTION)
 IF lv_zzport IS INITIAL.
-* Error: Port not found
-  ls_log-type = 'E'.
-  ls_log-message = |Port not found for: { lv_pod_desc }|.
+* Log: Port not found - but continue processing
+  ls_log-type = 'W'.
+  ls_log-message = |Port not found for: { lv_pod_desc } - continuing with blank port|.
   ls_log-vbeln = ls_vbak-vbeln.
   APPEND ls_log TO lt_log.
-  CONTINUE.  " Skip this quotation
+  " Continue processing with blank port
+ELSE.
+*   Check up to 10 characters constraint
+  DATA: lv_port_length TYPE i.
+  lv_port_length = strlen( lv_zzport ).
+
+  IF lv_port_length GT 10.
+*   Log: Port exceeds limit - but continue processing
+    ls_log-type = 'W'.
+    ls_log-message = |Port { lv_zzport } exceeds 10 character limit (Length: { lv_port_length }) - using as-is|.
+    ls_log-vbeln = ls_vbak-vbeln.
+    APPEND ls_log TO lt_log.
+    " Continue with the port value as-is
+  ENDIF.
+
+*   Check alpha-numeric characters only
+  IF lv_zzport CN 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.
+*   Log: Invalid characters - but continue processing  
+    ls_log-type = 'W'.
+    ls_log-message = |Port { lv_zzport } contains non-alpha-numeric characters - using as-is|.
+    ls_log-vbeln = ls_vbak-vbeln.
+    APPEND ls_log TO lt_log.
+    " Continue with the port value as-is
+  ENDIF.
 ENDIF.
 
-*   VALIDATION: Check up to 10 characters constraint
-DATA: lv_port_length TYPE i.
-lv_port_length = strlen( lv_zzport ).
-
-IF lv_port_length GT 10.
-* Error: Port exceeds 10 character limit
-  ls_log-type = 'E'.
-  ls_log-message = |Port { lv_zzport } exceeds 10 character limit. Current length: { lv_port_length }|.
-  ls_log-vbeln = ls_vbak-vbeln.
-  APPEND ls_log TO lt_log.
-  CONTINUE.  " Skip this quotation
-ENDIF.
-
-*   VALIDATION: Check alpha-numeric characters only (optional - if needed)
-IF lv_zzport CN 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.
-* Error: Port contains invalid characters
-  ls_log-type = 'E'.
-  ls_log-message = |Port { lv_zzport } contains invalid characters. Only alpha-numeric allowed|.
-  ls_log-vbeln = ls_vbak-vbeln.
-  APPEND ls_log TO lt_log.
-  CONTINUE.  " Skip this quotation
-ENDIF.
+* Always proceed with sales order creation (regardless of validation results)
+ls_vbakkoz-zzport = lv_zzport.      " Use whatever port value we have (could be blank)
+ls_vbak_bape-zzport = lv_zzport.    " Use whatever port value we have (could be blank)
