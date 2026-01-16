@@ -1,823 +1,479 @@
 *&---------------------------------------------------------------------*
-*& Report ZCUSTOMER_CLEARING_DEMO
+*& Report ZEARLY_PAYMENT_DISCOUNT
 *&---------------------------------------------------------------------*
-*& Purpose: Multi-Customer Clearing Against Single Bank Account
+*& Purpose: Early Payment Discount Calculator with Dual BAPI Processing
 *& Developer: Ujwal
-*& Date: 15.01.2026
-*& Description: This program demonstrates how to clear multiple customer
-*&              open items against a single bank account using
-*&              POSTING_INTERFACE_CLEARING function module
+*& Date: 16.01.2026  
+*& Business Logic: Calculate discount based on payment timing
+*&                 BAPI 1: Store discount amount
+*&                 BAPI 2: Store net amount after discount
 *&---------------------------------------------------------------------*
 
-REPORT zcustomer_clearing_demo.
+REPORT zearly_payment_discount.
 
 *----------------------------------------------------------------------*
 * Type Declarations
 *----------------------------------------------------------------------*
-TYPES: BEGIN OF ty_bsid_data,
-         bukrs TYPE bukrs,        " Company Code
-         kunnr TYPE kunnr,        " Customer
-         belnr TYPE belnr_d,      " Document Number
-         gjahr TYPE gjahr,        " Fiscal Year
-         buzei TYPE buzei,        " Line Item
-         wrbtr TYPE wrbtr,        " Amount in Doc Currency
-         dmbtr TYPE dmbtr,        " Amount in Local Currency
-         waers TYPE waers,        " Currency
-         blart TYPE blart,        " Document Type
-         bldat TYPE bldat,        " Document Date
-         zfbdt TYPE dzfbdt,       " Baseline Date
-         zterm TYPE dzterm,       " Payment Terms
-         selected TYPE char1,     " Selection Flag
-       END OF ty_bsid_data.
+TYPES: BEGIN OF ty_discount_slab,
+         days_from   TYPE i,
+         days_to     TYPE i,
+         discount_pc TYPE p DECIMALS 2,
+       END OF ty_discount_slab.
 
-TYPES: tt_bsid_data TYPE TABLE OF ty_bsid_data.
+TYPES: BEGIN OF ty_calculation,
+         original_amount TYPE p DECIMALS 2,
+         payment_days    TYPE i,
+         discount_pc     TYPE p DECIMALS 2,
+         discount_amount TYPE p DECIMALS 2,
+         net_amount      TYPE p DECIMALS 2,
+         payment_date    TYPE dats,
+         due_date        TYPE dats,
+       END OF ty_calculation.
+
+TYPES: BEGIN OF ty_bapi1_data,
+         document_no     TYPE belnr_d,
+         customer        TYPE kunnr,
+         discount_amount TYPE wrbtr,
+         discount_pc     TYPE p DECIMALS 2,
+         created_date    TYPE dats,
+       END OF ty_bapi1_data.
+
+TYPES: BEGIN OF ty_bapi2_data,
+         document_no     TYPE belnr_d,
+         customer        TYPE kunnr,
+         net_amount      TYPE wrbtr,
+         original_amount TYPE wrbtr,
+         payment_date    TYPE dats,
+       END OF ty_bapi2_data.
+
+TYPES: tt_discount_slab TYPE TABLE OF ty_discount_slab,
+       tt_bapi1_data    TYPE TABLE OF ty_bapi1_data,
+       tt_bapi2_data    TYPE TABLE OF ty_bapi2_data.
 
 *----------------------------------------------------------------------*
-* Global Data Declarations
+* Global Data
 *----------------------------------------------------------------------*
-DATA: gt_bsid_data    TYPE tt_bsid_data,
-      gt_ftclear      TYPE TABLE OF ftclear,
-      gt_ftpost       TYPE TABLE OF ftpost,
-      gv_bank_account TYPE hkont,
-      gv_clearing_doc TYPE belnr_d,
-      gv_success_flag TYPE char1.
+DATA: gt_discount_slab TYPE tt_discount_slab,
+      gs_calculation   TYPE ty_calculation,
+      gt_bapi1_data    TYPE tt_bapi1_data,
+      gt_bapi2_data    TYPE tt_bapi2_data,
+      gv_success_bapi1 TYPE char1,
+      gv_success_bapi2 TYPE char1.
 
 *----------------------------------------------------------------------*
 * Selection Screen
 *----------------------------------------------------------------------*
 SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
-PARAMETERS: p_bukrs TYPE bukrs DEFAULT '1000' OBLIGATORY,
-            p_gjahr TYPE gjahr DEFAULT sy-datum(4) OBLIGATORY.
-SELECT-OPTIONS: s_kunnr FOR gt_bsid_data-kunnr,
-                s_belnr FOR gt_bsid_data-belnr,
-                s_bldat FOR gt_bsid_data-bldat.
+PARAMETERS: p_amount TYPE p DECIMALS 2 DEFAULT '100000' OBLIGATORY,
+            p_docno  TYPE belnr_d DEFAULT '5000000001' OBLIGATORY,
+            p_kunnr  TYPE kunnr DEFAULT '1000001' OBLIGATORY,
+            p_due    TYPE dats DEFAULT sy-datum OBLIGATORY,
+            p_pay    TYPE dats DEFAULT sy-datum OBLIGATORY.
 SELECTION-SCREEN END OF BLOCK b1.
 
 SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
-PARAMETERS: p_bank TYPE hkont DEFAULT '113100' OBLIGATORY,
-            p_bldat TYPE bldat DEFAULT sy-datum OBLIGATORY,
-            p_waers TYPE waers DEFAULT 'EUR' OBLIGATORY,
-            p_test  AS CHECKBOX DEFAULT 'X'.
+PARAMETERS: p_test AS CHECKBOX DEFAULT 'X',
+            p_both AS CHECKBOX DEFAULT 'X'.
 SELECTION-SCREEN END OF BLOCK b2.
-
-*----------------------------------------------------------------------*
-* Text Elements
-*----------------------------------------------------------------------*
-* TEXT-001: Customer Open Items Selection
-* TEXT-002: Clearing Parameters
 
 *----------------------------------------------------------------------*
 * Initialization
 *----------------------------------------------------------------------*
 INITIALIZATION.
-  gv_bank_account = p_bank.
+  " Set default payment date to 5 days from today
+  p_pay = sy-datum + 5.
+  
+  " Initialize discount slabs
+  PERFORM f_initialize_discount_slabs.
 
 *----------------------------------------------------------------------*
-* Start of Selection
+* At Selection Screen
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN.
+  IF p_pay < p_due.
+    MESSAGE 'Payment date cannot be before due date' TYPE 'E'.
+  ENDIF.
+
+*----------------------------------------------------------------------*
+* Start of Selection  
 *----------------------------------------------------------------------*
 START-OF-SELECTION.
-  PERFORM f_fetch_open_items.
-  PERFORM f_display_selection_screen.
-
-*----------------------------------------------------------------------*
-* End of Selection
-*----------------------------------------------------------------------*
-END-OF-SELECTION.
-  " Processing happens in user command
-
-*&---------------------------------------------------------------------*
-*& Form f_fetch_open_items
-*&---------------------------------------------------------------------*
-FORM f_fetch_open_items.
-  DATA: lt_bsid TYPE TABLE OF bsid.
+  PERFORM f_calculate_discount.
+  PERFORM f_display_calculation.
   
-  " Fetch open customer line items
-  SELECT bukrs, kunnr, belnr, gjahr, buzei, wrbtr, dmbtr, waers,
-         blart, bldat, zfbdt, zterm
-    FROM bsid
-    INTO CORRESPONDING FIELDS OF TABLE @gt_bsid_data
-    WHERE bukrs = @p_bukrs
-      AND kunnr IN @s_kunnr
-      AND gjahr = @p_gjahr
-      AND belnr IN @s_belnr
-      AND bldat IN @s_bldat
-      AND augdt = ''               " Only open items
-    ORDER BY kunnr, belnr, buzei.
-
-  IF lines( gt_bsid_data ) = 0.
-    MESSAGE 'No open items found for selection criteria' TYPE 'I'.
-    LEAVE PROGRAM.
+  IF p_test = ''.
+    PERFORM f_process_bapis.
+  ELSE.
+    PERFORM f_simulate_bapis.
   ENDIF.
 
-ENDFORM.
-
 *&---------------------------------------------------------------------*
-*& Form f_display_selection_screen
+*& Form f_initialize_discount_slabs
 *&---------------------------------------------------------------------*
-FORM f_display_selection_screen.
-  DATA: lo_alv TYPE REF TO cl_salv_table,
-        lo_events TYPE REF TO cl_salv_events_table.
-
-  TRY.
-      cl_salv_table=>factory(
-        IMPORTING
-          r_salv_table = lo_alv
-        CHANGING
-          t_table      = gt_bsid_data ).
-
-      " Set ALV functions
-      lo_alv->get_functions( )->set_all( ).
-      
-      " Set selection column
-      lo_alv->get_columns( )->get_column( 'SELECTED' )->set_cell_type( 
-        if_salv_c_cell_type=>checkbox_hotspot ).
-      
-      " Set column texts
-      lo_alv->get_columns( )->get_column( 'BUKRS' )->set_long_text( 'Company Code' ).
-      lo_alv->get_columns( )->get_column( 'KUNNR' )->set_long_text( 'Customer' ).
-      lo_alv->get_columns( )->get_column( 'BELNR' )->set_long_text( 'Document' ).
-      lo_alv->get_columns( )->get_column( 'WRBTR' )->set_long_text( 'Amount' ).
-      lo_alv->get_columns( )->get_column( 'WAERS' )->set_long_text( 'Currency' ).
-
-      " Set event handler
-      lo_events = lo_alv->get_event( ).
-      CREATE OBJECT go_event_handler.
-      SET HANDLER go_event_handler->handle_user_command FOR lo_events.
-      
-      " Add toolbar button
-      lo_alv->get_functions( )->add_function(
-        name     = 'CLEAR_ITEMS'
-        icon     = '@17@'
-        text     = 'Clear Selected Items'
-        tooltip  = 'Clear selected items against bank account'
-        position = if_salv_c_function_position=>right_of_salv_functions ).
-
-      lo_alv->display( ).
-
-    CATCH cx_salv_msg INTO DATA(lo_error).
-      MESSAGE lo_error->get_text( ) TYPE 'E'.
-  ENDTRY.
+FORM f_initialize_discount_slabs.
+  DATA: ls_slab TYPE ty_discount_slab.
+  
+  " Define discount slabs (customize as needed)
+  CLEAR: gt_discount_slab.
+  
+  " 1-5 days: 10% discount
+  ls_slab-days_from = 1.
+  ls_slab-days_to = 5.
+  ls_slab-discount_pc = '10.00'.
+  APPEND ls_slab TO gt_discount_slab.
+  
+  " 6-10 days: 8% discount  
+  ls_slab-days_from = 6.
+  ls_slab-days_to = 10.
+  ls_slab-discount_pc = '8.00'.
+  APPEND ls_slab TO gt_discount_slab.
+  
+  " 11-15 days: 5% discount
+  ls_slab-days_from = 11.
+  ls_slab-days_to = 15.
+  ls_slab-discount_pc = '5.00'.
+  APPEND ls_slab TO gt_discount_slab.
+  
+  " 16-20 days: 3% discount
+  ls_slab-days_from = 16.
+  ls_slab-days_to = 20.
+  ls_slab-discount_pc = '3.00'.
+  APPEND ls_slab TO gt_discount_slab.
+  
+  " 21-30 days: 1% discount
+  ls_slab-days_from = 21.
+  ls_slab-days_to = 30.
+  ls_slab-discount_pc = '1.00'.
+  APPEND ls_slab TO gt_discount_slab.
+  
+  " 30+ days: 0% discount (no discount)
+  ls_slab-days_from = 31.
+  ls_slab-days_to = 999.
+  ls_slab-discount_pc = '0.00'.
+  APPEND ls_slab TO gt_discount_slab.
 
 ENDFORM.
 
 *&---------------------------------------------------------------------*
-*& Event Handler for ALV
+*& Form f_calculate_discount
 *&---------------------------------------------------------------------*
-CLASS lcl_event_handler DEFINITION.
-  PUBLIC SECTION.
-    METHODS: handle_user_command FOR EVENT added_function OF cl_salv_events
-               IMPORTING e_salv_function.
-ENDCLASS.
-
-CLASS lcl_event_handler IMPLEMENTATION.
-  METHOD handle_user_command.
-    CASE e_salv_function.
-      WHEN 'CLEAR_ITEMS'.
-        PERFORM f_process_clearing.
-    ENDCASE.
-  ENDMETHOD.
-ENDCLASS.
-
-DATA: go_event_handler TYPE REF TO lcl_event_handler.
-
-*&---------------------------------------------------------------------*
-*& Form f_process_clearing
-*&---------------------------------------------------------------------*
-FORM f_process_clearing.
-  DATA: lt_selected TYPE tt_bsid_data,
-        lv_total_amount TYPE wrbtr,
-        lv_answer TYPE char1.
-
-  " Get selected items
-  LOOP AT gt_bsid_data INTO DATA(ls_bsid) WHERE selected = 'X'.
-    APPEND ls_bsid TO lt_selected.
-    lv_total_amount = lv_total_amount + ls_bsid-wrbtr.
-  ENDLOOP.
-
-  IF lines( lt_selected ) = 0.
-    MESSAGE 'Please select at least one item for clearing' TYPE 'I'.
-    RETURN.
-  ENDIF.
-
-  " Confirmation dialog
-  CALL FUNCTION 'POPUP_TO_CONFIRM'
-    EXPORTING
-      titlebar              = 'Clearing Confirmation'
-      text_question         = |Clear { lines( lt_selected ) } items totaling { lv_total_amount } { p_waers }?|
-      text_button_1         = 'Yes'
-      text_button_2         = 'No'
-      default_button        = '2'
-    IMPORTING
-      answer                = lv_answer
-    EXCEPTIONS
-      text_not_found        = 1
-      OTHERS                = 2.
-
-  IF lv_answer = '1'.
-    " Prepare data and execute clearing
-    PERFORM f_prepare_clearing_data USING lt_selected lv_total_amount.
-    PERFORM f_execute_clearing.
-  ENDIF.
+FORM f_calculate_discount.
+  DATA: lv_payment_days TYPE i,
+        lv_discount_pc  TYPE p DECIMALS 2.
+  
+  " Calculate payment days
+  lv_payment_days = p_pay - p_due.
+  
+  " Find applicable discount percentage
+  PERFORM f_get_discount_percentage USING lv_payment_days 
+                                    CHANGING lv_discount_pc.
+  
+  " Populate calculation structure
+  gs_calculation-original_amount = p_amount.
+  gs_calculation-payment_days = lv_payment_days.
+  gs_calculation-discount_pc = lv_discount_pc.
+  gs_calculation-discount_amount = ( p_amount * lv_discount_pc ) / 100.
+  gs_calculation-net_amount = p_amount - gs_calculation-discount_amount.
+  gs_calculation-payment_date = p_pay.
+  gs_calculation-due_date = p_due.
 
 ENDFORM.
 
 *&---------------------------------------------------------------------*
-*& Form f_prepare_clearing_data
+*& Form f_get_discount_percentage
 *&---------------------------------------------------------------------*
-FORM f_prepare_clearing_data USING lt_selected TYPE tt_bsid_data
-                                   lv_total_amount TYPE wrbtr.
-  DATA: ls_ftclear TYPE ftclear,
-        ls_ftpost  TYPE ftpost,
-        lv_counter TYPE i.
-
-  CLEAR: gt_ftclear[], gt_ftpost[].
-
-  " Prepare FTCLEAR entries for customer accounts
-  LOOP AT lt_selected INTO DATA(ls_selected).
-    lv_counter = lv_counter + 1.
-    
-    " Customer entry in FTCLEAR
-    CLEAR ls_ftclear.
-    ls_ftclear-agkoa = 'D'.                    " Account type: Customer
-    ls_ftclear-agkon = ls_selected-kunnr.      " Customer number
-    ls_ftclear-agbuk = ls_selected-bukrs.      " Company code
-    ls_ftclear-xnops = 'X'.                    " No posting indicator
-    ls_ftclear-selfd = |CUST{ lv_counter }|.   " Selection field
-    ls_ftclear-wrbtr = ls_selected-wrbtr * -1. " Amount (negative for debit)
-    ls_ftclear-dmbtr = ls_selected-dmbtr * -1. " Amount in local currency
-    ls_ftclear-waers = ls_selected-waers.      " Currency
-    ls_ftclear-zuonr = 'CLEARING'.             " Assignment number
-    
-    " Document reference for clearing
-    CONCATENATE ls_selected-belnr ls_selected-gjahr ls_selected-buzei
-      INTO ls_ftclear-selvon.
-    ls_ftclear-selbis = ls_selected-belnr.
-    
-    APPEND ls_ftclear TO gt_ftclear.
-
-    " Corresponding FTPOST entry for audit trail
-    CLEAR ls_ftpost.
-    ls_ftpost-stype  = 'K'.                   " Customer
-    ls_ftpost-count  = lv_counter.
-    ls_ftpost-fnam   = 'RF05A-KUNNR'.
-    ls_ftpost-fval   = ls_selected-kunnr.
-    APPEND ls_ftpost TO gt_ftpost.
-    
-    ls_ftpost-fnam   = 'BSEG-WRBTR'.
-    ls_ftpost-fval   = ls_selected-wrbtr * -1.
-    APPEND ls_ftpost TO gt_ftpost.
-    
-    ls_ftpost-fnam   = 'BSEG-SGTXT'.
-    ls_ftpost-fval   = 'Customer clearing'.
-    APPEND ls_ftpost TO gt_ftpost.
-  ENDLOOP.
-
-  " Add bank account entry
-  lv_counter = lv_counter + 1.
-  CLEAR ls_ftclear.
-  ls_ftclear-agkoa = 'S'.                      " Account type: G/L Account
-  ls_ftclear-agkon = p_bank.                   " Bank account
-  ls_ftclear-agbuk = p_bukrs.                  " Company code
-  ls_ftclear-xnops = 'X'.                      " No posting indicator
-  ls_ftclear-selfd = 'BANK'.                   " Selection field
-  ls_ftclear-wrbtr = lv_total_amount.          " Total amount (positive for credit)
-  ls_ftclear-dmbtr = lv_total_amount.          " Amount in local currency
-  ls_ftclear-waers = p_waers.                  " Currency
-  ls_ftclear-zuonr = 'CLEARING'.               " Assignment number
+FORM f_get_discount_percentage USING iv_days TYPE i
+                               CHANGING cv_discount_pc TYPE p.
   
-  APPEND ls_ftclear TO gt_ftclear.
-
-  " Bank account FTPOST entry
-  CLEAR ls_ftpost.
-  ls_ftpost-stype  = 'G'.                     " G/L Account
-  ls_ftpost-count  = lv_counter.
-  ls_ftpost-fnam   = 'RF05A-NEWKO'.
-  ls_ftpost-fval   = p_bank.
-  APPEND ls_ftpost TO gt_ftpost.
-  
-  ls_ftpost-fnam   = 'BSEG-WRBTR'.
-  ls_ftpost-fval   = lv_total_amount.
-  APPEND ls_ftpost TO gt_ftpost.
-  
-  ls_ftpost-fnam   = 'BSEG-SGTXT'.
-  ls_ftpost-fval   = 'Bank clearing entry'.
-  APPEND ls_ftpost TO gt_ftpost.
-
-ENDFORM.
-
-*&---------------------------------------------------------------------*
-*& Form f_execute_clearing
-*&---------------------------------------------------------------------*
-FORM f_execute_clearing.
-  
-  " Step 1: Start posting interface
-  PERFORM f_posting_interface_start.
-  
-  IF gv_success_flag = 'X'.
-    " Step 2: Execute clearing
-    PERFORM f_posting_interface_clearing.
-    
-    IF gv_success_flag = 'X'.
-      " Step 3: End posting interface
-      PERFORM f_posting_interface_end.
-      
-      IF gv_success_flag = 'X'.
-        MESSAGE |Clearing successful! Document: { gv_clearing_doc }| TYPE 'S'.
-        " Refresh data
-        PERFORM f_fetch_open_items.
-      ENDIF.
+  " Find discount percentage based on payment days
+  LOOP AT gt_discount_slab INTO DATA(ls_slab).
+    IF iv_days >= ls_slab-days_from AND iv_days <= ls_slab-days_to.
+      cv_discount_pc = ls_slab-discount_pc.
+      EXIT.
     ENDIF.
-  ENDIF.
+  ENDLOOP.
   
+  " If no slab found, no discount
+  IF cv_discount_pc IS INITIAL.
+    cv_discount_pc = 0.
+  ENDIF.
+
 ENDFORM.
 
 *&---------------------------------------------------------------------*
-*& Form f_posting_interface_start
+*& Form f_display_calculation
 *&---------------------------------------------------------------------*
-FORM f_posting_interface_start.
+FORM f_display_calculation.
   
-  CALL FUNCTION 'POSTING_INTERFACE_START'
-    EXPORTING
-      i_function         = 'C'                 " Call transaction
-      i_mode             = COND #( WHEN p_test = 'X' THEN 'E' ELSE 'N' )
-      i_update           = 'S'                 " Synchronous update
-    EXCEPTIONS
-      client_incorrect   = 1
-      function_invalid   = 2
-      group_name_missing = 3
-      mode_invalid       = 4
-      update_invalid     = 5
-      OTHERS             = 6.
-
-  IF sy-subrc = 0.
-    gv_success_flag = 'X'.
+  WRITE: / '╔══════════════════════════════════════════════════════╗'.
+  WRITE: / '║              EARLY PAYMENT DISCOUNT CALCULATOR      ║'.
+  WRITE: / '╚══════════════════════════════════════════════════════╝'.
+  SKIP 1.
+  
+  WRITE: / 'Input Parameters:'.
+  WRITE: / '================'.
+  WRITE: / 'Document Number    :', p_docno.
+  WRITE: / 'Customer           :', p_kunnr.
+  WRITE: / 'Original Amount    :', p_amount, 'INR'.
+  WRITE: / 'Due Date           :', p_due.
+  WRITE: / 'Payment Date       :', p_pay.
+  SKIP 1.
+  
+  WRITE: / 'Calculation Results:'.
+  WRITE: / '==================='.
+  WRITE: / 'Payment Days       :', gs_calculation-payment_days.
+  WRITE: / 'Discount Percentage:', gs_calculation-discount_pc, '%'.
+  WRITE: / 'Discount Amount    :', gs_calculation-discount_amount, 'INR'.
+  WRITE: / 'Net Amount         :', gs_calculation-net_amount, 'INR'.
+  SKIP 1.
+  
+  WRITE: / 'BAPI Processing:'.
+  WRITE: / '==============='.
+  IF p_test = 'X'.
+    WRITE: / 'Mode               : TEST (Simulation Only)'.
   ELSE.
-    MESSAGE |Error in POSTING_INTERFACE_START: { sy-subrc }| TYPE 'E'.
-    gv_success_flag = ''.
+    WRITE: / 'Mode               : PRODUCTION (Real Processing)'.
   ENDIF.
-
-ENDFORM.
-
-*&---------------------------------------------------------------------*
-*& Form f_posting_interface_clearing
-*&---------------------------------------------------------------------*
-FORM f_posting_interface_clearing.
   
-  CALL FUNCTION 'POSTING_INTERFACE_CLEARING'
-    EXPORTING
-      i_auglv                    = '049'       " Clearing level
-      i_tcode                    = 'FB05'      " Transaction code
-      i_sgfunc                   = 'C'         " Function: Clear
-    IMPORTING
-      e_belnr                    = gv_clearing_doc
-    TABLES
-      ft_clear                   = gt_ftclear
-      ft_post                    = gt_ftpost
-    EXCEPTIONS
-      clearing_procedure_invalid = 1
-      clearing_procedure_unknown = 2
-      account_not_found          = 3
-      account_not_open           = 4
-      account_is_not_customer    = 5
-      account_is_not_vendor      = 6
-      posting_key_invalid        = 7
-      posting_key_not_found      = 8
-      record_exist               = 9
-      order_number_missing       = 10
-      OTHERS                     = 11.
-
-  IF sy-subrc = 0.
-    gv_success_flag = 'X'.
-    WRITE: / 'Clearing executed successfully.'.
-    WRITE: / 'Clearing document:', gv_clearing_doc.
-  ELSE.
-    MESSAGE |Error in POSTING_INTERFACE_CLEARING: { sy-subrc }| TYPE 'E'.
-    gv_success_flag = ''.
-    
-    " Additional error handling
-    CASE sy-subrc.
-      WHEN 1.
-        MESSAGE 'Clearing procedure invalid' TYPE 'E'.
-      WHEN 2.
-        MESSAGE 'Clearing procedure unknown' TYPE 'E'.
-      WHEN 3.
-        MESSAGE 'Account not found' TYPE 'E'.
-      WHEN 4.
-        MESSAGE 'Account not open for posting' TYPE 'E'.
-      WHEN OTHERS.
-        MESSAGE |Clearing error: { sy-subrc }| TYPE 'E'.
-    ENDCASE.
-  ENDIF.
-
-ENDFORM.
-
-*&---------------------------------------------------------------------*
-*& Form f_posting_interface_end
-*&---------------------------------------------------------------------*
-FORM f_posting_interface_end.
+  WRITE: / 'Process Both BAPIs :', p_both.
+  SKIP 1.
   
-  CALL FUNCTION 'POSTING_INTERFACE_END'
-    EXCEPTIONS
-      session_not_processable = 1
-      OTHERS                  = 2.
-
-  IF sy-subrc = 0.
-    gv_success_flag = 'X'.
-    IF p_test = ''.
-      COMMIT WORK.
-    ENDIF.
-  ELSE.
-    MESSAGE |Error in POSTING_INTERFACE_END: { sy-subrc }| TYPE 'E'.
-    gv_success_flag = ''.
-    ROLLBACK WORK.
-  ENDIF.
-
-ENDFORM.
-
-*&---------------------------------------------------------------------*
-*& Form f_validate_clearing_data
-*&---------------------------------------------------------------------*
-FORM f_validate_clearing_data.
-  DATA: lv_total_debit  TYPE wrbtr,
-        lv_total_credit TYPE wrbtr.
-
-  " Validate that debits and credits balance
-  LOOP AT gt_ftclear INTO DATA(ls_clear).
-    IF ls_clear-wrbtr > 0.
-      lv_total_credit = lv_total_credit + ls_clear-wrbtr.
+  " Display discount slabs
+  WRITE: / 'Available Discount Slabs:'.
+  WRITE: / '========================'.
+  WRITE: / 'Days Range', 15 'Discount %'.
+  WRITE: / sy-uline(30).
+  
+  LOOP AT gt_discount_slab INTO DATA(ls_slab).
+    IF ls_slab-days_to = 999.
+      WRITE: / ls_slab-days_from, '+ days', 15 ls_slab-discount_pc, '%'.
     ELSE.
-      lv_total_debit = lv_total_debit + ( ls_clear-wrbtr * -1 ).
+      WRITE: / ls_slab-days_from, '-', ls_slab-days_to, 'days', 15 ls_slab-discount_pc, '%'.
     ENDIF.
   ENDLOOP.
+  
+  SKIP 2.
 
-  IF lv_total_debit <> lv_total_credit.
-    MESSAGE 'Clearing amounts do not balance' TYPE 'E'.
-    gv_success_flag = ''.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_process_bapis
+*&---------------------------------------------------------------------*
+FORM f_process_bapis.
+  
+  WRITE: / '🔄 Processing BAPIs in PRODUCTION mode...'.
+  SKIP 1.
+  
+  " Prepare BAPI 1 data (Discount Amount)
+  PERFORM f_prepare_bapi1_data.
+  
+  " Prepare BAPI 2 data (Net Amount)
+  PERFORM f_prepare_bapi2_data.
+  
+  " Execute BAPI 1
+  PERFORM f_execute_bapi1.
+  
+  IF p_both = 'X' AND gv_success_bapi1 = 'X'.
+    " Execute BAPI 2 only if BAPI 1 successful
+    PERFORM f_execute_bapi2.
+  ENDIF.
+  
+  " Display results
+  PERFORM f_display_bapi_results.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_simulate_bapis
+*&---------------------------------------------------------------------*
+FORM f_simulate_bapis.
+  
+  WRITE: / '🧪 Simulating BAPIs in TEST mode...'.
+  SKIP 1.
+  
+  " Prepare BAPI 1 data (Discount Amount)
+  PERFORM f_prepare_bapi1_data.
+  
+  " Prepare BAPI 2 data (Net Amount) 
+  PERFORM f_prepare_bapi2_data.
+  
+  " Simulate successful processing
+  gv_success_bapi1 = 'X'.
+  gv_success_bapi2 = 'X'.
+  
+  WRITE: / '✅ BAPI 1 Simulation: SUCCESS'.
+  WRITE: / '   → Discount amount stored:', gs_calculation-discount_amount, 'INR'.
+  
+  IF p_both = 'X'.
+    WRITE: / '✅ BAPI 2 Simulation: SUCCESS'.
+    WRITE: / '   → Net amount stored:', gs_calculation-net_amount, 'INR'.
+  ENDIF.
+  
+  SKIP 1.
+  WRITE: / '💡 This is TEST mode - no actual data posted'.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_prepare_bapi1_data
+*&---------------------------------------------------------------------*
+FORM f_prepare_bapi1_data.
+  DATA: ls_bapi1 TYPE ty_bapi1_data.
+  
+  " Prepare data for BAPI 1 (Discount Amount Storage)
+  ls_bapi1-document_no = p_docno.
+  ls_bapi1-customer = p_kunnr.
+  ls_bapi1-discount_amount = gs_calculation-discount_amount.
+  ls_bapi1-discount_pc = gs_calculation-discount_pc.
+  ls_bapi1-created_date = sy-datum.
+  
+  APPEND ls_bapi1 TO gt_bapi1_data.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_prepare_bapi2_data
+*&---------------------------------------------------------------------*
+FORM f_prepare_bapi2_data.
+  DATA: ls_bapi2 TYPE ty_bapi2_data.
+  
+  " Prepare data for BAPI 2 (Net Amount Storage)
+  ls_bapi2-document_no = p_docno.
+  ls_bapi2-customer = p_kunnr.
+  ls_bapi2-net_amount = gs_calculation-net_amount.
+  ls_bapi2-original_amount = gs_calculation-original_amount.
+  ls_bapi2-payment_date = p_pay.
+  
+  APPEND ls_bapi2 TO gt_bapi2_data.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form f_execute_bapi1
+*&---------------------------------------------------------------------*
+FORM f_execute_bapi1.
+  " This would be your actual BAPI call for discount amount storage
+  " Replace with your specific BAPI
+  
+  DATA: lt_return TYPE TABLE OF bapiret2.
+  
+  WRITE: / '📝 Executing BAPI 1 (Discount Amount Storage)...'.
+  
+  " Example BAPI call - replace with your actual BAPI
+  " CALL FUNCTION 'BAPI_YOUR_DISCOUNT_STORE'
+  "   EXPORTING
+  "     document_number = p_docno
+  "     customer        = p_kunnr  
+  "     discount_amount = gs_calculation-discount_amount
+  "     discount_percent = gs_calculation-discount_pc
+  "   TABLES
+  "     return          = lt_return.
+  
+  " Simulate successful call for demo
+  gv_success_bapi1 = 'X'.
+  
+  IF gv_success_bapi1 = 'X'.
+    WRITE: / '✅ BAPI 1 executed successfully'.
+    WRITE: / '   Document:', p_docno.
+    WRITE: / '   Discount Amount:', gs_calculation-discount_amount, 'INR'.
   ELSE.
-    gv_success_flag = 'X'.
+    WRITE: / '❌ BAPI 1 failed'.
   ENDIF.
 
 ENDFORM.
 
 *&---------------------------------------------------------------------*
-*& End of Program
-*&---------------------------------------------------------------------*    ORDER BY kunnr, belnr, buzei.
-
-  IF lines( gt_bsid_data ) = 0.
-    MESSAGE 'No open items found for selection criteria' TYPE 'I'.
-    LEAVE PROGRAM.
-  ENDIF.
-
-ENDFORM.
-
+*& Form f_execute_bapi2
 *&---------------------------------------------------------------------*
-*& Form f_display_selection_screen
-*&---------------------------------------------------------------------*
-FORM f_display_selection_screen.
-  DATA: lo_alv TYPE REF TO cl_salv_table.
-
-  TRY.
-      cl_salv_table=>factory(
-        IMPORTING
-          r_salv_table = lo_alv
-        CHANGING
-          t_table      = gt_bsid_data ).
-
-      " Set ALV functions
-      lo_alv->get_functions( )->set_all( ).
-      
-      " Set selection column
-      lo_alv->get_columns( )->get_column( 'SELECTED' )->set_cell_type( 
-        if_salv_c_cell_type=>checkbox_hotspot ).
-      
-      " Set column texts
-      lo_alv->get_columns( )->get_column( 'BUKRS' )->set_long_text( 'Company Code' ).
-      lo_alv->get_columns( )->get_column( 'KUNNR' )->set_long_text( 'Customer' ).
-      lo_alv->get_columns( )->get_column( 'BELNR' )->set_long_text( 'Document' ).
-      lo_alv->get_columns( )->get_column( 'WRBTR' )->set_long_text( 'Amount' ).
-      lo_alv->get_columns( )->get_column( 'WAERS' )->set_long_text( 'Currency' ).
-
-      " Set event handler
-      SET HANDLER handle_user_command FOR lo_alv->get_event( ).
-      
-      " Add toolbar button
-      lo_alv->get_functions( )->add_function(
-        name     = 'CLEAR_ITEMS'
-        icon     = '@17@'
-        text     = 'Clear Selected Items'
-        tooltip  = 'Clear selected items against bank account'
-        position = if_salv_c_function_position=>right_of_salv_functions ).
-
-      lo_alv->display( ).
-
-    CATCH cx_salv_msg INTO DATA(lo_error).
-      MESSAGE lo_error->get_text( ) TYPE 'E'.
-  ENDTRY.
-
-ENDFORM.
-
-*&---------------------------------------------------------------------*
-*& Event Handler for ALV
-*&---------------------------------------------------------------------*
-CLASS lcl_event_handler DEFINITION.
-  PUBLIC SECTION.
-    METHODS: handle_user_command FOR EVENT added_function OF cl_salv_events
-               IMPORTING e_salv_function.
-ENDCLASS.
-
-CLASS lcl_event_handler IMPLEMENTATION.
-  METHOD handle_user_command.
-    CASE e_salv_function.
-      WHEN 'CLEAR_ITEMS'.
-        PERFORM f_process_clearing.
-    ENDCASE.
-  ENDMETHOD.
-ENDCLASS.
-
-DATA: go_event_handler TYPE REF TO lcl_event_handler.
-
-FORM handle_user_command FOR lo_alv->get_event( ).
-  CREATE OBJECT go_event_handler.
-ENDFORM.
-
-*&---------------------------------------------------------------------*
-*& Form f_process_clearing
-*&---------------------------------------------------------------------*
-FORM f_process_clearing.
-  DATA: lt_selected TYPE tt_bsid_data,
-        lv_total_amount TYPE wrbtr,
-        lv_answer TYPE char1.
-
-  " Get selected items
-  LOOP AT gt_bsid_data INTO DATA(ls_bsid) WHERE selected = 'X'.
-    APPEND ls_bsid TO lt_selected.
-    lv_total_amount = lv_total_amount + ls_bsid-wrbtr.
-  ENDLOOP.
-
-  IF lines( lt_selected ) = 0.
-    MESSAGE 'Please select at least one item for clearing' TYPE 'I'.
-    RETURN.
-  ENDIF.
-
-  " Confirmation dialog
-  CALL FUNCTION 'POPUP_TO_CONFIRM'
-    EXPORTING
-      titlebar              = 'Clearing Confirmation'
-      text_question         = |Clear { lines( lt_selected ) } items totaling { lv_total_amount } { p_waers }?|
-      text_button_1         = 'Yes'
-      text_button_2         = 'No'
-      default_button        = '2'
-    IMPORTING
-      answer                = lv_answer
-    EXCEPTIONS
-      text_not_found        = 1
-      OTHERS                = 2.
-
-  IF lv_answer = '1'.
-    " Prepare data and execute clearing
-    PERFORM f_prepare_clearing_data USING lt_selected lv_total_amount.
-    PERFORM f_execute_clearing.
-  ENDIF.
-
-ENDFORM.
-
-*&---------------------------------------------------------------------*
-*& Form f_prepare_clearing_data
-*&---------------------------------------------------------------------*
-FORM f_prepare_clearing_data USING lt_selected TYPE tt_bsid_data
-                                   lv_total_amount TYPE wrbtr.
-  DATA: ls_ftclear TYPE ftclear,
-        ls_ftpost  TYPE ftpost,
-        lv_counter TYPE i.
-
-  CLEAR: gt_ftclear[], gt_ftpost[].
-
-  " Prepare FTCLEAR entries for customer accounts
-  LOOP AT lt_selected INTO DATA(ls_selected).
-    lv_counter = lv_counter + 1.
-    
-    " Customer entry in FTCLEAR
-    CLEAR ls_ftclear.
-    ls_ftclear-agkoa = 'D'.                    " Account type: Customer
-    ls_ftclear-agkon = ls_selected-kunnr.      " Customer number
-    ls_ftclear-agbuk = ls_selected-bukrs.      " Company code
-    ls_ftclear-xnops = 'X'.                    " No posting indicator
-    ls_ftclear-selfd = |CUST{ lv_counter }|.   " Selection field
-    ls_ftclear-wrbtr = ls_selected-wrbtr * -1. " Amount (negative for debit)
-    ls_ftclear-dmbtr = ls_selected-dmbtr * -1. " Amount in local currency
-    ls_ftclear-waers = ls_selected-waers.      " Currency
-    ls_ftclear-zuonr = 'CLEARING'.             " Assignment number
-    
-    " Document reference for clearing
-    CONCATENATE ls_selected-belnr ls_selected-gjahr ls_selected-buzei
-      INTO ls_ftclear-selvon.
-    ls_ftclear-selbis = ls_selected-belnr.
-    
-    APPEND ls_ftclear TO gt_ftclear.
-
-    " Corresponding FTPOST entry for audit trail
-    CLEAR ls_ftpost.
-    ls_ftpost-stype  = 'K'.                   " Customer
-    ls_ftpost-count  = lv_counter.
-    ls_ftpost-fnam   = 'RF05A-KUNNR'.
-    ls_ftpost-fval   = ls_selected-kunnr.
-    APPEND ls_ftpost TO gt_ftpost.
-    
-    ls_ftpost-fnam   = 'BSEG-WRBTR'.
-    ls_ftpost-fval   = ls_selected-wrbtr * -1.
-    APPEND ls_ftpost TO gt_ftpost.
-    
-    ls_ftpost-fnam   = 'BSEG-SGTXT'.
-    ls_ftpost-fval   = 'Customer clearing'.
-    APPEND ls_ftpost TO gt_ftpost.
-  ENDLOOP.
-
-  " Add bank account entry
-  lv_counter = lv_counter + 1.
-  CLEAR ls_ftclear.
-  ls_ftclear-agkoa = 'S'.                      " Account type: G/L Account
-  ls_ftclear-agkon = p_bank.                   " Bank account
-  ls_ftclear-agbuk = p_bukrs.                  " Company code
-  ls_ftclear-xnops = 'X'.                      " No posting indicator
-  ls_ftclear-selfd = 'BANK'.                   " Selection field
-  ls_ftclear-wrbtr = lv_total_amount.          " Total amount (positive for credit)
-  ls_ftclear-dmbtr = lv_total_amount.          " Amount in local currency
-  ls_ftclear-waers = p_waers.                  " Currency
-  ls_ftclear-zuonr = 'CLEARING'.               " Assignment number
+FORM f_execute_bapi2.
+  " This would be your actual BAPI call for net amount storage
+  " Replace with your specific BAPI
   
-  APPEND ls_ftclear TO gt_ftclear.
-
-  " Bank account FTPOST entry
-  CLEAR ls_ftpost.
-  ls_ftpost-stype  = 'G'.                     " G/L Account
-  ls_ftpost-count  = lv_counter.
-  ls_ftpost-fnam   = 'RF05A-NEWKO'.
-  ls_ftpost-fval   = p_bank.
-  APPEND ls_ftpost TO gt_ftpost.
+  DATA: lt_return TYPE TABLE OF bapiret2.
   
-  ls_ftpost-fnam   = 'BSEG-WRBTR'.
-  ls_ftpost-fval   = lv_total_amount.
-  APPEND ls_ftpost TO gt_ftpost.
+  WRITE: / '📝 Executing BAPI 2 (Net Amount Storage)...'.
   
-  ls_ftpost-fnam   = 'BSEG-SGTXT'.
-  ls_ftpost-fval   = 'Bank clearing entry'.
-  APPEND ls_ftpost TO gt_ftpost.
-
-ENDFORM.
-
-*&---------------------------------------------------------------------*
-*& Form f_execute_clearing
-*&---------------------------------------------------------------------*
-FORM f_execute_clearing.
+  " Example BAPI call - replace with your actual BAPI  
+  " CALL FUNCTION 'BAPI_YOUR_NET_AMOUNT_STORE'
+  "   EXPORTING
+  "     document_number = p_docno
+  "     customer        = p_kunnr
+  "     net_amount      = gs_calculation-net_amount
+  "     original_amount = gs_calculation-original_amount
+  "     payment_date    = p_pay
+  "   TABLES
+  "     return          = lt_return.
   
-  " Step 1: Start posting interface
-  PERFORM f_posting_interface_start.
+  " Simulate successful call for demo
+  gv_success_bapi2 = 'X'.
   
-  IF gv_success_flag = 'X'.
-    " Step 2: Execute clearing
-    PERFORM f_posting_interface_clearing.
-    
-    IF gv_success_flag = 'X'.
-      " Step 3: End posting interface
-      PERFORM f_posting_interface_end.
-      
-      IF gv_success_flag = 'X'.
-        MESSAGE |Clearing successful! Document: { gv_clearing_doc }| TYPE 'S'.
-        " Refresh data
-        PERFORM f_fetch_open_items.
-      ENDIF.
-    ENDIF.
-  ENDIF.
-  
-ENDFORM.
-
-*&---------------------------------------------------------------------*
-*& Form f_posting_interface_start
-*&---------------------------------------------------------------------*
-FORM f_posting_interface_start.
-  
-  CALL FUNCTION 'POSTING_INTERFACE_START'
-    EXPORTING
-      i_function         = 'C'                 " Call transaction
-      i_mode             = COND #( WHEN p_test = 'X' THEN 'E' ELSE 'N' )
-      i_update           = 'S'                 " Synchronous update
-    EXCEPTIONS
-      client_incorrect   = 1
-      function_invalid   = 2
-      group_name_missing = 3
-      mode_invalid       = 4
-      update_invalid     = 5
-      OTHERS             = 6.
-
-  IF sy-subrc = 0.
-    gv_success_flag = 'X'.
+  IF gv_success_bapi2 = 'X'.
+    WRITE: / '✅ BAPI 2 executed successfully'.
+    WRITE: / '   Document:', p_docno.
+    WRITE: / '   Net Amount:', gs_calculation-net_amount, 'INR'.
   ELSE.
-    MESSAGE |Error in POSTING_INTERFACE_START: { sy-subrc }| TYPE 'E'.
-    gv_success_flag = ''.
+    WRITE: / '❌ BAPI 2 failed'.
   ENDIF.
 
 ENDFORM.
 
 *&---------------------------------------------------------------------*
-*& Form f_posting_interface_clearing
+*& Form f_display_bapi_results
 *&---------------------------------------------------------------------*
-FORM f_posting_interface_clearing.
+FORM f_display_bapi_results.
   
-  CALL FUNCTION 'POSTING_INTERFACE_CLEARING'
-    EXPORTING
-      i_auglv                    = '049'       " Clearing level
-      i_tcode                    = 'FB05'      " Transaction code
-      i_sgfunc                   = 'C'         " Function: Clear
-    IMPORTING
-      e_belnr                    = gv_clearing_doc
-    TABLES
-      ft_clear                   = gt_ftclear
-      ft_post                    = gt_ftpost
-    EXCEPTIONS
-      clearing_procedure_invalid = 1
-      clearing_procedure_unknown = 2
-      account_not_found          = 3
-      account_not_open           = 4
-      account_is_not_customer    = 5
-      account_is_not_vendor      = 6
-      posting_key_invalid        = 7
-      posting_key_not_found      = 8
-      record_exist               = 9
-      order_number_missing       = 10
-      OTHERS                     = 11.
-
-  IF sy-subrc = 0.
-    gv_success_flag = 'X'.
-    WRITE: / 'Clearing executed successfully.'.
-    WRITE: / 'Clearing document:', gv_clearing_doc.
-  ELSE.
-    MESSAGE |Error in POSTING_INTERFACE_CLEARING: { sy-subrc }| TYPE 'E'.
-    gv_success_flag = ''.
-    
-    " Additional error handling
-    CASE sy-subrc.
-      WHEN 1.
-        MESSAGE 'Clearing procedure invalid' TYPE 'E'.
-      WHEN 2.
-        MESSAGE 'Clearing procedure unknown' TYPE 'E'.
-      WHEN 3.
-        MESSAGE 'Account not found' TYPE 'E'.
-      WHEN 4.
-        MESSAGE 'Account not open for posting' TYPE 'E'.
-      WHEN OTHERS.
-        MESSAGE |Clearing error: { sy-subrc }| TYPE 'E'.
-    ENDCASE.
-  ENDIF.
-
-ENDFORM.
-
-*&---------------------------------------------------------------------*
-*& Form f_posting_interface_end
-*&---------------------------------------------------------------------*
-FORM f_posting_interface_end.
+  SKIP 1.
+  WRITE: / '📊 BAPI Processing Summary:'.
+  WRITE: / '=========================='.
   
-  CALL FUNCTION 'POSTING_INTERFACE_END'
-    EXCEPTIONS
-      session_not_processable = 1
-      OTHERS                  = 2.
-
-  IF sy-subrc = 0.
-    gv_success_flag = 'X'.
-    IF p_test = ''.
-      COMMIT WORK.
-    ENDIF.
+  IF gv_success_bapi1 = 'X'.
+    WRITE: / 'BAPI 1 (Discount)   : ✅ SUCCESS'.
   ELSE.
-    MESSAGE |Error in POSTING_INTERFACE_END: { sy-subrc }| TYPE 'E'.
-    gv_success_flag = ''.
-    ROLLBACK WORK.
+    WRITE: / 'BAPI 1 (Discount)   : ❌ FAILED'.
   ENDIF.
-
-ENDFORM.
-
-*&---------------------------------------------------------------------*
-*& Form f_validate_clearing_data
-*&---------------------------------------------------------------------*
-FORM f_validate_clearing_data.
-  DATA: lv_total_debit  TYPE wrbtr,
-        lv_total_credit TYPE wrbtr.
-
-  " Validate that debits and credits balance
-  LOOP AT gt_ftclear INTO DATA(ls_clear).
-    IF ls_clear-wrbtr > 0.
-      lv_total_credit = lv_total_credit + ls_clear-wrbtr.
+  
+  IF p_both = 'X'.
+    IF gv_success_bapi2 = 'X'.
+      WRITE: / 'BAPI 2 (Net Amount) : ✅ SUCCESS'.
     ELSE.
-      lv_total_debit = lv_total_debit + ( ls_clear-wrbtr * -1 ).
+      WRITE: / 'BAPI 2 (Net Amount) : ❌ FAILED'.
     ENDIF.
-  ENDLOOP.
-
-  IF lv_total_debit <> lv_total_credit.
-    MESSAGE 'Clearing amounts do not balance' TYPE 'E'.
-    gv_success_flag = ''.
   ELSE.
-    gv_success_flag = 'X'.
+    WRITE: / 'BAPI 2 (Net Amount) : ⏭️ SKIPPED'.
+  ENDIF.
+  
+  SKIP 1.
+  WRITE: / '💾 Data processed:'.
+  WRITE: / '  Discount stored   :', gs_calculation-discount_amount, 'INR'.
+  IF p_both = 'X'.
+    WRITE: / '  Net amount stored :', gs_calculation-net_amount, 'INR'.
   ENDIF.
 
 ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& User Commands (for interactive testing)
+*&---------------------------------------------------------------------*
+AT USER-COMMAND.
+  CASE sy-ucomm.
+    WHEN 'RECALC'.
+      " Recalculate with new parameters
+      PERFORM f_calculate_discount.
+      PERFORM f_display_calculation.
+    WHEN 'PROCESS'.
+      " Process BAPIs
+      IF p_test = ''.
+        PERFORM f_process_bapis.
+      ELSE.
+        PERFORM f_simulate_bapis.
+      ENDIF.
+  ENDCASE.
+
+*&---------------------------------------------------------------------*
+*& Text Elements
+*&---------------------------------------------------------------------*
+* TEXT-001: Input Parameters
+* TEXT-002: Processing Options
 
 *&---------------------------------------------------------------------*
 *& End of Program
