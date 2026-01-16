@@ -1,36 +1,74 @@
-*   VALIDATION: Check ZZPORT constraints (LOG ONLY - NO INTERRUPTION)
-IF lv_zzport IS INITIAL.
-* Log: Port not found - but continue processing
-  ls_log-type = 'W'.
-  ls_log-message = |Port not found for: { lv_pod_desc } - continuing with blank port|.
+*BOC UJWAL-- 13.01.2026. Port lookup with POD mismatch validation
+* Read ZE11 text and lookup ZZPORT
+CLEAR: lt_tlines_ze11, lv_zzport, lv_pod_desc, lv_tdname_ze11, lv_dummy.
+lv_tdname_ze11 = ls_vbak-vbeln.
+CONDENSE lv_tdname_ze11.
+
+CALL FUNCTION 'READ_TEXT'
+  EXPORTING
+    client   = sy-mandt
+    id       = 'ZE11'
+    language = 'E'
+    name     = lv_tdname_ze11
+    object   = 'VBBK'
+  TABLES
+    lines    = lt_tlines_ze11
+  EXCEPTIONS
+    OTHERS   = 8.
+
+IF sy-subrc = 0.
+  READ TABLE lt_tlines_ze11 INTO ls_tlines_ze11 INDEX 1.
+  IF sy-subrc = 0 AND ls_tlines_ze11-tdline IS NOT INITIAL.
+*   Extract port name for ZZPORT lookup
+    IF ls_tlines_ze11-tdline CS ','.
+      SPLIT ls_tlines_ze11-tdline AT ',' INTO lv_pod_desc lv_dummy.
+    ELSE.
+      lv_pod_desc = ls_tlines_ze11-tdline.
+    ENDIF.
+    CONDENSE lv_pod_desc.
+    TRANSLATE lv_pod_desc TO UPPER CASE.
+
+*   Lookup ZPPRT_EWM
+    SELECT SINGLE zzport
+      FROM zpprt_ewm
+      WHERE UPPER(zzportdesc) = @lv_pod_desc
+      INTO @lv_zzport.
+
+*   CRITICAL VALIDATION: POD Mismatch Check (HARD STOP)
+    IF lv_zzport IS INITIAL.
+*     Show popup message
+      MESSAGE 'POD Mismatch' TYPE 'E' DISPLAY LIKE 'E'.
+      
+*     Log the error  
+      ls_log-type = 'E'.
+      ls_log-message = |POD Mismatch - Port { lv_pod_desc } not found in ZPPRT_EWM table|.
+      ls_log-vbeln = ls_vbak-vbeln.
+      APPEND ls_log TO lt_log.
+      
+*     Skip this quotation - DO NOT create sales order
+      CONTINUE.
+    ENDIF.
+
+  ELSE.
+*   ZE11 text is blank
+    MESSAGE 'POD Mismatch - ZE11 text is blank' TYPE 'E' DISPLAY LIKE 'E'.
+    ls_log-type = 'E'.
+    ls_log-message = 'POD Mismatch - ZE11 text is blank'.
+    ls_log-vbeln = ls_vbak-vbeln.
+    APPEND ls_log TO lt_log.
+    CONTINUE.
+  ENDIF.
+ELSE.
+* ZE11 text not found
+  MESSAGE 'POD Mismatch - ZE11 text not found' TYPE 'E' DISPLAY LIKE 'E'.
+  ls_log-type = 'E'.
+  ls_log-message = 'POD Mismatch - ZE11 text not found'.
   ls_log-vbeln = ls_vbak-vbeln.
   APPEND ls_log TO lt_log.
-  " Continue processing with blank port
-ELSE.
-*   Check up to 10 characters constraint
-  DATA: lv_port_length TYPE i.
-  lv_port_length = strlen( lv_zzport ).
-
-  IF lv_port_length GT 10.
-*   Log: Port exceeds limit - but continue processing
-    ls_log-type = 'W'.
-    ls_log-message = |Port { lv_zzport } exceeds 10 character limit (Length: { lv_port_length }) - using as-is|.
-    ls_log-vbeln = ls_vbak-vbeln.
-    APPEND ls_log TO lt_log.
-    " Continue with the port value as-is
-  ENDIF.
-
-*   Check alpha-numeric characters only
-  IF lv_zzport CN 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.
-*   Log: Invalid characters - but continue processing  
-    ls_log-type = 'W'.
-    ls_log-message = |Port { lv_zzport } contains non-alpha-numeric characters - using as-is|.
-    ls_log-vbeln = ls_vbak-vbeln.
-    APPEND ls_log TO lt_log.
-    " Continue with the port value as-is
-  ENDIF.
+  CONTINUE.
 ENDIF.
 
-* Always proceed with sales order creation (regardless of validation results)
-ls_vbakkoz-zzport = lv_zzport.      " Use whatever port value we have (could be blank)
-ls_vbak_bape-zzport = lv_zzport.    " Use whatever port value we have (could be blank)
+* Proceed with sales order creation (port found successfully)
+ls_vbakkoz-zzport = lv_zzport.
+ls_vbak_bape-zzport = lv_zzport.
+*EOC UJWAL-- 13.01.2026.
