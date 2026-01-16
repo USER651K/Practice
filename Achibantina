@@ -1,0 +1,32 @@
+*   VALIDATION: Check ZZPORT constraints
+IF lv_zzport IS INITIAL.
+* Error: Port not found
+  ls_log-type = 'E'.
+  ls_log-message = |Port not found for: { lv_pod_desc }|.
+  ls_log-vbeln = ls_vbak-vbeln.
+  APPEND ls_log TO lt_log.
+  CONTINUE.  " Skip this quotation
+ENDIF.
+
+*   VALIDATION: Check up to 10 characters constraint
+DATA: lv_port_length TYPE i.
+lv_port_length = strlen( lv_zzport ).
+
+IF lv_port_length GT 10.
+* Error: Port exceeds 10 character limit
+  ls_log-type = 'E'.
+  ls_log-message = |Port { lv_zzport } exceeds 10 character limit. Current length: { lv_port_length }|.
+  ls_log-vbeln = ls_vbak-vbeln.
+  APPEND ls_log TO lt_log.
+  CONTINUE.  " Skip this quotation
+ENDIF.
+
+*   VALIDATION: Check alpha-numeric characters only (optional - if needed)
+IF lv_zzport CN 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.
+* Error: Port contains invalid characters
+  ls_log-type = 'E'.
+  ls_log-message = |Port { lv_zzport } contains invalid characters. Only alpha-numeric allowed|.
+  ls_log-vbeln = ls_vbak-vbeln.
+  APPEND ls_log TO lt_log.
+  CONTINUE.  " Skip this quotation
+ENDIF.
