@@ -1,4 +1,4 @@
-*&---------------------------------------------------------------------*
+7*&---------------------------------------------------------------------*
 *& Form CALCULATE_APPLICABLE_CD
 *& New Logic as per requirements
 *&---------------------------------------------------------------------*
@@ -393,3 +393,109 @@ FORM build_fieldcat.
   APPEND gs_fieldcat TO gt_fieldcat.
 
 ENDFORM.
+
+
+
+
+
+
+METHOD on_data_changed.
+
+    DATA: ls_mod_cell TYPE lvc_s_modi,
+          ls_credit   TYPE ty_credit,
+          lt_celltab  TYPE lvc_t_styl,
+          ls_celltab  TYPE lvc_s_styl,
+          lv_tabix    TYPE sy-tabix,
+          lv_value    TYPE char1,
+          ls_stable   TYPE lvc_s_stbl,
+          lv_new_amt  TYPE bsik-wrbtr.
+
+    " Loop through all modified cells
+    LOOP AT er_data_changed->mt_mod_cells INTO ls_mod_cell.
+
+      lv_tabix = ls_mod_cell-row_id.
+      READ TABLE gt_credit INTO ls_credit INDEX lv_tabix.
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+
+      CASE ls_mod_cell-fieldname.
+
+        WHEN 'MANUAL_EDIT'.
+          " Handle MANUAL_EDIT checkbox change
+          lv_value = ls_mod_cell-value.
+          ls_credit-manual_edit = lv_value.
+
+          " Rebuild cell style table
+          CLEAR lt_celltab.
+          REFRESH lt_celltab.
+
+          " PAYMENT_AMT style
+          CLEAR ls_celltab.
+          ls_celltab-fieldname = 'PAYMENT_AMT'.
+          IF lv_value = 'X'.
+            ls_celltab-style = cl_gui_alv_grid=>mc_style_enabled.
+          ELSE.
+            ls_celltab-style = cl_gui_alv_grid=>mc_style_disabled.
+          ENDIF.
+          APPEND ls_celltab TO lt_celltab.
+
+          " Keep CHECKMARK disabled if no CD applicable or already posted
+          IF ls_credit-applicable_cd_amt <= 0 OR ls_credit-posted = 'X'.
+            CLEAR ls_celltab.
+            ls_celltab-fieldname = 'CHECKMARK'.
+            ls_celltab-style     = cl_gui_alv_grid=>mc_style_disabled.
+            APPEND ls_celltab TO lt_celltab.
+          ENDIF.
+
+          " Keep MANUAL_EDIT disabled if already posted
+          IF ls_credit-posted = 'X'.
+            CLEAR ls_celltab.
+            ls_celltab-fieldname = 'MANUAL_EDIT'.
+            ls_celltab-style     = cl_gui_alv_grid=>mc_style_disabled.
+            APPEND ls_celltab TO lt_celltab.
+          ENDIF.
+
+          ls_credit-celltab = lt_celltab.
+          MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+
+        WHEN 'CHECKMARK'.
+          " Handle CHECKMARK checkbox change
+          ls_credit-checkmark = ls_mod_cell-value.
+          MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+
+        WHEN 'PAYMENT_AMT'.
+          " Handle PAYMENT_AMT change - Recalculate Applicable CD Amount
+          lv_new_amt = ls_mod_cell-value.
+          ls_credit-payment_amt = lv_new_amt.
+
+          " Recalculate Applicable CD Amount based on new Payment Amount
+          PERFORM calculate_applicable_cd_dynamic
+            USING    ls_credit-zfbdt
+                     ls_credit-cd_days
+                     ls_credit-grace_days
+                     ls_credit-cd_pct
+                     lv_new_amt
+                     ls_credit-net_days
+            CHANGING ls_credit-applicable_cd_pct
+                     ls_credit-applicable_cd_amt.
+
+          MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+
+      ENDCASE.
+
+    ENDLOOP.
+
+    " Refresh ALV Display
+    IF go_alv_grid IS NOT INITIAL.
+      ls_stable-row = 'X'.
+      ls_stable-col = 'X'.
+      CALL METHOD go_alv_grid->refresh_table_display
+        EXPORTING
+          is_stable = ls_stable
+        EXCEPTIONS
+          finished  = 1
+          OTHERS    = 2.
+    ENDIF.
+
+  ENDMETHOD.
