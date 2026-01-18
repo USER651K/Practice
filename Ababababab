@@ -1,0 +1,55 @@
+*&---------------------------------------------------------------------*
+*& Form CALCULATE_APPLICABLE_CD
+*& New Logic as per requirements
+*&---------------------------------------------------------------------*
+FORM calculate_applicable_cd USING p_zfbdt      TYPE bsik-zfbdt
+                                   p_cd_days    TYPE zfi_vendcd_term-cd_days
+                                   p_grace_days TYPE zfi_vendcd_term-grace_days
+                                   p_cd_pct     TYPE zfi_vendcd_term-cd_percent
+                                   p_cd_pct2    TYPE zfi_vendcd_term-cd_percent
+                                   p_amount     TYPE bsik-wrbtr
+                                   p_net_days   TYPE zfi_vendcd_term-net_days
+                          CHANGING p_cd_pct_out TYPE p
+                                   p_cd_amt     TYPE bsik-wrbtr.
+
+  DATA: lv_days TYPE i.
+
+  CLEAR: p_cd_pct_out, p_cd_amt.
+
+  " Calculate days from baseline date
+  lv_days = sy-datum - p_zfbdt.
+
+  " Logic:
+  " 1. If Days <= Grace Days: CD Amt = Amount × CD% / 100
+  " 2. If Days > Grace Days AND Days <= CD Days: CD Amt = Amount × Days / Net Days
+  " 3. If Days > CD Days: CD Amt = 0
+
+  IF lv_days <= p_grace_days AND p_grace_days IS NOT INITIAL.
+    " Within grace period - full CD applicable
+    p_cd_pct_out = p_cd_pct.
+    IF p_cd_pct > 0.
+      p_cd_amt = ( p_amount * p_cd_pct ) / 100.
+    ELSE.
+      p_cd_amt = 0.
+    ENDIF.
+
+  ELSEIF lv_days > p_grace_days AND lv_days <= p_cd_days AND p_cd_days IS NOT INITIAL.
+    " Between grace days and CD days - proportional calculation
+    IF p_net_days IS NOT INITIAL AND p_net_days > 0.
+      p_cd_amt = ( p_amount * lv_days ) / p_net_days.
+    ELSE.
+      " Fallback: use CD days if net days not available
+      p_cd_amt = ( p_amount * lv_days ) / p_cd_days.
+    ENDIF.
+    " Calculate effective percentage
+    IF p_amount > 0.
+      p_cd_pct_out = ( p_cd_amt / p_amount ) * 100.
+    ENDIF.
+
+  ELSE.
+    " Days > CD Days - No CD applicable
+    p_cd_pct_out = 0.
+    p_cd_amt = 0.
+  ENDIF.
+
+ENDFORM.
