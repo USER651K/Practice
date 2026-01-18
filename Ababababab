@@ -94,3 +94,302 @@ ENDFORM.
     ENDIF.
 
     gs_credit-celltab = lt_cellstyle.
+
+
+
+
+
+
+
+FORM build_fieldcat.
+
+  CLEAR gt_fieldcat.
+  REFRESH gt_fieldcat.
+
+  " CHECKMARK - Editable Checkbox (ONLY this is editable by default)
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'CHECKMARK'.
+  gs_fieldcat-coltext   = 'Select'.
+  gs_fieldcat-scrtext_s = 'Sel'.
+  gs_fieldcat-scrtext_m = 'Select'.
+  gs_fieldcat-scrtext_l = 'Select'.
+  gs_fieldcat-checkbox  = 'X'.
+  gs_fieldcat-edit      = 'X'.
+  gs_fieldcat-outputlen = 5.
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " MANUAL_EDIT - Editable Checkbox
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'MANUAL_EDIT'.
+  gs_fieldcat-coltext   = 'Manual Edit'.
+  gs_fieldcat-scrtext_s = 'ManEdit'.
+  gs_fieldcat-scrtext_m = 'Manual Edit'.
+  gs_fieldcat-scrtext_l = 'Manual Edit'.
+  gs_fieldcat-checkbox  = 'X'.
+  gs_fieldcat-edit      = 'X'.
+  gs_fieldcat-outputlen = 6.
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " POSTED - HIDDEN
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'POSTED'.
+  gs_fieldcat-coltext   = 'Posted'.
+  gs_fieldcat-no_out    = 'X'.   " HIDDEN
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " POST_DOC_NO - HIDDEN
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'POST_DOC_NO'.
+  gs_fieldcat-coltext   = 'Posted Doc'.
+  gs_fieldcat-no_out    = 'X'.   " HIDDEN
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " POST_MESSAGE - HIDDEN
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'POST_MESSAGE'.
+  gs_fieldcat-coltext   = 'Status'.
+  gs_fieldcat-no_out    = 'X'.   " HIDDEN
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " BUKRS
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'BUKRS'.
+  gs_fieldcat-coltext   = 'Company Code'.
+  gs_fieldcat-scrtext_s = 'Co.Code'.
+  gs_fieldcat-scrtext_m = 'Company Code'.
+  gs_fieldcat-scrtext_l = 'Company Code'.
+  gs_fieldcat-key       = 'X'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " ZP2PDEMANDI
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'ZP2PDEMANDI'.
+  gs_fieldcat-coltext   = 'Mandi'.
+  gs_fieldcat-scrtext_s = 'Mandi'.
+  gs_fieldcat-scrtext_m = 'Mandi'.
+  gs_fieldcat-scrtext_l = 'Mandi'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " LIFNR
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'LIFNR'.
+  gs_fieldcat-coltext   = 'Vendor Code'.
+  gs_fieldcat-scrtext_s = 'Vendor'.
+  gs_fieldcat-scrtext_m = 'Vendor Code'.
+  gs_fieldcat-scrtext_l = 'Vendor Code'.
+  gs_fieldcat-key       = 'X'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " VENDOR_NAME
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'VENDOR_NAME'.
+  gs_fieldcat-coltext   = 'Vendor Name'.
+  gs_fieldcat-scrtext_s = 'Vend.Name'.
+  gs_fieldcat-scrtext_m = 'Vendor Name'.
+  gs_fieldcat-scrtext_l = 'Vendor Name'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " BELNR
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'BELNR'.
+  gs_fieldcat-coltext   = 'Document No'.
+  gs_fieldcat-scrtext_s = 'Doc.No'.
+  gs_fieldcat-scrtext_m = 'Document No'.
+  gs_fieldcat-scrtext_l = 'Document Number'.
+  gs_fieldcat-key       = 'X'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " TR_NO - NEW FIELD (after Document No)
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'TR_NO'.
+  gs_fieldcat-coltext   = 'TR No'.
+  gs_fieldcat-scrtext_s = 'TR No'.
+  gs_fieldcat-scrtext_m = 'TR Number'.
+  gs_fieldcat-scrtext_l = 'Transaction Number'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " BUDAT
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'BUDAT'.
+  gs_fieldcat-coltext   = 'Posting Date'.
+  gs_fieldcat-scrtext_s = 'Pst.Date'.
+  gs_fieldcat-scrtext_m = 'Posting Date'.
+  gs_fieldcat-scrtext_l = 'Posting Date'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " BLDAT
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'BLDAT'.
+  gs_fieldcat-coltext   = 'Document Date'.
+  gs_fieldcat-scrtext_s = 'Doc.Date'.
+  gs_fieldcat-scrtext_m = 'Document Date'.
+  gs_fieldcat-scrtext_l = 'Document Date'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " GSBER
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'GSBER'.
+  gs_fieldcat-coltext   = 'Business Area'.
+  gs_fieldcat-scrtext_s = 'Bus.Area'.
+  gs_fieldcat-scrtext_m = 'Business Area'.
+  gs_fieldcat-scrtext_l = 'Business Area'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " WAERS
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'WAERS'.
+  gs_fieldcat-coltext   = 'Currency'.
+  gs_fieldcat-scrtext_s = 'Curr'.
+  gs_fieldcat-scrtext_m = 'Currency'.
+  gs_fieldcat-scrtext_l = 'Currency'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " WRBTR
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname  = 'WRBTR'.
+  gs_fieldcat-coltext    = 'Document Amount'.
+  gs_fieldcat-scrtext_s  = 'Doc.Amt'.
+  gs_fieldcat-scrtext_m  = 'Document Amount'.
+  gs_fieldcat-scrtext_l  = 'Document Amount'.
+  gs_fieldcat-datatype   = 'CURR'.
+  gs_fieldcat-cfieldname = 'WAERS'.
+  gs_fieldcat-edit       = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " SKFBT
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname  = 'SKFBT'.
+  gs_fieldcat-coltext    = 'CD Base'.
+  gs_fieldcat-scrtext_s  = 'CD Base'.
+  gs_fieldcat-scrtext_m  = 'CD Base'.
+  gs_fieldcat-scrtext_l  = 'Cash Discount Base'.
+  gs_fieldcat-datatype   = 'CURR'.
+  gs_fieldcat-cfieldname = 'WAERS'.
+  gs_fieldcat-edit       = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " PAYMENT_AMT - Conditionally Editable via CELLTAB
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname  = 'PAYMENT_AMT'.
+  gs_fieldcat-coltext    = 'Payment Amount'.
+  gs_fieldcat-scrtext_s  = 'Pmnt Amt'.
+  gs_fieldcat-scrtext_m  = 'Payment Amount'.
+  gs_fieldcat-scrtext_l  = 'Payment Amount'.
+  gs_fieldcat-datatype   = 'CURR'.
+  gs_fieldcat-cfieldname = 'WAERS'.
+  gs_fieldcat-edit       = 'X'.   " Editable flag needed for CELLTAB to work
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " CD_PCT
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'CD_PCT'.
+  gs_fieldcat-coltext   = 'CD%'.
+  gs_fieldcat-scrtext_s = 'CD%'.
+  gs_fieldcat-scrtext_m = 'CD%'.
+  gs_fieldcat-scrtext_l = 'Cash Discount Percent'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " CD_DAYS
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'CD_DAYS'.
+  gs_fieldcat-coltext   = 'CD Days'.
+  gs_fieldcat-scrtext_s = 'CD Days'.
+  gs_fieldcat-scrtext_m = 'CD Days'.
+  gs_fieldcat-scrtext_l = 'Cash Discount Days'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " GRACE_DAYS
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'GRACE_DAYS'.
+  gs_fieldcat-coltext   = 'Grace Days'.
+  gs_fieldcat-scrtext_s = 'Grace'.
+  gs_fieldcat-scrtext_m = 'Grace Days'.
+  gs_fieldcat-scrtext_l = 'Grace Days'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " NET_DAYS
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'NET_DAYS'.
+  gs_fieldcat-coltext   = 'Net Days'.
+  gs_fieldcat-scrtext_s = 'Net'.
+  gs_fieldcat-scrtext_m = 'Net Days'.
+  gs_fieldcat-scrtext_l = 'Net Days'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " APPLICABLE_CD_PCT
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'APPLICABLE_CD_PCT'.
+  gs_fieldcat-coltext   = 'Applicable CD %'.
+  gs_fieldcat-scrtext_s = 'Appl.CD%'.
+  gs_fieldcat-scrtext_m = 'Applicable CD %'.
+  gs_fieldcat-scrtext_l = 'Applicable CD %'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " APPLICABLE_CD_AMT
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname  = 'APPLICABLE_CD_AMT'.
+  gs_fieldcat-coltext    = 'Applicable CD Amt'.
+  gs_fieldcat-scrtext_s  = 'Appl.CD'.
+  gs_fieldcat-scrtext_m  = 'Applicable CD Amt'.
+  gs_fieldcat-scrtext_l  = 'Applicable CD Amount'.
+  gs_fieldcat-datatype   = 'CURR'.
+  gs_fieldcat-cfieldname = 'WAERS'.
+  gs_fieldcat-edit       = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " ZFBDT
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'ZFBDT'.
+  gs_fieldcat-coltext   = 'Baseline Date'.
+  gs_fieldcat-scrtext_s = 'Base Date'.
+  gs_fieldcat-scrtext_m = 'Baseline Date'.
+  gs_fieldcat-scrtext_l = 'Baseline Date'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " PAYMENT_DUE_DATE
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'PAYMENT_DUE_DATE'.
+  gs_fieldcat-coltext   = 'Due Date'.
+  gs_fieldcat-scrtext_s = 'Due Date'.
+  gs_fieldcat-scrtext_m = 'Payment Due Date'.
+  gs_fieldcat-scrtext_l = 'Payment Due Date'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " ZFBDT_DAYS
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'ZFBDT_DAYS'.
+  gs_fieldcat-coltext   = 'Days'.
+  gs_fieldcat-scrtext_s = 'Days'.
+  gs_fieldcat-scrtext_m = 'No. of Days'.
+  gs_fieldcat-scrtext_l = 'Number of Days'.
+  gs_fieldcat-edit      = ' '.   " NOT editable
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " HKONT - Hidden
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname = 'HKONT'.
+  gs_fieldcat-coltext   = 'G/L Account'.
+  gs_fieldcat-scrtext_s = 'G/L Acct'.
+  gs_fieldcat-scrtext_m = 'G/L Account'.
+  gs_fieldcat-scrtext_l = 'G/L Account'.
+  gs_fieldcat-no_out    = 'X'.   " HIDDEN
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+ENDFORM.
