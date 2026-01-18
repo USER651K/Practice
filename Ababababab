@@ -53,3 +53,44 @@ FORM calculate_applicable_cd USING p_zfbdt      TYPE bsik-zfbdt
   ENDIF.
 
 ENDFORM.
+
+
+
+
+
+
+" Initialize Cell Styles
+    CLEAR lt_cellstyle.
+    REFRESH lt_cellstyle.
+
+    " PAYMENT_AMT - Disabled by default (enabled only via MANUAL_EDIT)
+    CLEAR ls_cellstyle.
+    ls_cellstyle-fieldname = 'PAYMENT_AMT'.
+    ls_cellstyle-style     = cl_gui_alv_grid=>mc_style_disabled.
+    INSERT ls_cellstyle INTO TABLE lt_cellstyle.
+
+    " MANUAL_EDIT - Always enabled (unless posted)
+    " No need to add - it's editable by field catalog
+
+    " If Applicable CD Amount = 0 (Days > CD Days), disable CHECKMARK
+    IF gs_credit-applicable_cd_amt <= 0 OR gs_credit-applicable_cd_amt IS INITIAL.
+      CLEAR ls_cellstyle.
+      ls_cellstyle-fieldname = 'CHECKMARK'.
+      ls_cellstyle-style     = cl_gui_alv_grid=>mc_style_disabled.
+      INSERT ls_cellstyle INTO TABLE lt_cellstyle.
+    ENDIF.
+
+    " If already posted, disable CHECKMARK and MANUAL_EDIT
+    IF gs_credit-posted = 'X'.
+      CLEAR ls_cellstyle.
+      ls_cellstyle-fieldname = 'CHECKMARK'.
+      ls_cellstyle-style     = cl_gui_alv_grid=>mc_style_disabled.
+      INSERT ls_cellstyle INTO TABLE lt_cellstyle.
+
+      CLEAR ls_cellstyle.
+      ls_cellstyle-fieldname = 'MANUAL_EDIT'.
+      ls_cellstyle-style     = cl_gui_alv_grid=>mc_style_disabled.
+      INSERT ls_cellstyle INTO TABLE lt_cellstyle.
+    ENDIF.
+
+    gs_credit-celltab = lt_cellstyle.
