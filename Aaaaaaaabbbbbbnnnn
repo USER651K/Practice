@@ -1,4 +1,4 @@
-TYPES: BEGIN OF ty_credit,
+6TYPES: BEGIN OF ty_credit,
          " ... existing fields ...
          
          " NEW FIELDS for Payment Calculation
@@ -233,6 +233,85 @@ ENDFORM.
   APPEND gs_fieldcat TO gt_fieldcat.
 
 
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form CALCULATE_FINAL_PAYMENT
+*&---------------------------------------------------------------------*
+FORM calculate_final_payment
+  USING    p_wrbtr    TYPE bsik-wrbtr
+           p_tr_no    TYPE char10
+           p_bukrs    TYPE bukrs
+           p_belnr    TYPE belnr_d
+           p_gjahr    TYPE gjahr
+  CHANGING p_amt_a    TYPE bsik-wrbtr
+           p_amt_b    TYPE bsik-wrbtr
+           p_amt_c    TYPE bsik-wrbtr
+           p_payment  TYPE bsik-wrbtr.
+
+  DATA: lv_sum_b    TYPE bsik-wrbtr,
+        lv_sum_c    TYPE bsik-wrbtr,
+        lv_line_amt TYPE bsik-wrbtr,
+        lv_diff     TYPE bsik-wrbtr.      " <-- RENAMED from lv_rseg_diff
+
+  FIELD-SYMBOLS: <fs_truck>   TYPE ty_truck_calc,
+                 <fs_bseg_po> TYPE ty_bseg_po,
+                 <fs_rseg>    TYPE ty_rseg.
+
+  CLEAR: p_amt_a, p_amt_b, p_amt_c, p_payment, lv_sum_b, lv_sum_c.
+
+  "------------------------------------------------------------
+  " A = Document Amount (WRBTR from BSIK)
+  "------------------------------------------------------------
+  p_amt_a = p_wrbtr.
+
+  "------------------------------------------------------------
+  " B = Sum of (Price_SC × Bags_SC) from ZP2PTTRUCK
+  "------------------------------------------------------------
+  LOOP AT gt_truck_calc ASSIGNING <fs_truck>
+    WHERE zp2pdetrno = p_tr_no.
+    
+    lv_line_amt = <fs_truck>-price_sc * <fs_truck>-bags_sc.
+    lv_sum_b = lv_sum_b + lv_line_amt.
+  ENDLOOP.
+  
+  p_amt_b = lv_sum_b.
+
+  "------------------------------------------------------------
+  " C = Sum of (RBWWR - WRBTR) from RSEG
+  "------------------------------------------------------------
+  LOOP AT gt_bseg_po ASSIGNING <fs_bseg_po>
+    WHERE bukrs = p_bukrs
+      AND belnr = p_belnr
+      AND gjahr = p_gjahr.
+
+    LOOP AT gt_rseg ASSIGNING <fs_rseg>
+      WHERE ebeln = <fs_bseg_po>-ebeln
+        AND ebelp = <fs_bseg_po>-ebelp.
+      
+      IF <fs_rseg>-lfbnr IS NOT INITIAL.
+        lv_diff = <fs_rseg>-rbwwr - <fs_rseg>-wrbtr.
+        lv_sum_c = lv_sum_c + lv_diff.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+  
+  p_amt_c = lv_sum_c.
+
+  "------------------------------------------------------------
+  " Final Payment Amount = A - B - C
+  "------------------------------------------------------------
+  p_payment = p_amt_a - p_amt_b - p_amt_c.
+
+  IF p_payment < 0.
+    p_payment = 0.
+  ENDIF.
+
+ENDFORM.
 
 
 
