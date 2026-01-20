@@ -498,3 +498,63 @@ FORM zcont_type_before_save.
   ENDIF.
 
 ENDFORM.
+
+
+
+
+
+
+
+*----------------------------------------------------------------------*
+* Event 19 - Before Save Validation for ZCONT_TYPE
+*----------------------------------------------------------------------*
+FORM zcont_type_before_save.
+  DATA: lv_container_type TYPE zcont_type-zonttype,
+        lv_count_ewm      TYPE i,
+        lv_count_type     TYPE i.
+
+* Loop through TOTAL table (contains action flag)
+  LOOP AT total.
+    " Check action flag from total table structure
+    " <action> contains: 'N' = New, 'U' = Update, 'D' = Delete, ' ' = Unchanged
+    IF <action> <> 'D' AND <action> <> space.  " New or Modified entries
+      
+      " Get the container type value
+      ASSIGN COMPONENT 'ZONTTYPE' OF STRUCTURE <vim_total_struc> TO FIELD-SYMBOL(<lv_zonttype>).
+      IF <lv_zonttype> IS ASSIGNED.
+        lv_container_type = <lv_zonttype>.
+      ENDIF.
+      
+      " Validation 1: Check for blank/initial values
+      IF lv_container_type IS INITIAL.
+        MESSAGE e002(zcustom) WITH 'Container Type cannot be blank'.
+      ENDIF.
+      
+      " Validation 2: Check if container type exists in ZCONT_EWM
+      SELECT COUNT(*)
+        FROM zcont_ewm
+        INTO lv_count_ewm
+        WHERE zzcont = lv_container_type.
+      
+      IF lv_count_ewm = 0.
+        MESSAGE e001(zcustom) WITH 'Container Type' lv_container_type 'not found in ZCONT_EWM master table'.
+      ENDIF.
+      
+      CLEAR lv_container_type.
+      
+    ENDIF.
+  ENDLOOP.
+
+* Validation 3: Ensure table is not completely empty after save
+  lv_count_type = 0.
+  LOOP AT total.
+    IF <action> <> 'D'.  " Count non-deleted entries
+      lv_count_type = lv_count_type + 1.
+    ENDIF.
+  ENDLOOP.
+  
+  IF lv_count_type = 0.
+    MESSAGE e003(zcustom) WITH 'ZCONT_TYPE table cannot be empty - at least one record required'.
+  ENDIF.
+  
+ENDFORM.
