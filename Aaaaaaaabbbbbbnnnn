@@ -328,3 +328,24 @@ IF lv_zonttype IS INITIAL.
         ENDIF.
 
 
+
+CLEAR lv_zonttype.
+SELECT SINGLE zonttype
+  FROM zcont_type
+  INTO lv_zonttype.
+
+* CRITICAL VALIDATION: Container Type Check (HARD STOP)
+IF lv_zonttype IS INITIAL.
+* Show popup message
+  MESSAGE 'Container Type not found in ZCONT_TYPE table' TYPE 'E' DISPLAY LIKE 'E'.
+  
+* Log the error  
+  ls_log-type = 'E'.
+  ls_log-message = 'Container Type missing - ZCONT_TYPE table is empty or no data found'.
+  ls_log-vbeln = ls_vbak-vbeln.
+  APPEND ls_log TO lt_log.
+  
+* Skip this quotation - DO NOT create sales order
+  CONTINUE.
+ENDIF.
+
