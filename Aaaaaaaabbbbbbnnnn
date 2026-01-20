@@ -349,3 +349,39 @@ IF lv_zonttype IS INITIAL.
   CONTINUE.
 ENDIF.
 
+
+
+
+
+*----------------------------------------------------------------------*
+* Event 01 - Before Save Individual Entry
+*----------------------------------------------------------------------*
+FORM zcont_type_validate_entry.
+  DATA: lv_count TYPE i.
+  
+* Validate individual entry before saving
+  IF zcont_type-zonttype IS NOT INITIAL.
+    " Check if exists in ZCONT_EWM
+    SELECT COUNT(*)
+      FROM zcont_ewm  
+      INTO lv_count
+      WHERE zonttype = zcont_type-zonttype.
+      
+    IF lv_count = 0.
+      MESSAGE e001(zcustom) WITH 'Container Type' zcont_type-zonttype 'not found in ZCONT_EWM'.
+    ENDIF.
+  ELSE.
+    MESSAGE e002(zcustom) WITH 'Container Type cannot be blank'.
+  ENDIF.
+ENDFORM.
+```
+
+## **Create Custom Message Class (ZCUSTOM):**
+
+**Transaction: SE91**
+```
+Message Class: ZCUSTOM
+001: Container Type & & not found in ZCONT_EWM master table
+002: Container Type cannot be blank  
+003: ZCONT_TYPE table cannot be empty - at least one record required
+
