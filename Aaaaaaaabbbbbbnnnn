@@ -315,3 +315,16 @@ ENDFORM.
 
 
 
+
+IF lv_zonttype IS INITIAL.
+          CLEAR gs_log.
+          gs_log-ebeln          = <gs_ekpo>-ebeln.
+          gs_log-execution_date = sy-datum.
+          gs_log-status         = 'Failed'.
+          gs_log-message        = 'Container Type is blank in table ZCONT_TYPE'.
+          APPEND gs_log TO gt_log.
+          PERFORM f_refresh.
+          CONTINUE.
+        ENDIF.
+
+
