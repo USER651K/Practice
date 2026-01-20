@@ -1,0 +1,238 @@
+TYPES: BEGIN OF ty_credit,
+         " ... existing fields ...
+         
+         " NEW FIELDS for Payment Calculation
+         amt_a        TYPE bsik-wrbtr,    " A = Document Amount
+         amt_b        TYPE bsik-wrbtr,    " B = Sum from ZP2PTTRUCK
+         amt_c        TYPE bsik-wrbtr,    " C = Sum from RSEG
+         
+         " ... rest of existing fields ...
+       END OF ty_credit.
+
+
+
+" TYPE for ZP2PTTRUCK calculation
+TYPES: BEGIN OF ty_truck_calc,
+         zp2pdetrno TYPE zp2pttruck-zp2pdetrno,
+         price_sc   TYPE zp2pttruck-zp2pdepricesc,  " Adjust field name
+         bags_sc    TYPE zp2pttruck-zp2pdebagsc,    " Adjust field name
+       END OF ty_truck_calc.
+
+" TYPE for BSEG EBELN/EBELP lookup
+TYPES: BEGIN OF ty_bseg_po,
+         bukrs TYPE bseg-bukrs,
+         belnr TYPE bseg-belnr,
+         gjahr TYPE bseg-gjahr,
+         buzei TYPE bseg-buzei,
+         ebeln TYPE bseg-ebeln,
+         ebelp TYPE bseg-ebelp,
+       END OF ty_bseg_po.
+
+" TYPE for RSEG data
+TYPES: BEGIN OF ty_rseg,
+         belnr TYPE rseg-belnr,
+         gjahr TYPE rseg-gjahr,
+         buzei TYPE rseg-buzei,
+         ebeln TYPE rseg-ebeln,
+         ebelp TYPE rseg-ebelp,
+         lfbnr TYPE rseg-lfbnr,
+         rbwwr TYPE rseg-rbwwr,
+       END OF ty_rseg.
+
+" Internal Tables
+DATA: gt_truck_calc TYPE STANDARD TABLE OF ty_truck_calc,
+      gs_truck_calc TYPE ty_truck_calc.
+
+DATA: gt_bseg_po TYPE STANDARD TABLE OF ty_bseg_po,
+      gs_bseg_po TYPE ty_bseg_po.
+
+DATA: gt_rseg TYPE STANDARD TABLE OF ty_rseg,
+      gs_rseg TYPE ty_rseg.
+
+
+
+
+" Fetch ZP2PTTRUCK data for Amount B calculation
+  IF gt_zuonr_range[] IS NOT INITIAL.
+    SELECT zp2pdetrno zp2pdepricesc zp2pdebagsc
+      FROM zp2pttruck
+      INTO CORRESPONDING FIELDS OF TABLE gt_truck_calc
+      FOR ALL ENTRIES IN gt_zuonr_range
+      WHERE zp2pdetrno = gt_zuonr_range-zuonr_10.
+    
+    SORT gt_truck_calc BY zp2pdetrno.
+  ENDIF.
+
+  " Fetch BSEG data for EBELN/EBELP (for Amount C calculation)
+  IF gt_bsik_temp[] IS NOT INITIAL.
+    SELECT bukrs belnr gjahr buzei ebeln ebelp
+      FROM bseg
+      INTO CORRESPONDING FIELDS OF TABLE gt_bseg_po
+      FOR ALL ENTRIES IN gt_bsik_temp
+      WHERE bukrs = gt_bsik_temp-bukrs
+        AND belnr = gt_bsik_temp-belnr
+        AND gjahr = gt_bsik_temp-gjahr
+        AND ebeln <> ''
+        AND ebelp <> ''.
+    
+    SORT gt_bseg_po BY bukrs belnr gjahr.
+  ENDIF.
+
+  " Fetch RSEG data for Amount C calculation
+  IF gt_bseg_po[] IS NOT INITIAL.
+    SELECT belnr gjahr buzei ebeln ebelp lfbnr rbwwr
+      FROM rseg
+      INTO CORRESPONDING FIELDS OF TABLE gt_rseg
+      FOR ALL ENTRIES IN gt_bseg_po
+      WHERE ebeln = gt_bseg_po-ebeln
+        AND ebelp = gt_bseg_po-ebelp
+        AND lfbnr <> ''.
+    
+    SORT gt_rseg BY ebeln ebelp.
+  ENDIF.
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form CALCULATE_FINAL_PAYMENT
+*& Formula: Payment Amount = A - B - C
+*&---------------------------------------------------------------------*
+FORM calculate_final_payment
+  USING    p_wrbtr    TYPE bsik-wrbtr      " A = Document Amount
+           p_tr_no    TYPE char10          " TR Number for B lookup
+           p_bukrs    TYPE bukrs           " For C lookup
+           p_belnr    TYPE belnr_d         " For C lookup
+           p_gjahr    TYPE gjahr           " For C lookup
+  CHANGING p_amt_a    TYPE bsik-wrbtr
+           p_amt_b    TYPE bsik-wrbtr
+           p_amt_c    TYPE bsik-wrbtr
+           p_payment  TYPE bsik-wrbtr.
+
+  DATA: lv_sum_b     TYPE bsik-wrbtr,
+        lv_sum_c     TYPE bsik-wrbtr,
+        lv_line_amt  TYPE bsik-wrbtr,
+        ls_truck     TYPE ty_truck_calc,
+        ls_bseg_po   TYPE ty_bseg_po,
+        ls_rseg      TYPE ty_rseg.
+
+  CLEAR: p_amt_a, p_amt_b, p_amt_c, p_payment, lv_sum_b, lv_sum_c.
+
+  "------------------------------------------------------------
+  " A = Document Amount (WRBTR)
+  "------------------------------------------------------------
+  p_amt_a = p_wrbtr.
+
+  "------------------------------------------------------------
+  " B = Sum of (Price_SC × Bags_SC) from ZP2PTTRUCK
+  "------------------------------------------------------------
+  LOOP AT gt_truck_calc INTO ls_truck
+    WHERE zp2pdetrno = p_tr_no.
+    
+    lv_line_amt = ls_truck-price_sc * ls_truck-bags_sc.
+    lv_sum_b = lv_sum_b + lv_line_amt.
+  ENDLOOP.
+  
+  p_amt_b = lv_sum_b.
+
+  "------------------------------------------------------------
+  " C = Sum of RBWWR from RSEG
+  "------------------------------------------------------------
+  " First get EBELN/EBELP from BSEG for this document
+  LOOP AT gt_bseg_po INTO ls_bseg_po
+    WHERE bukrs = p_bukrs
+      AND belnr = p_belnr
+      AND gjahr = p_gjahr.
+
+    " Now find matching RSEG entries
+    LOOP AT gt_rseg INTO ls_rseg
+      WHERE ebeln = ls_bseg_po-ebeln
+        AND ebelp = ls_bseg_po-ebelp.
+      
+      " Only include if LFBNR is not blank
+      IF ls_rseg-lfbnr IS NOT INITIAL.
+        lv_sum_c = lv_sum_c + ls_rseg-rbwwr.
+      ENDIF.
+    ENDLOOP.
+
+  ENDLOOP.
+  
+  p_amt_c = lv_sum_c.
+
+  "------------------------------------------------------------
+  " Final Payment Amount = A - B - C
+  "------------------------------------------------------------
+  p_payment = p_amt_a - p_amt_b - p_amt_c.
+
+  " Ensure payment is not negative
+  IF p_payment < 0.
+    p_payment = 0.
+  ENDIF.
+
+ENDFORM.
+
+
+
+
+
+
+
+
+" Calculate Final Payment Amount = A - B - C
+    PERFORM calculate_final_payment
+      USING    gs_bsik_temp-wrbtr
+               lv_zuonr_10
+               gs_bsik_temp-bukrs
+               gs_bsik_temp-belnr
+               gs_bsik_temp-gjahr
+      CHANGING gs_credit-amt_a
+               gs_credit-amt_b
+               gs_credit-amt_c
+               gs_credit-payment_amt.
+
+
+
+
+" AMT_A - Document Amount (A)
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname  = 'AMT_A'.
+  gs_fieldcat-coltext    = 'Amount A'.
+  gs_fieldcat-scrtext_s  = 'Amt A'.
+  gs_fieldcat-scrtext_m  = 'Amount A'.
+  gs_fieldcat-scrtext_l  = 'Document Amount (A)'.
+  gs_fieldcat-datatype   = 'CURR'.
+  gs_fieldcat-cfieldname = 'WAERS'.
+  gs_fieldcat-no_out     = 'X'.   " Hidden - remove to show
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " AMT_B - ZP2PTTRUCK Sum (B)
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname  = 'AMT_B'.
+  gs_fieldcat-coltext    = 'Amount B'.
+  gs_fieldcat-scrtext_s  = 'Amt B'.
+  gs_fieldcat-scrtext_m  = 'Amount B'.
+  gs_fieldcat-scrtext_l  = 'Truck Sum (B)'.
+  gs_fieldcat-datatype   = 'CURR'.
+  gs_fieldcat-cfieldname = 'WAERS'.
+  gs_fieldcat-no_out     = 'X'.   " Hidden - remove to show
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+  " AMT_C - RSEG Sum (C)
+  CLEAR gs_fieldcat.
+  gs_fieldcat-fieldname  = 'AMT_C'.
+  gs_fieldcat-coltext    = 'Amount C'.
+  gs_fieldcat-scrtext_s  = 'Amt C'.
+  gs_fieldcat-scrtext_m  = 'Amount C'.
+  gs_fieldcat-scrtext_l  = 'RSEG Sum (C)'.
+  gs_fieldcat-datatype   = 'CURR'.
+  gs_fieldcat-cfieldname = 'WAERS'.
+  gs_fieldcat-no_out     = 'X'.   " Hidden - remove to show
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+
+
+
+
