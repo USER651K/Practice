@@ -385,3 +385,59 @@ Message Class: ZCUSTOM
 002: Container Type cannot be blank  
 003: ZCONT_TYPE table cannot be empty - at least one record required
 
+
+
+
+
+
+
+
+
+
+
+
+*----------------------------------------------------------------------*
+* Event 19 - Before Save Validation for ZCONT_TYPE
+*----------------------------------------------------------------------*
+FORM zcont_type_before_save.
+  DATA: lv_container_type TYPE zcont_type-zonttype,
+        lv_count_ewm      TYPE i,
+        lv_count_type     TYPE i.
+
+* Loop through all entries being maintained
+  LOOP AT total.
+    " Check if this is a new or modified entry
+    IF total-actflag <> 'D'.  " Not a deletion
+      lv_container_type = total-new_wa-zonttype.
+      
+      " Validation 1: Check if container type exists in ZCONT_EWM
+      SELECT COUNT(*)
+        FROM zcont_ewm
+        INTO lv_count_ewm
+        WHERE zzcont = lv_container_type.  " ← CORRECTED FIELD NAME
+      
+      IF lv_count_ewm = 0.
+        " Show error message
+        MESSAGE e001(zcustom) WITH 'Container Type' lv_container_type 'not found in ZCONT_EWM master table'.
+      ENDIF.
+      
+      " Validation 2: Check for blank/initial values
+      IF lv_container_type IS INITIAL.
+        MESSAGE e002(zcustom) WITH 'Container Type cannot be blank'.
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+
+* Validation 3: Ensure table is not completely empty after save
+  lv_count_type = 0.
+  LOOP AT total.
+    IF total-actflag <> 'D'.  " Count non-deleted entries
+      lv_count_type = lv_count_type + 1.
+    ENDIF.
+  ENDLOOP.
+  
+  IF lv_count_type = 0.
+    MESSAGE e003(zcustom) WITH 'ZCONT_TYPE table cannot be empty - at least one record required'.
+  ENDIF.
+
+ENDFORM.
