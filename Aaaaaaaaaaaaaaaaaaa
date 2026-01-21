@@ -325,3 +325,119 @@ FORM call_bdc_vendor_clearing
   ENDIF.
 
 ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form POST_SELECTED_DOCUMENTS
+*& Step 1: BAPI posts Debit Note (₹2,000)
+*& Step 2: BDC F-44 clears with partial amount (₹98,000)
+*&---------------------------------------------------------------------*
+FORM post_selected_documents.
+
+  DATA: lv_posted_doc   TYPE belnr_d,
+        lv_clear_doc    TYPE belnr_d,
+        lv_message      TYPE char100,
+        lv_clear_msg    TYPE char100,
+        lv_success      TYPE char1,
+        lv_clear_success TYPE char1,
+        lt_celltab      TYPE lvc_t_styl,
+        ls_celltab      TYPE lvc_s_styl.
+
+  FIELD-SYMBOLS: <fs_credit> TYPE ty_credit.
+
+  CLEAR: gv_post_count, gv_error_count.
+
+  LOOP AT gt_credit ASSIGNING <fs_credit>.
+
+    " Skip if not selected or already posted
+    IF <fs_credit>-checkmark <> 'X' OR <fs_credit>-posted = 'X'.
+      CONTINUE.
+    ENDIF.
+
+    " Validate: Applicable CD Amount must be > 0
+    IF <fs_credit>-applicable_cd_amt <= 0.
+      <fs_credit>-post_message = 'No CD amount to post'.
+      gv_error_count = gv_error_count + 1.
+      CONTINUE.
+    ENDIF.
+
+    " Validate: Amount After CD must be > 0
+    IF <fs_credit>-amt_after_cd <= 0.
+      <fs_credit>-post_message = 'No clearing amount'.
+      gv_error_count = gv_error_count + 1.
+      CONTINUE.
+    ENDIF.
+
+    " Clear variables
+    CLEAR: lv_posted_doc, lv_clear_doc, lv_message, lv_clear_msg,
+           lv_success, lv_clear_success.
+
+    "==========================================================
+    " STEP 1: BAPI - Post Debit Note (₹2,000)
+    "==========================================================
+    PERFORM call_bapi_acc_document_post
+      USING    <fs_credit>
+      CHANGING lv_posted_doc
+               lv_message
+               lv_success.
+
+    IF lv_success = 'X'.
+      " Debit Note Posted Successfully
+      <fs_credit>-posted       = 'X'.
+      <fs_credit>-post_doc_no  = lv_posted_doc.
+      <fs_credit>-post_message = lv_message.
+
+      "==========================================================
+      " STEP 2: BDC F-44 - Clear Vendor (₹98,000)
+      "==========================================================
+      PERFORM call_bdc_vendor_clearing
+        USING    <fs_credit>
+                 lv_posted_doc          " Debit Note Doc
+        CHANGING lv_clear_doc
+                 lv_clear_msg
+                 lv_clear_success.
+
+      IF lv_clear_success = 'X'.
+        " Clearing Posted Successfully
+        <fs_credit>-payment_posted  = 'X'.
+        <fs_credit>-payment_doc_no  = lv_clear_doc.
+        <fs_credit>-payment_message = lv_clear_msg.
+
+        " Combined message
+        CONCATENATE 'DN:' lv_posted_doc 'CLR:' lv_clear_doc
+          INTO <fs_credit>-post_message SEPARATED BY space.
+
+        gv_post_count = gv_post_count + 1.
+      ELSE.
+        " Clearing Failed
+        <fs_credit>-payment_posted  = ' '.
+        <fs_credit>-payment_message = lv_clear_msg.
+
+        CONCATENATE 'DN OK, CLR Fail:' lv_clear_msg
+          INTO <fs_credit>-post_message SEPARATED BY space.
+
+        gv_error_count = gv_error_count + 1.
+      ENDIF.
+
+      " Clear checkmark & disable
+      <fs_credit>-checkmark = ' '.
+
+      CLEAR lt_celltab.
+      CLEAR ls_celltab.
+      ls_celltab-fieldname = 'CHECKMARK'.
+      ls_celltab-style     = cl_gui_alv_grid=>mc_style_disabled.
+      APPEND ls_celltab TO lt_celltab.
+      <fs_credit>-celltab = lt_celltab.
+
+      " Update custom table
+      PERFORM update_vendcd_doc USING <fs_credit>.
+
+    ELSE.
+      " Debit Note Failed
+      <fs_credit>-post_message = lv_message.
+      gv_error_count = gv_error_count + 1.
+    ENDIF.
+
+  ENDLOOP.
+
+ENDFORM.
