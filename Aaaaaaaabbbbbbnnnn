@@ -558,3 +558,35 @@ FORM zcont_type_before_save.
   ENDIF.
   
 ENDFORM.
+
+
+
+
+
+
+
+
+
+*----------------------------------------------------------------------*
+* Event 01 - Before Save Individual Entry for ZCONT_TYPE
+*----------------------------------------------------------------------*
+FORM zcont_type_event_01.
+  DATA: lv_count TYPE i.
+
+* Validation 1: Check for blank ZONTTYPE
+  IF <vim_total_struc>-zonttype IS INITIAL.
+    MESSAGE 'Container Type cannot be blank' TYPE 'E'.
+    EXIT.
+  ENDIF.
+
+* Validation 2: Check if ZONTTYPE exists in ZCONT_EWM.ZZCONT
+  SELECT COUNT(*)
+    FROM zcont_ewm
+    INTO lv_count
+    WHERE zzcont = <vim_total_struc>-zonttype.
+
+  IF lv_count = 0.
+    MESSAGE 'Container Type not found in ZCONT_EWM master table' TYPE 'E'.
+  ENDIF.
+
+ENDFORM.
