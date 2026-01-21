@@ -1,0 +1,38 @@
+" AMT_AFTER_CD - Amount After Cash Discount
+CLEAR gs_fieldcat.
+gs_fieldcat-fieldname  = 'AMT_AFTER_CD'.
+gs_fieldcat-coltext    = 'Amt After CD'.
+gs_fieldcat-scrtext_s  = 'After CD'.
+gs_fieldcat-scrtext_m  = 'Amt After CD'.
+gs_fieldcat-scrtext_l  = 'Amount After Cash Discount'.
+gs_fieldcat-datatype   = 'CURR'.
+gs_fieldcat-cfieldname = 'WAERS'.
+gs_fieldcat-edit       = ' '.
+APPEND gs_fieldcat TO gt_fieldcat.
+
+" PAYMENT_DOC_NO - Payment Document
+CLEAR gs_fieldcat.
+gs_fieldcat-fieldname = 'PAYMENT_DOC_NO'.
+gs_fieldcat-coltext   = 'Payment Doc'.
+gs_fieldcat-scrtext_s = 'Pmt Doc'.
+gs_fieldcat-scrtext_m = 'Payment Doc'.
+gs_fieldcat-scrtext_l = 'Payment Document Number'.
+APPEND gs_fieldcat TO gt_fieldcat.
+
+" PAYMENT_POSTED - Payment Posted Flag
+CLEAR gs_fieldcat.
+gs_fieldcat-fieldname = 'PAYMENT_POSTED'.
+gs_fieldcat-coltext   = 'Pmt Posted'.
+gs_fieldcat-checkbox  = 'X'.
+gs_fieldcat-edit      = ' '.
+APPEND gs_fieldcat TO gt_fieldcat.
+
+" PAYMENT_MESSAGE - Payment Status
+CLEAR gs_fieldcat.
+gs_fieldcat-fieldname = 'PAYMENT_MESSAGE'.
+gs_fieldcat-coltext   = 'Payment Status'.
+gs_fieldcat-scrtext_s = 'Pmt Status'.
+gs_fieldcat-scrtext_m = 'Payment Status'.
+gs_fieldcat-scrtext_l = 'Payment Status Message'.
+gs_fieldcat-outputlen = 40.
+APPEND gs_fieldcat TO gt_fieldcat.
