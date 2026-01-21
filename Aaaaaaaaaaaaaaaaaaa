@@ -36,3 +36,39 @@ gs_fieldcat-scrtext_m = 'Payment Status'.
 gs_fieldcat-scrtext_l = 'Payment Status Message'.
 gs_fieldcat-outputlen = 40.
 APPEND gs_fieldcat TO gt_fieldcat.
+
+
+
+*&---------------------------------------------------------------------*
+*& Form BDC_DYNPRO
+*&---------------------------------------------------------------------*
+FORM bdc_dynpro USING    p_program TYPE any
+                         p_dynpro  TYPE any
+                CHANGING pt_bdcdata TYPE STANDARD TABLE.
+
+  DATA: ls_bdcdata TYPE bdcdata.
+
+  CLEAR ls_bdcdata.
+  ls_bdcdata-program  = p_program.
+  ls_bdcdata-dynpro   = p_dynpro.
+  ls_bdcdata-dynbegin = 'X'.
+  APPEND ls_bdcdata TO pt_bdcdata.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form BDC_FIELD
+*&---------------------------------------------------------------------*
+FORM bdc_field USING    p_fnam TYPE any
+                        p_fval TYPE any
+               CHANGING pt_bdcdata TYPE STANDARD TABLE.
+
+  DATA: ls_bdcdata TYPE bdcdata.
+
+  CLEAR ls_bdcdata.
+  ls_bdcdata-fnam = p_fnam.
+  ls_bdcdata-fval = p_fval.
+  APPEND ls_bdcdata TO pt_bdcdata.
+
+ENDFORM.
