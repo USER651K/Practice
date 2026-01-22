@@ -109,3 +109,69 @@ Program tries BOTH:
   1. '0000000P06' ✓ Matches table entry
   2. 'P006' ✓ Also matches table entry
 → MATCH FOUND ✅
+
+
+
+
+
+
+
+
+
+
+
+
+*----------------------------------------------------------------------*
+* Get CD Terms from ZFI_VENDCD_TERM
+* Priority 1: BUKRS + LIFNR (with zeros) + ZP2PDEMANDI
+* Priority 2: BUKRS + ZP2PDEMANDI (blank vendor = mandi-level)
+*----------------------------------------------------------------------*
+DATA: lv_lifnr_alpha TYPE lifnr.
+
+CLEAR: gs_vendcd_term, lv_cd_pct, lv_cd_days, lv_grace_days, lv_net_days.
+
+" Convert vendor to internal format (with leading zeros)
+" Example: 5001 → 0000005001
+lv_lifnr_alpha = gs_bsik_temp-lifnr.
+CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+  EXPORTING
+    input  = lv_lifnr_alpha
+  IMPORTING
+    output = lv_lifnr_alpha.
+
+" PRIORITY 1: Try BUKRS + LIFNR + ZP2PDEMANDI (vendor-specific)
+READ TABLE gt_vendcd_term INTO gs_vendcd_term
+  WITH KEY bukrs       = gs_bsik_temp-bukrs
+           lifnr       = lv_lifnr_alpha
+           zp2pdemandi = lv_mandi
+  BINARY SEARCH.
+
+IF sy-subrc = 0.
+  " Found vendor + mandi specific terms
+  lv_cd_pct     = gs_vendcd_term-cd_percent.
+  lv_cd_days    = gs_vendcd_term-cd_days.
+  lv_grace_days = gs_vendcd_term-grace_days.
+  lv_net_days   = gs_vendcd_term-net_days.
+
+ELSE.
+  " PRIORITY 2: Try BUKRS + ZP2PDEMANDI only (mandi-level, blank vendor)
+  CLEAR gs_vendcd_term.
+  LOOP AT gt_vendcd_term INTO gs_vendcd_term
+    WHERE bukrs       = gs_bsik_temp-bukrs
+      AND zp2pdemandi = lv_mandi
+      AND lifnr       = space.    " Blank vendor = mandi-level default
+    EXIT.  " Take first match
+  ENDLOOP.
+
+  IF sy-subrc = 0.
+    " Found mandi-level terms
+    lv_cd_pct     = gs_vendcd_term-cd_percent.
+    lv_cd_days    = gs_vendcd_term-cd_days.
+    lv_grace_days = gs_vendcd_term-grace_days.
+    lv_net_days   = gs_vendcd_term-net_days.
+  ELSE.
+    " No CD terms found - skip this document
+    CONTINUE.
+  ENDIF.
+
+ENDIF.
