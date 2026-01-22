@@ -174,4 +174,73 @@ ELSE.
     CONTINUE.
   ENDIF.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*----------------------------------------------------------------------*
+* Get CD Terms from ZFI_VENDCD_TERM
+* Key: BUKRS + ZP2PDEMANDI + LIFNR
+*----------------------------------------------------------------------*
+DATA: lv_lifnr_alpha TYPE lifnr,
+      lv_lifnr_num   TYPE n LENGTH 10.
+
+CLEAR: gs_vendcd_term, lv_cd_pct, lv_cd_days, lv_grace_days, lv_net_days.
+
+" Convert vendor to internal format with leading zeros
+" Example: 5001 → 0000005001
+lv_lifnr_num   = gs_bsik_temp-lifnr.
+lv_lifnr_alpha = lv_lifnr_num.
+
+" PRIORITY 1: BUKRS + ZP2PDEMANDI + LIFNR (vendor-specific)
+READ TABLE gt_vendcd_term INTO gs_vendcd_term
+  WITH KEY bukrs       = gs_bsik_temp-bukrs
+           zp2pdemandi = lv_mandi
+           lifnr       = lv_lifnr_alpha
+  BINARY SEARCH.
+
+IF sy-subrc = 0.
+  " Found vendor + mandi specific terms
+  lv_cd_pct     = gs_vendcd_term-cd_percent.
+  lv_cd_days    = gs_vendcd_term-cd_days.
+  lv_grace_days = gs_vendcd_term-grace_days.
+  lv_net_days   = gs_vendcd_term-net_days.
+
+ELSE.
+  " PRIORITY 2: BUKRS + ZP2PDEMANDI only (blank vendor)
+  CLEAR gs_vendcd_term.
+  READ TABLE gt_vendcd_term INTO gs_vendcd_term
+    WITH KEY bukrs       = gs_bsik_temp-bukrs
+             zp2pdemandi = lv_mandi
+             lifnr       = space
+    BINARY SEARCH.
+
+  IF sy-subrc = 0.
+    lv_cd_pct     = gs_vendcd_term-cd_percent.
+    lv_cd_days    = gs_vendcd_term-cd_days.
+    lv_grace_days = gs_vendcd_term-grace_days.
+    lv_net_days   = gs_vendcd_term-net_days.
+  ELSE.
+    " No CD terms found - skip this document
+    CONTINUE.
+  ENDIF.
+
+ENDIF.
 ENDIF.
