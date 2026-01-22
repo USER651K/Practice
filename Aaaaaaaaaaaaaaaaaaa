@@ -441,3 +441,149 @@ FORM post_selected_documents.
   ENDLOOP.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+" Get CD Terms from ZFI_VENDCD_TERM
+" Fallback Logic:
+"   1st Priority: BUKRS + LIFNR + ZP2PDEMANDI (vendor-mandi specific)
+"   2nd Priority: BUKRS + ZP2PDEMANDI (mandi-level, ignore vendor)
+
+DATA: lv_lifnr_alpha TYPE lifnr.
+
+CLEAR: gs_vendcd_term, lv_cd_pct, lv_cd_days, lv_grace_days, lv_net_days.
+
+" Convert vendor to internal format (with leading zeros)
+lv_lifnr_alpha = gs_bsik_temp-lifnr.
+CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+  EXPORTING
+    input  = lv_lifnr_alpha
+  IMPORTING
+    output = lv_lifnr_alpha.
+
+" ──────────────────────────────────────────────────────────
+" PRIORITY 1: Try BUKRS + LIFNR + ZP2PDEMANDI (vendor-specific)
+" ──────────────────────────────────────────────────────────
+READ TABLE gt_vendcd_term INTO gs_vendcd_term
+  WITH KEY bukrs       = gs_bsik_temp-bukrs
+           lifnr       = lv_lifnr_alpha
+           zp2pdemandi = lv_mandi
+  BINARY SEARCH.
+
+IF sy-subrc = 0.
+  " ✓ Found vendor + mandi specific terms
+  lv_cd_pct     = gs_vendcd_term-cd_percent.
+  lv_cd_days    = gs_vendcd_term-cd_days.
+  lv_grace_days = gs_vendcd_term-grace_days.
+  lv_net_days   = gs_vendcd_term-net_days.
+
+ELSE.
+  " ──────────────────────────────────────────────────────────
+  " PRIORITY 2: Try BUKRS + ZP2PDEMANDI only (mandi-level)
+  " ──────────────────────────────────────────────────────────
+  LOOP AT gt_vendcd_term INTO gs_vendcd_term
+    WHERE bukrs       = gs_bsik_temp-bukrs
+      AND zp2pdemandi = lv_mandi
+      AND lifnr       = ''.                    " Blank vendor = mandi-level
+    EXIT.
+  ENDLOOP.
+
+  IF sy-subrc = 0.
+    " ✓ Found mandi-level terms
+    lv_cd_pct     = gs_vendcd_term-cd_percent.
+    lv_cd_days    = gs_vendcd_term-cd_days.
+    lv_grace_days = gs_vendcd_term-grace_days.
+    lv_net_days   = gs_vendcd_term-net_days.
+  ELSE.
+    " No terms found - Skip this document
+    CONTINUE.
+  ENDIF.
+ENDIF.
+```
+
+---
+
+## 📊 **CONFIGURATION TABLE STRUCTURE:**
+
+Your **ZFI_VENDCD_TERM** table should have entries like this:
+```
+┌────────┬──────────┬────────────┬────────┬────────┬────────┬────────┐
+│ BUKRS  │ LIFNR    │ ZP2PDEMANDI│ CD_%   │ CD_DAYS│ GRACE  │ NET    │
+├────────┼──────────┼────────────┼────────┼────────┼────────┼────────┤
+│ 5000   │ 0000005001│ 0102016601│ 2.0    │ 14     │ 7      │ 30     │ ← Vendor Specific
+│ 5000   │          │ 0102016601│ 1.5    │ 10     │ 5      │ 30     │ ← Mandi Level (blank vendor)
+│ 5000   │ 0000005002│ 0102016601│ 2.5    │ 15     │ 7      │ 30     │ ← Another Vendor
+└────────┴──────────┴────────────┴────────┴────────┴────────┴────────┘
+```
+
+**KEY CONFIGURATION:**
+- **Vendor-specific:** Fill BUKRS + LIFNR + ZP2PDEMANDI + CD Terms
+- **Mandi-level (default):** Fill BUKRS + ZP2PDEMANDI + CD Terms (LIFNR = blank)
+
+---
+
+## 🔍 **LEADING ZEROS HANDLING:**
+
+The note says **"manage 3rd 0"** - this means handling vendor code format:
+```
+Input:     5001
+After:     0000005001  (10 digits with leading zeros)
+
+Input:     102016601
+After:     0102016601  (10 digits)
+```
+
+This is handled by `CONVERSION_EXIT_ALPHA_INPUT` function.
+
+---
+
+## 📋 **EXAMPLE SCENARIOS:**
+
+### **Scenario 1: Vendor-Specific Terms Exist**
+```
+Document:
+- BUKRS: 5000
+- LIFNR: 0000005001
+- MANDI: 0102016601
+
+Search Priority 1: BUKRS=5000 + LIFNR=0000005001 + MANDI=0102016601
+→ ✓ FOUND → Use: CD% = 2.0, Days = 14
+
+Result: Vendor gets 2.0% discount
+```
+
+### **Scenario 2: Only Mandi-Level Terms Exist**
+```
+Document:
+- BUKRS: 5000
+- LIFNR: 0000005099  (new vendor, no specific terms)
+- MANDI: 0102016601
+
+Search Priority 1: BUKRS=5000 + LIFNR=0000005099 + MANDI=0102016601
+→ ✗ NOT FOUND
+
+Search Priority 2: BUKRS=5000 + MANDI=0102016601 + LIFNR=''
+→ ✓ FOUND → Use: CD% = 1.5, Days = 10
+
+Result: Vendor gets mandi-level 1.5% discount
+```
+
+### **Scenario 3: No Terms Found**
+```
+Document:
+- BUKRS: 5000
+- LIFNR: 0000005099
+- MANDI: 9999999999  (new mandi, no config)
+
+Search Priority 1: NOT FOUND
+Search Priority 2: NOT FOUND
+
+Result: Skip this document (CONTINUE)
