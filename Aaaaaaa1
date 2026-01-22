@@ -1,0 +1,111 @@
+" Filter by Mandi Selection
+      IF s_zp2p[] IS NOT INITIAL.
+        CHECK lv_mandi IN s_zp2p.
+      ENDIF.
+
+      " ═══════════════════════════════════════════════════════════
+      " Get CD Terms from ZFI_VENDCD_TERM with format conversion
+      " ═══════════════════════════════════════════════════════════
+      DATA: lv_lifnr_in  TYPE lifnr,
+            lv_lifnr_out TYPE lifnr.
+
+      CLEAR: gs_vendcd_term, lv_cd_pct, lv_cd_days, lv_grace_days, lv_net_days.
+
+      " Prepare both vendor formats
+      lv_lifnr_in = gs_bsik_temp-lifnr.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+        EXPORTING
+          input  = lv_lifnr_in
+        IMPORTING
+          output = lv_lifnr_in.
+
+      lv_lifnr_out = gs_bsik_temp-lifnr.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = lv_lifnr_out
+        IMPORTING
+          output = lv_lifnr_out.
+
+      " Try Priority 1: Internal format (with zeros)
+      READ TABLE gt_vendcd_term INTO gs_vendcd_term
+        WITH KEY bukrs       = gs_bsik_temp-bukrs
+                 lifnr       = lv_lifnr_in
+                 zp2pdemandi = lv_mandi
+        BINARY SEARCH.
+
+      IF sy-subrc <> 0.
+        " Try Priority 2: External format (without zeros)
+        READ TABLE gt_vendcd_term INTO gs_vendcd_term
+          WITH KEY bukrs       = gs_bsik_temp-bukrs
+                   lifnr       = lv_lifnr_out
+                   zp2pdemandi = lv_mandi
+          BINARY SEARCH.
+      ENDIF.
+
+      IF sy-subrc = 0.
+        " Found vendor-specific terms
+        lv_cd_pct     = gs_vendcd_term-cd_percent.
+        lv_cd_days    = gs_vendcd_term-cd_days.
+        lv_grace_days = gs_vendcd_term-grace_days.
+        lv_net_days   = gs_vendcd_term-net_days.
+      ELSE.
+        " Try Priority 3: Mandi-level (blank vendor)
+        LOOP AT gt_vendcd_term INTO gs_vendcd_term
+          WHERE bukrs       = gs_bsik_temp-bukrs
+            AND zp2pdemandi = lv_mandi
+            AND lifnr       = ''.
+          EXIT.
+        ENDLOOP.
+
+        IF sy-subrc = 0.
+          lv_cd_pct     = gs_vendcd_term-cd_percent.
+          lv_cd_days    = gs_vendcd_term-cd_days.
+          lv_grace_days = gs_vendcd_term-grace_days.
+          lv_net_days   = gs_vendcd_term-net_days.
+        ELSE.
+          " No CD terms found - skip
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      " Continue with rest of processing...
+      " Get Payment Reason
+      READ TABLE gt_bseg INTO gs_bseg
+        WITH KEY bukrs = gs_bsik_temp-bukrs
+                 belnr = gs_bsik_temp-belnr
+                 gjahr = gs_bsik_temp-gjahr
+                 buzei = gs_bsik_temp-buzei
+        BINARY SEARCH.
+```
+
+---
+
+## 🎯 **ACTION PLAN:**
+
+### **Step 1: Update Code**
+✅ Change SELECT to fetch all terms for company  
+✅ Add dual-format lookup logic  
+
+### **Step 2: Add Table Entry**
+✅ Add entry with LIFNR = '0000000P06'  
+✅ Verify MANDI = '0101013147'  
+✅ Verify ACTIVE = 'X'  
+
+### **Step 3: Test**
+✅ Run program  
+✅ Check if data appears in ALV  
+
+---
+
+## 💡 **WHY THIS WILL WORK:**
+```
+Before:
+BSIK.LIFNR = '0000000P06'
+Table.LIFNR = 'P006'
+→ NO MATCH ❌
+
+After:
+Program tries BOTH:
+  1. '0000000P06' ✓ Matches table entry
+  2. 'P006' ✓ Also matches table entry
+→ MATCH FOUND ✅
