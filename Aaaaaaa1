@@ -244,3 +244,36 @@ ELSE.
 
 ENDIF.
 ENDIF.
+
+
+
+
+
+
+
+
+IF gt_bsik_temp[] IS NOT INITIAL.
+  " Fetch vendor-specific AND mandi-level records
+  SELECT *
+    FROM zfi_vendcd_term INTO TABLE gt_vendcd_term
+    FOR ALL ENTRIES IN gt_bsik_temp
+    WHERE bukrs = gt_bsik_temp-bukrs
+    AND active = 'X'
+    AND ( lifnr = gt_bsik_temp-lifnr OR lifnr = '' ).  " Include blanks
+
+  " Also fetch by company code only (for mandi-level fallback)
+  IF sy-subrc = 0.
+    DATA: lt_vendcd_add TYPE STANDARD TABLE OF zfi_vendcd_term.
+    SELECT *
+      FROM zfi_vendcd_term INTO TABLE lt_vendcd_add
+      FOR ALL ENTRIES IN gt_bsik_temp
+      WHERE bukrs = gt_bsik_temp-bukrs
+      AND active = 'X'
+      AND lifnr = ''.
+    
+    APPEND LINES OF lt_vendcd_add TO gt_vendcd_term.
+    DELETE ADJACENT DUPLICATES FROM gt_vendcd_term COMPARING ALL FIELDS.
+  ENDIF.
+
+  SORT gt_vendcd_term BY bukrs lifnr zp2pdemandi.
+ENDIF.
