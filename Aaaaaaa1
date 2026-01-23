@@ -1,4 +1,4 @@
-" Filter by Mandi Selection
+1" Filter by Mandi Selection
       IF s_zp2p[] IS NOT INITIAL.
         CHECK lv_mandi IN s_zp2p.
       ENDIF.
@@ -276,4 +276,90 @@ IF gt_bsik_temp[] IS NOT INITIAL.
   ENDIF.
 
   SORT gt_vendcd_term BY bukrs lifnr zp2pdemandi.
+ENDIF.
+
+
+
+
+
+
+
+
+
+
+
+
+" Get CD Terms from ZFI_VENDCD_TERM
+DATA: lv_lifnr_try TYPE lifnr.
+
+CLEAR: gs_vendcd_term, lv_cd_pct, lv_cd_days, lv_grace_days, lv_net_days.
+
+" Priority 1: Exact match with Mandi (BUKRS + LIFNR + MANDI)
+READ TABLE gt_vendcd_term INTO gs_vendcd_term
+  WITH KEY bukrs       = gs_bsik_temp-bukrs
+           lifnr       = gs_bsik_temp-lifnr
+           zp2pdemandi = lv_mandi
+  BINARY SEARCH.
+
+IF sy-subrc <> 0.
+  " Priority 2: Try with internal format (add leading zeros)
+  lv_lifnr_try = gs_bsik_temp-lifnr.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = lv_lifnr_try
+    IMPORTING
+      output = lv_lifnr_try.
+  
+  READ TABLE gt_vendcd_term INTO gs_vendcd_term
+    WITH KEY bukrs       = gs_bsik_temp-bukrs
+             lifnr       = lv_lifnr_try
+             zp2pdemandi = lv_mandi
+    BINARY SEARCH.
+ENDIF.
+
+IF sy-subrc <> 0.
+  " Priority 3: Try with external format (remove leading zeros)
+  lv_lifnr_try = gs_bsik_temp-lifnr.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+    EXPORTING
+      input  = lv_lifnr_try
+    IMPORTING
+      output = lv_lifnr_try.
+  
+  READ TABLE gt_vendcd_term INTO gs_vendcd_term
+    WITH KEY bukrs       = gs_bsik_temp-bukrs
+             lifnr       = lv_lifnr_try
+             zp2pdemandi = lv_mandi
+    BINARY SEARCH.
+ENDIF.
+
+IF sy-subrc <> 0.
+  " Priority 4: Vendor without Mandi (BUKRS + LIFNR only)
+  LOOP AT gt_vendcd_term INTO gs_vendcd_term
+    WHERE bukrs = gs_bsik_temp-bukrs
+    AND ( lifnr = gs_bsik_temp-lifnr OR lifnr = lv_lifnr_try )
+    AND zp2pdemandi = ''.
+    EXIT.
+  ENDLOOP.
+ENDIF.
+
+IF sy-subrc <> 0.
+  " Priority 5: Mandi-level (BUKRS + MANDI, blank vendor)
+  LOOP AT gt_vendcd_term INTO gs_vendcd_term
+    WHERE bukrs       = gs_bsik_temp-bukrs
+    AND zp2pdemandi = lv_mandi
+    AND lifnr       = ''.
+    EXIT.
+  ENDLOOP.
+ENDIF.
+
+IF sy-subrc = 0.
+  " Found terms - populate
+  lv_cd_pct     = gs_vendcd_term-cd_percent.
+  lv_cd_days    = gs_vendcd_term-cd_days.
+  lv_grace_days = gs_vendcd_term-grace_days.
+  lv_net_days   = gs_vendcd_term-net_days.
+ELSE.
+  " No CD terms found - skip this document
+  CONTINUE.
 ENDIF.
