@@ -49,3 +49,79 @@
           CONTINUE.
         ENDIF.
       ENDIF.
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form CALCULATE_APPLICABLE_CD
+*& Formula: Applicable CD% = CD% × (Days / Net)
+*&          Applicable CD Amt = Payment Amt × Applicable CD% / 100
+*&---------------------------------------------------------------------*
+FORM calculate_applicable_cd USING p_zfbdt      TYPE bsik-zfbdt
+                                   p_cd_days    TYPE zfi_vendcd_term-cd_days
+                                   p_grace_days TYPE zfi_vendcd_term-grace_days
+                                   p_cd_pct     TYPE zfi_vendcd_term-cd_percent
+                                   p_cd_pct2    TYPE zfi_vendcd_term-cd_percent
+                                   p_amount     TYPE bsik-wrbtr
+                                   p_net_days   TYPE zfi_vendcd_term-net_days
+                          CHANGING p_cd_pct_out TYPE p
+                                   p_cd_amt     TYPE bsik-wrbtr.
+
+  DATA: lv_days    TYPE i,
+        lv_net     TYPE i,
+        lv_cd_pct  TYPE p DECIMALS 3.
+
+  CLEAR: p_cd_pct_out, p_cd_amt.
+
+  " Calculate days from baseline date to today
+  lv_days = sy-datum - p_zfbdt.
+  
+  " Ensure days is positive
+  IF lv_days < 0.
+    lv_days = 0.
+  ENDIF.
+
+  " Get Net Days
+  lv_net = p_net_days.
+  
+  " Prevent division by zero
+  IF lv_net <= 0.
+    lv_net = 1.
+  ENDIF.
+
+  " Formula 1: Applicable CD% = CD% × (Days / Net)
+  lv_cd_pct = p_cd_pct * lv_days / lv_net.
+  
+  " Cap at maximum CD% (cannot exceed original CD%)
+  IF lv_cd_pct > p_cd_pct.
+    lv_cd_pct = p_cd_pct.
+  ENDIF.
+  
+  p_cd_pct_out = lv_cd_pct.
+
+  " Formula 2: Applicable CD Amt = Payment Amt × Applicable CD% / 100
+  p_cd_amt = ( p_amount * lv_cd_pct ) / 100.
+
+ENDFORM.
+```
+
+---
+
+## Example Calculation with Your Data:
+
+| Field | Value |
+|-------|-------|
+| CD% | 2.000 |
+| Days | 513 |
+| Net Days | 30 |
+| Payment Amt | 143,811.00 |
+
+**Calculation:**
+```
+Applicable CD% = 2.000 × (513 / 30) = 2.000 × 17.1 = 34.2%
+
+BUT with cap at CD% (2.000):
+Applicable CD% = 2.000% (capped)
+
+Applicable CD Amt = 143,811.00 × 2.000 / 100 = 2,876.22
