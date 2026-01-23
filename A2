@@ -1,0 +1,231 @@
+*&---------------------------------------------------------------------*
+*& Form CALL_BDC_VENDOR_CLEARING
+*&---------------------------------------------------------------------*
+FORM call_bdc_vendor_clearing
+  USING    ps_credit      TYPE ty_credit
+           pv_debit_doc   TYPE belnr_d
+  CHANGING pv_clear_doc   TYPE belnr_d
+           pv_message     TYPE char100
+           pv_success     TYPE char1.
+
+  DATA: lt_bdcdata TYPE STANDARD TABLE OF bdcdata,
+        lt_messtab TYPE STANDARD TABLE OF bdcmsgcoll,
+        ls_messtab TYPE bdcmsgcoll.
+
+  DATA: lv_vendor       TYPE bseg-lifnr,
+        lv_bukrs        TYPE bukrs,
+        lv_budat        TYPE char10,
+        lv_waers        TYPE waers,
+        lv_inv_doc      TYPE belnr_d,
+        lv_dn_doc       TYPE belnr_d,
+        lv_residual     TYPE bsik-wrbtr,
+        lv_amt_str      TYPE char25,
+        lv_belnr        TYPE belnr_d.
+
+  CLEAR: lt_bdcdata, lt_messtab, pv_clear_doc, pv_message, pv_success.
+
+  "------------------------------------------------------------
+  " Prepare Values
+  "------------------------------------------------------------
+  
+  " Vendor with leading zeros
+  lv_vendor = ps_credit-lifnr.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = lv_vendor
+    IMPORTING
+      output = lv_vendor.
+
+  lv_bukrs = ps_credit-bukrs.
+  lv_waers = ps_credit-waers.
+  WRITE sy-datum TO lv_budat DD/MM/YYYY.
+
+  " Document Numbers with leading zeros
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = ps_credit-belnr
+    IMPORTING
+      output = lv_inv_doc.
+
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = pv_debit_doc
+    IMPORTING
+      output = lv_dn_doc.
+
+  "------------------------------------------------------------
+  " Calculate Residual Amount with MINUS sign
+  " Residual = Payment Amount - Applicable CD Amount
+  " Must be NEGATIVE (credit balance to vendor)
+  "------------------------------------------------------------
+  lv_residual = ps_credit-payment_amt - ps_credit-applicable_cd_amt.
+  
+  " Format amount without thousand separator
+  WRITE lv_residual TO lv_amt_str NO-GROUPING.
+  CONDENSE lv_amt_str NO-GAPS.
+  
+  " Add MINUS sign at the end (SAP format for negative)
+  CONCATENATE lv_amt_str '-' INTO lv_amt_str.
+
+  "------------------------------------------------------------
+  " Screen 1: SAPMF05A 0131 - Initial Screen
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPMF05A' '0131'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_CURSOR'
+                          'RF05A-AGKON'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '=PI'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-AGKON'
+                          lv_vendor
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BKPF-BUDAT'
+                          lv_budat
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BKPF-BUKRS'
+                          lv_bukrs
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-XNOPS'
+                          'X'
+                    CHANGING lt_bdcdata.
+
+  " Select by Document Number
+  PERFORM bdc_field USING 'RF05A-XPOS1(01)'
+                          'X'
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Screen 2: SAPMF05A 0731 - Document Selection
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPMF05A' '0731'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_CURSOR'
+                          'RF05A-SEL01(02)'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '=PA'
+                    CHANGING lt_bdcdata.
+
+  " Invoice Document
+  PERFORM bdc_field USING 'RF05A-SEL01(01)'
+                          lv_inv_doc
+                    CHANGING lt_bdcdata.
+
+  " Debit Note Document
+  PERFORM bdc_field USING 'RF05A-SEL01(02)'
+                          lv_dn_doc
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Screen 3: SAPDF05X 3100 - Click Residual Button
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPDF05X' '3100'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '=REST'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-ABPOS'
+                          '1'
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Screen 4: SAPDF05X 3100 - Enter Residual Amount (NEGATIVE!)
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPDF05X' '3100'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '/00'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_CURSOR'
+                          'DF05B-PSDIF(01)'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-ABPOS'
+                          '1'
+                    CHANGING lt_bdcdata.
+
+  " Residual Amount WITH MINUS SIGN
+  PERFORM bdc_field USING 'DF05B-PSDIF(01)'
+                          lv_amt_str           " e.g., "1714.21-"
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Screen 5: SAPDF05X 3100 - Post
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPDF05X' '3100'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '=BU'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-ABPOS'
+                          '1'
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Execute Transaction
+  "------------------------------------------------------------
+  CALL TRANSACTION 'F-44'
+    USING lt_bdcdata
+    MODE 'A'           " Change to 'N' after testing
+    UPDATE 'S'
+    MESSAGES INTO lt_messtab.
+
+  "------------------------------------------------------------
+  " Process Results
+  "------------------------------------------------------------
+  LOOP AT lt_messtab INTO ls_messtab WHERE msgtyp = 'S'.
+    IF ( ls_messtab-msgid = 'F5' AND ls_messtab-msgnr = '312' ) OR
+       ( ls_messtab-msgid = 'F5' AND ls_messtab-msgnr = '313' ) OR
+       ( ls_messtab-msgid = 'FP' AND ls_messtab-msgnr = '001' ).
+
+      lv_belnr = ls_messtab-msgv1.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+        EXPORTING
+          input  = lv_belnr
+        IMPORTING
+          output = pv_clear_doc.
+
+      CONCATENATE 'Cleared:' pv_clear_doc INTO pv_message SEPARATED BY space.
+      pv_success = 'X'.
+      RETURN.
+    ENDIF.
+  ENDLOOP.
+
+  " Error handling
+  LOOP AT lt_messtab INTO ls_messtab WHERE msgtyp = 'E' OR msgtyp = 'A'.
+    CALL FUNCTION 'MESSAGE_TEXT_BUILD'
+      EXPORTING
+        msgid               = ls_messtab-msgid
+        msgnr               = ls_messtab-msgnr
+        msgv1               = ls_messtab-msgv1
+        msgv2               = ls_messtab-msgv2
+        msgv3               = ls_messtab-msgv3
+        msgv4               = ls_messtab-msgv4
+      IMPORTING
+        message_text_output = pv_message.
+    pv_success = ' '.
+    RETURN.
+  ENDLOOP.
+
+  IF pv_message IS INITIAL.
+    pv_message = 'F-44 failed'.
+  ENDIF.
+  pv_success = ' '.
+
+ENDFORM.
