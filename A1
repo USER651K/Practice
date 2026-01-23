@@ -1,0 +1,51 @@
+" Get CD Terms from ZFI_VENDCD_TERM
+      " Priority 1: BUKRS + ZP2PDEMANDI + LIFNR (vendor-specific)
+      " Priority 2: BUKRS + ZP2PDEMANDI only (mandi-level default)
+      
+      DATA: lv_lifnr_alpha TYPE lifnr.
+      
+      CLEAR: gs_vendcd_term, lv_cd_pct, lv_cd_days, lv_grace_days, lv_net_days.
+      
+      " Convert vendor to internal format (with leading zeros)
+      lv_lifnr_alpha = gs_bsik_temp-lifnr.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+        EXPORTING
+          input  = lv_lifnr_alpha
+        IMPORTING
+          output = lv_lifnr_alpha.
+      
+      " Priority 1: Match by BUKRS + ZP2PDEMANDI + LIFNR
+      " Key order MUST match sort order: bukrs zp2pdemandi lifnr
+      READ TABLE gt_vendcd_term INTO gs_vendcd_term
+        WITH KEY bukrs       = gs_bsik_temp-bukrs
+                 zp2pdemandi = lv_mandi
+                 lifnr       = lv_lifnr_alpha
+        BINARY SEARCH.
+      
+      IF sy-subrc = 0.
+        " Found vendor + mandi specific terms
+        lv_cd_pct     = gs_vendcd_term-cd_percent.
+        lv_cd_days    = gs_vendcd_term-cd_days.
+        lv_grace_days = gs_vendcd_term-grace_days.
+        lv_net_days   = gs_vendcd_term-net_days.
+      ELSE.
+        " Priority 2: Match by BUKRS + ZP2PDEMANDI only (mandi-level default)
+        " This handles records where LIFNR is blank or '*'
+        LOOP AT gt_vendcd_term INTO gs_vendcd_term
+          WHERE bukrs       = gs_bsik_temp-bukrs
+            AND zp2pdemandi = lv_mandi
+            AND ( lifnr = space OR lifnr = '*' ).
+          EXIT.  " Take first match
+        ENDLOOP.
+        
+        IF sy-subrc = 0.
+          " Found mandi-level terms
+          lv_cd_pct     = gs_vendcd_term-cd_percent.
+          lv_cd_days    = gs_vendcd_term-cd_days.
+          lv_grace_days = gs_vendcd_term-grace_days.
+          lv_net_days   = gs_vendcd_term-net_days.
+        ELSE.
+          " No CD terms found - skip this document
+          CONTINUE.
+        ENDIF.
+      ENDIF.
