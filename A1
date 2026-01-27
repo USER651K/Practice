@@ -125,3 +125,52 @@ BUT with cap at CD% (2.000):
 Applicable CD% = 2.000% (capped)
 
 Applicable CD Amt = 143,811.00 × 2.000 / 100 = 2,876.22
+
+
+
+
+
+
+
+
+
+
+
+
+
+WHEN 'PAYMENT_AMT'.
+  " Handle PAYMENT_AMT change
+  lv_new_amt = ls_mod_cell-value.
+  
+  " VALIDATION: Payment Amount cannot exceed Initial Amount
+  IF lv_new_amt > ls_credit-initial_amt.
+    " Show error and reset to initial amount
+    CALL METHOD er_data_changed->add_protocol_entry
+      EXPORTING
+        i_msgid     = '00'
+        i_msgno     = '001'
+        i_msgty     = 'E'
+        i_msgv1     = 'Payment Amount cannot exceed'
+        i_msgv2     = 'Initial Amount'
+        i_fieldname = 'PAYMENT_AMT'
+        i_row_id    = ls_mod_cell-row_id.
+    
+    " Reset to initial amount
+    ls_credit-payment_amt = ls_credit-initial_amt.
+  ELSE.
+    ls_credit-payment_amt = lv_new_amt.
+  ENDIF.
+  
+  " Recalculate Applicable CD Amount
+  PERFORM calculate_applicable_cd
+    USING    ls_credit-zfbdt
+             ls_credit-cd_days
+             ls_credit-grace_days
+             ls_credit-cd_pct
+             ls_credit-cd_pct
+             ls_credit-payment_amt
+             ls_credit-net_days
+    CHANGING ls_credit-applicable_cd_pct
+             ls_credit-applicable_cd_amt.
+
+  MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
