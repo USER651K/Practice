@@ -1,4 +1,4 @@
-" Get CD Terms from ZFI_VENDCD_TERM
+7" Get CD Terms from ZFI_VENDCD_TERM
       " Priority 1: BUKRS + ZP2PDEMANDI + LIFNR (vendor-specific)
       " Priority 2: BUKRS + ZP2PDEMANDI only (mandi-level default)
       
@@ -389,3 +389,47 @@ ELSE.
   gs_credit-posted = ' '.
   CLEAR gs_credit-post_message.
 ENDIF.
+
+
+
+
+
+
+
+
+
+
+
+
+ELSEIF vbkd-ihrez IS NOT INITIAL.
+  " Clear planned GI variables
+  CLEAR: gv_planned_gi, gt_planned_gi.
+  
+  " Step 1: Fetch all VBELN for this IHREZ (can be multiple)
+  SELECT vbeln ihrez
+    FROM vbkd
+    INTO TABLE gt_vbkd
+    WHERE ihrez = vbkd-ihrez.
+    
+  IF sy-subrc EQ 0.
+    " Step 2: Fetch WADAT from VBEP for all sales orders
+    IF gt_vbkd IS NOT INITIAL.
+      SELECT wadat FROM vbep
+        INTO TABLE gt_planned_gi
+        FOR ALL ENTRIES IN gt_vbkd
+        WHERE vbeln = gt_vbkd-vbeln.
+      
+      " Get earliest WADAT for display
+      IF gt_planned_gi IS NOT INITIAL.
+        SORT gt_planned_gi.
+        READ TABLE gt_planned_gi INTO gv_planned_gi INDEX 1.
+      ENDIF.
+    ENDIF.
+    
+    " Existing logic - Fetch delivery documents
+    SELECT vbelv vbeln
+      FROM vbfa
+      INTO TABLE gt_vbfa
+      FOR ALL ENTRIES IN gt_vbkd
+      WHERE vbelv = gt_vbkd-vbeln
+      AND vbtyp_n = 'J'.
