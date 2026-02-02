@@ -476,3 +476,36 @@ ELSEIF vbkd-ihrez IS NOT INITIAL.
       WHERE vbelv = gt_vbkd-vbeln
       AND vbtyp_n = 'J'.
   ENDIF.
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*&      Module  HANDLE_SALEORD_CHANGE  INPUT
+*&---------------------------------------------------------------------*
+*       Handle Sales Order dropdown selection change
+*       Updates Planned GI Date immediately on selection
+*----------------------------------------------------------------------*
+*BOC--UJWAL--02.02.2026
+MODULE handle_saleord_change INPUT.
+  "Only process for Load Number scenario (IHREZ)
+  IF vbkd-ihrez IS NOT INITIAL.
+    "Update Planned GI Date when sales order selection changes
+    IF sale_ord IS NOT INITIAL AND gt_vbeln_wadat IS NOT INITIAL.
+      CLEAR gs_vbeln_wadat.
+      READ TABLE gt_vbeln_wadat INTO gs_vbeln_wadat
+        WITH KEY vbeln = sale_ord.
+      IF sy-subrc = 0.
+        gv_planned_gi = gs_vbeln_wadat-wadat.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+ENDMODULE.
+*EOC--UJWAL--02.02.2026
