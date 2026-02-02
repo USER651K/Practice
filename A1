@@ -509,3 +509,40 @@ MODULE handle_saleord_change INPUT.
   ENDIF.
 ENDMODULE.
 *EOC--UJWAL--02.02.2026
+
+
+
+
+
+
+
+
+
+
+
+ELSEIF vbkd-bstkd IS NOT INITIAL.
+*BOC--UJWAL--03.02.2026
+  CLEAR: gv_planned_gi.
+  
+  "Step 1: Get Sales Order from VBKD using BSTKD (Customer PO)
+  SELECT SINGLE vbeln
+    FROM vbkd INTO lv_ord
+    WHERE bstkd = vbkd-bstkd.
+    
+  IF sy-subrc EQ 0.
+    wa_ysdssop-sales_order = lv_ord.
+    
+    "Step 2: Get Delivery from VBFA
+    SELECT SINGLE vbeln
+      FROM vbfa INTO lv_delivery
+      WHERE vbelv = lv_ord
+      AND vbtyp_n = 'J'.
+      
+    "Step 3: Get Planned GI Date (WADAT) from LIKP using Delivery
+    IF lv_delivery IS NOT INITIAL.
+      SELECT SINGLE wadat 
+        FROM likp INTO gv_planned_gi
+        WHERE vbeln = lv_delivery.
+    ENDIF.
+  ENDIF.
+*EOC--UJWAL--03.02.2026
