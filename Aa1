@@ -326,3 +326,218 @@ ENDFORM.
 * S_CMMTIT = Commitment Item
 * S_YEAR   = Fiscal Year
 *----------------------------------------------------------------------*
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  SELECT *
+    FROM fmbl
+    INTO CORRESPONDING FIELDS OF TABLE gt_fmbl
+    WHERE fm_area  = p_fmarea
+      AND fundsctr IN s_fundsc
+      AND cmmtitem IN s_cmmtit
+      AND fiscyear IN s_year
+      AND valtype  = 'B1'.        " Budget Value Type
+
+  IF sy-subrc <> 0.
+    MESSAGE s002(00) WITH 'No data found for the selection criteria' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form PROCESS_DATA
+*&---------------------------------------------------------------------*
+FORM process_data.
+
+  DATA: lt_fmbl_grouped TYPE STANDARD TABLE OF ty_fmbl,
+        ls_fmbl         TYPE ty_fmbl.
+
+  " Sort data for grouping
+  SORT gt_fmbl BY fm_area fundsctr cmmtitem fiscyear.
+
+  " Aggregate data by FM Area, Fund Center, Commitment Item, Year
+  LOOP AT gt_fmbl INTO ls_fmbl.
+    AT NEW fiscyear.
+      CLEAR gs_output.
+      gs_output-fm_area  = ls_fmbl-fm_area.
+      gs_output-fundsctr = ls_fmbl-fundsctr.
+      gs_output-cmmtitem = ls_fmbl-cmmtitem.
+      gs_output-fiscyear = ls_fmbl-fiscyear.
+    ENDAT.
+
+    " Sum up period values (negate as per requirement)
+    gs_output-period01 = gs_output-period01 - ls_fmbl-tval01.
+    gs_output-period02 = gs_output-period02 - ls_fmbl-tval02.
+    gs_output-period03 = gs_output-period03 - ls_fmbl-tval03.
+    gs_output-period04 = gs_output-period04 - ls_fmbl-tval04.
+    gs_output-period05 = gs_output-period05 - ls_fmbl-tval05.
+    gs_output-period06 = gs_output-period06 - ls_fmbl-tval06.
+    gs_output-period07 = gs_output-period07 - ls_fmbl-tval07.
+    gs_output-period08 = gs_output-period08 - ls_fmbl-tval08.
+    gs_output-period09 = gs_output-period09 - ls_fmbl-tval09.
+    gs_output-period10 = gs_output-period10 - ls_fmbl-tval10.
+    gs_output-period11 = gs_output-period11 - ls_fmbl-tval11.
+    gs_output-period12 = gs_output-period12 - ls_fmbl-tval12.
+
+    AT END OF fiscyear.
+      " Calculate total of all periods
+      gs_output-total = gs_output-period01 + gs_output-period02 +
+                        gs_output-period03 + gs_output-period04 +
+                        gs_output-period05 + gs_output-period06 +
+                        gs_output-period07 + gs_output-period08 +
+                        gs_output-period09 + gs_output-period10 +
+                        gs_output-period11 + gs_output-period12.
+
+      APPEND gs_output TO gt_output.
+    ENDAT.
+  ENDLOOP.
+
+  IF gt_output IS INITIAL.
+    MESSAGE s003(00) WITH 'No data after processing' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form DISPLAY_ALV
+*&---------------------------------------------------------------------*
+FORM display_alv.
+
+  DATA: lo_columns TYPE REF TO cl_salv_columns_table,
+        lo_column  TYPE REF TO cl_salv_column,
+        lo_funcs   TYPE REF TO cl_salv_functions_list,
+        lo_display TYPE REF TO cl_salv_display_settings,
+        lo_aggr    TYPE REF TO cl_salv_aggregations,
+        lx_msg     TYPE REF TO cx_salv_msg,
+        lx_not_found TYPE REF TO cx_salv_not_found.
+
+  TRY.
+      " Create ALV instance
+      cl_salv_table=>factory(
+        IMPORTING
+          r_salv_table = go_alv
+        CHANGING
+          t_table      = gt_output ).
+
+      " Get columns object
+      lo_columns = go_alv->get_columns( ).
+      lo_columns->set_optimize( abap_true ).
+
+      " Set column texts
+      PERFORM set_column_text USING lo_columns 'FM_AREA'   'FM Area'       'FM Area'         'FM Area'.
+      PERFORM set_column_text USING lo_columns 'FUNDSCTR'  'Fund Center'   'Fund Ctr'        'FC'.
+      PERFORM set_column_text USING lo_columns 'CMMTITEM'  'Commit. Item'  'Cmmt Item'       'CI'.
+      PERFORM set_column_text USING lo_columns 'FISCYEAR'  'Fiscal Year'   'Fisc Year'       'Year'.
+      PERFORM set_column_text USING lo_columns 'PERIOD01'  'Period 01'     'Period 01'       'P01'.
+      PERFORM set_column_text USING lo_columns 'PERIOD02'  'Period 02'     'Period 02'       'P02'.
+      PERFORM set_column_text USING lo_columns 'PERIOD03'  'Period 03'     'Period 03'       'P03'.
+      PERFORM set_column_text USING lo_columns 'PERIOD04'  'Period 04'     'Period 04'       'P04'.
+      PERFORM set_column_text USING lo_columns 'PERIOD05'  'Period 05'     'Period 05'       'P05'.
+      PERFORM set_column_text USING lo_columns 'PERIOD06'  'Period 06'     'Period 06'       'P06'.
+      PERFORM set_column_text USING lo_columns 'PERIOD07'  'Period 07'     'Period 07'       'P07'.
+      PERFORM set_column_text USING lo_columns 'PERIOD08'  'Period 08'     'Period 08'       'P08'.
+      PERFORM set_column_text USING lo_columns 'PERIOD09'  'Period 09'     'Period 09'       'P09'.
+      PERFORM set_column_text USING lo_columns 'PERIOD10'  'Period 10'     'Period 10'       'P10'.
+      PERFORM set_column_text USING lo_columns 'PERIOD11'  'Period 11'     'Period 11'       'P11'.
+      PERFORM set_column_text USING lo_columns 'PERIOD12'  'Period 12'     'Period 12'       'P12'.
+      PERFORM set_column_text USING lo_columns 'TOTAL'     'Total'         'Total'           'Tot'.
+
+      " Enable ALV functions (sort, filter, export, etc.)
+      lo_funcs = go_alv->get_functions( ).
+      lo_funcs->set_all( abap_true ).
+
+      " Set display settings
+      lo_display = go_alv->get_display_settings( ).
+      lo_display->set_striped_pattern( abap_true ).
+      lo_display->set_list_header( 'Funds Management Budget Report' ).
+
+      " Set aggregations for totals
+      lo_aggr = go_alv->get_aggregations( ).
+      TRY.
+          lo_aggr->add_aggregation( columnname = 'PERIOD01' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'PERIOD02' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'PERIOD03' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'PERIOD04' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'PERIOD05' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'PERIOD06' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'PERIOD07' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'PERIOD08' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'PERIOD09' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'PERIOD10' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'PERIOD11' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'PERIOD12' aggregation = if_salv_c_aggregation=>total ).
+          lo_aggr->add_aggregation( columnname = 'TOTAL'    aggregation = if_salv_c_aggregation=>total ).
+        CATCH cx_salv_data_error
+              cx_salv_not_found.
+          " Aggregation error - continue without totals
+      ENDTRY.
+
+      " Display ALV
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO lx_msg.
+      MESSAGE lx_msg TYPE 'E'.
+  ENDTRY.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form SET_COLUMN_TEXT
+*&---------------------------------------------------------------------*
+FORM set_column_text USING io_columns TYPE REF TO cl_salv_columns_table
+                           iv_colname TYPE lvc_fname
+                           iv_long    TYPE scrtext_l
+                           iv_medium  TYPE scrtext_m
+                           iv_short   TYPE scrtext_s.
+
+  DATA: lo_column TYPE REF TO cl_salv_column.
+
+  TRY.
+      lo_column = io_columns->get_column( iv_colname ).
+      lo_column->set_long_text( iv_long ).
+      lo_column->set_medium_text( iv_medium ).
+      lo_column->set_short_text( iv_short ).
+    CATCH cx_salv_not_found.
+      " Column not found - skip
+  ENDTRY.
+
+ENDFORM.
+
+*----------------------------------------------------------------------*
+* Text Elements (Create in SE38 -> Goto -> Text Elements)
+*----------------------------------------------------------------------*
+* TEXT-001 = Selection Parameters
+*
+* Selection Texts:
+* P_FMAREA = FM Area
+* S_FUNDSC = Fund Center
+* S_CMMTIT = Commitment Item
+* S_YEAR   = Fiscal Year
+*-------------------------------------------------------
