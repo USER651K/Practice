@@ -376,3 +376,20 @@ ELSEIF vbkd-bstkd IS NOT INITIAL.
     ENDIF.
   ENDIF.
 *EOC--UJWAL--04.02.2026
+
+
+
+
+
+    "STO: Get appointment from YSD_STO_APPT using PO Number
+    CLEAR ls_ysd_sto_appt.
+    SELECT SINGLE * FROM ysd_sto_appt INTO ls_ysd_sto_appt
+                    WHERE sto = vbkd-bstkd.
+    IF sy-subrc EQ 0.
+      app_date = ls_ysd_sto_appt-app_date.
+      app_time = ls_ysd_sto_appt-app_time.
+    ELSE.
+      CLEAR: app_date, app_time.
+    ENDIF.
+
+  ELSE.
