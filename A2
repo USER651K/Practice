@@ -229,3 +229,83 @@ FORM call_bdc_vendor_clearing
   pv_success = ' '.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ELSEIF vbkd-bstkd IS NOT INITIAL.
+*BOC--UJWAL--04.02.2026
+  CLEAR: gv_planned_gi, gt_del_wadat, gt_lips_del, deliv_ord.
+
+  "Step 1: Get Deliveries from LIPS using PO Number (VGBEL)
+  SELECT vbeln
+    FROM lips
+    INTO TABLE gt_lips_del
+    WHERE vgbel = vbkd-bstkd.
+
+  IF sy-subrc EQ 0 AND gt_lips_del IS NOT INITIAL.
+    "Step 2: Get WADAT from LIKP for each delivery
+    SELECT vbeln wadat
+      FROM likp
+      INTO TABLE gt_del_wadat
+      FOR ALL ENTRIES IN gt_lips_del
+      WHERE vbeln = gt_lips_del-table_line.
+
+    "Remove duplicates
+    IF gt_del_wadat IS NOT INITIAL.
+      SORT gt_del_wadat BY vbeln.
+      DELETE ADJACENT DUPLICATES FROM gt_del_wadat COMPARING vbeln.
+
+      "Set initial display value (first delivery)
+      READ TABLE gt_del_wadat INTO gs_del_wadat INDEX 1.
+      IF sy-subrc = 0.
+        gv_planned_gi = gs_del_wadat-wadat.
+        lv_delivery = gs_del_wadat-vbeln.
+        deliv_ord = gs_del_wadat-vbeln.
+      ENDIF.
+    ENDIF.
+
+    "Populate Delivery dropdown
+    IF gt_del_wadat IS NOT INITIAL.
+      CLEAR: ls_fval.
+      REFRESH: lt_fval[].
+      LOOP AT gt_del_wadat INTO gs_del_wadat.
+        ls_fval-key  = gs_del_wadat-vbeln.
+        ls_fval-text = gs_del_wadat-vbeln.
+        APPEND ls_fval TO lt_fval.
+      ENDLOOP.
+      CALL FUNCTION 'VRM_SET_VALUES'
+        EXPORTING
+          id     = 'DELIV_ORD'
+          values = lt_fval.
+    ENDIF.
+  ELSE.
+    "Fallback: Old logic via VBKD
+    SELECT SINGLE vbeln
+      FROM vbkd INTO lv_ord
+      WHERE bstkd = vbkd-bstkd.
+    IF sy-subrc EQ 0.
+      wa_ysdssop-sales_order = lv_ord.
+      SELECT SINGLE vbeln
+        FROM vbfa INTO lv_delivery
+        WHERE vbelv = lv_ord
+        AND vbtyp_n = 'J'.
+      IF lv_delivery IS NOT INITIAL.
+        SELECT SINGLE wadat
+          FROM likp INTO gv_planned_gi
+          WHERE vbeln = lv_delivery.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+*EOC--UJWAL--04.02.2026
