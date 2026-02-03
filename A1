@@ -546,3 +546,183 @@ ELSEIF vbkd-bstkd IS NOT INITIAL.
     ENDIF.
   ENDIF.
 *EOC--UJWAL--03.02.2026
+
+
+
+
+
+
+**BOC--UJWAL--03.02.2026
+* Structure for PO Number - Delivery and WADAT linkage
+TYPES: BEGIN OF ty_del_wadat,
+         vbeln TYPE vbeln_vl,    " Delivery Number
+         wadat TYPE wadat,       " Planned GI Date
+       END OF ty_del_wadat.
+
+DATA: gt_del_wadat TYPE TABLE OF ty_del_wadat,
+      gs_del_wadat TYPE ty_del_wadat.
+
+DATA: gt_lips_del TYPE TABLE OF lips-vbeln,
+      gs_lips_del TYPE lips-vbeln.
+**EOC--UJWAL--03.02.2026
+
+
+
+ELSEIF vbkd-bstkd IS NOT INITIAL.
+*BOC--UJWAL--03.02.2026
+  CLEAR: gv_planned_gi, gt_del_wadat, lv_delivery.
+
+  "Step 1: Get Delivery Numbers from LIPS using PO Number (VGBEL)
+  SELECT vbeln
+    FROM lips
+    INTO TABLE gt_lips_del
+    WHERE vgbel = vbkd-bstkd.
+
+  IF sy-subrc EQ 0 AND gt_lips_del IS NOT INITIAL.
+    "Step 2: Get WADAT from LIKP for each delivery
+    SELECT vbeln wadat
+      FROM likp
+      INTO TABLE gt_del_wadat
+      FOR ALL ENTRIES IN gt_lips_del
+      WHERE vbeln = gt_lips_del-table_line.
+
+    "Set initial display value (first delivery)
+    IF gt_del_wadat IS NOT INITIAL.
+      SORT gt_del_wadat BY vbeln.
+      DELETE ADJACENT DUPLICATES FROM gt_del_wadat COMPARING vbeln.
+      READ TABLE gt_del_wadat INTO gs_del_wadat INDEX 1.
+      IF sy-subrc = 0.
+        gv_planned_gi = gs_del_wadat-wadat.
+        lv_delivery = gs_del_wadat-vbeln.
+      ENDIF.
+    ENDIF.
+
+    "Populate dropdown with Delivery Numbers
+    IF gt_del_wadat IS NOT INITIAL.
+      CLEAR: ls_fval.
+      REFRESH: lt_fval[].
+      LOOP AT gt_del_wadat INTO gs_del_wadat.
+        ls_fval-key  = gs_del_wadat-vbeln.
+        ls_fval-text = gs_del_wadat-vbeln.
+        APPEND ls_fval TO lt_fval.
+      ENDLOOP.
+      CALL FUNCTION 'VRM_SET_VALUES'
+        EXPORTING
+          id     = 'SALE_ORD'
+          values = lt_fval.
+
+      "Set initial selection
+      sale_ord = gs_del_wadat-vbeln.
+    ENDIF.
+  ELSE.
+    "Fallback: No delivery found via LIPS, try original logic
+    SELECT SINGLE vbeln
+      FROM vbkd INTO lv_ord
+      WHERE bstkd = vbkd-bstkd.
+    IF sy-subrc EQ 0.
+      wa_ysdssop-sales_order = lv_ord.
+      SELECT SINGLE vbeln
+        FROM vbfa INTO lv_delivery
+        WHERE vbelv = lv_ord
+        AND vbtyp_n = 'J'.
+      IF lv_delivery IS NOT INITIAL.
+        SELECT SINGLE wadat
+          FROM likp INTO gv_planned_gi
+          WHERE vbeln = lv_delivery.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+*EOC--UJWAL--03.02.2026
+
+
+
+
+
+ELSEIF vbkd-bstkd IS NOT INITIAL.
+*BOC--UJWAL--03.02.2026
+  CLEAR: gv_planned_gi, gt_del_wadat, lv_del.
+
+  "Step 1: Get Delivery Numbers from LIPS using PO Number
+  SELECT vbeln
+    FROM lips
+    INTO TABLE gt_lips_del
+    WHERE vgbel = vbkd-bstkd.
+
+  IF sy-subrc EQ 0 AND gt_lips_del IS NOT INITIAL.
+    "Step 2: Get WADAT from LIKP for each delivery
+    SELECT vbeln wadat
+      FROM likp
+      INTO TABLE gt_del_wadat
+      FOR ALL ENTRIES IN gt_lips_del
+      WHERE vbeln = gt_lips_del-table_line.
+
+    "Set initial display value
+    IF gt_del_wadat IS NOT INITIAL.
+      SORT gt_del_wadat BY vbeln.
+      DELETE ADJACENT DUPLICATES FROM gt_del_wadat COMPARING vbeln.
+      READ TABLE gt_del_wadat INTO gs_del_wadat INDEX 1.
+      IF sy-subrc = 0.
+        gv_planned_gi = gs_del_wadat-wadat.
+        lv_del = gs_del_wadat-vbeln.
+        sale_ord = gs_del_wadat-vbeln.
+      ENDIF.
+    ENDIF.
+  ELSE.
+    "Fallback logic
+    SELECT SINGLE vbeln
+      FROM vbkd INTO lv_ord
+      WHERE bstkd = vbkd-bstkd.
+    IF sy-subrc EQ 0.
+      sale_ord = lv_ord.
+      SELECT SINGLE vbeln
+        FROM vbfa INTO lv_del
+        WHERE vbelv = lv_ord
+        AND vbtyp_n = 'J'.
+      IF lv_del IS NOT INITIAL.
+        SELECT SINGLE wadat
+          FROM likp INTO gv_planned_gi
+          WHERE vbeln = lv_del.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+*EOC--UJWAL--03.02.2026
+
+
+
+
+
+
+
+
+
+ENDCASE.
+
+*BOC--UJWAL--03.02.2026
+  "Handle dropdown change for Load Number (IHREZ) - Sales Orders
+  IF vbkd-ihrez IS NOT INITIAL.
+    IF sale_ord IS NOT INITIAL AND gt_vbeln_wadat IS NOT INITIAL.
+      CLEAR gs_vbeln_wadat.
+      READ TABLE gt_vbeln_wadat INTO gs_vbeln_wadat
+        WITH KEY vbeln = sale_ord.
+      IF sy-subrc = 0.
+        gv_planned_gi = gs_vbeln_wadat-wadat.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+  "Handle dropdown change for PO Number (BSTKD) - Deliveries
+  IF vbkd-bstkd IS NOT INITIAL.
+    IF sale_ord IS NOT INITIAL AND gt_del_wadat IS NOT INITIAL.
+      CLEAR gs_del_wadat.
+      READ TABLE gt_del_wadat INTO gs_del_wadat
+        WITH KEY vbeln = sale_ord.
+      IF sy-subrc = 0.
+        gv_planned_gi = gs_del_wadat-wadat.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+*EOC--UJWAL--03.02.2026
+
+ENDMODULE.
+
+
