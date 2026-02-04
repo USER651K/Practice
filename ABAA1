@@ -216,3 +216,108 @@ IF lt_pship_range IS NOT INITIAL.
   ENDIF.
 ENDIF.
 """"""""""""""""""""""""""""""""""""""""""Ujwal END OF CODE 01.12.2025"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""""""""""""""""""""""""""""""START OF ALTERNATIVE LOGIC DATA FETCH - UJWAL 04.02.2026"""""""""""""""""""""""""""""""""
+" Collect unique shipment numbers for alternative logic
+CLEAR: lt_shipment_range, ls_shipment_range.
+LOOP AT it_vbrp INTO wa_vbrp WHERE shipment_no IS NOT INITIAL.
+  ls_shipment_range-sign = 'I'.
+  ls_shipment_range-option = 'EQ'.
+  ls_shipment_range-low = wa_vbrp-shipment_no.
+  COLLECT ls_shipment_range INTO lt_shipment_range.
+  CLEAR: wa_vbrp, ls_shipment_range.
+ENDLOOP.
+
+IF lt_shipment_range IS NOT INITIAL.
+
+  " Step 1: Get Delivery from VTTP using Shipment Number
+  SELECT tknum tpnum vbeln
+    FROM vttp
+    INTO TABLE gt_vttp_alt
+    WHERE tknum IN lt_shipment_range.
+
+  IF sy-subrc = 0.
+    SORT gt_vttp_alt BY tknum vbeln.
+    DELETE ADJACENT DUPLICATES FROM gt_vttp_alt COMPARING tknum vbeln.
+
+    " Step 2: Get Reference Document from LIPS using Delivery
+    SELECT vbeln posnr vgbel vgpos
+      FROM lips
+      INTO TABLE gt_lips_alt
+      FOR ALL ENTRIES IN gt_vttp_alt
+      WHERE vbeln = gt_vttp_alt-vbeln
+        AND vgbel NE space.
+
+    IF sy-subrc = 0.
+      SORT gt_lips_alt BY vbeln vgbel vgpos.
+      DELETE ADJACENT DUPLICATES FROM gt_lips_alt COMPARING vbeln vgbel vgpos.
+
+      " Step 3: Get Customer PO (BSTKD) from VBKD
+      SELECT vbeln posnr bstkd
+        FROM vbkd
+        INTO TABLE gt_vbkd_alt
+        FOR ALL ENTRIES IN gt_lips_alt
+        WHERE vbeln = gt_lips_alt-vgbel
+          AND posnr = gt_lips_alt-vgpos
+          AND bstkd NE space.
+
+      IF sy-subrc = 0.
+        SORT gt_vbkd_alt BY vbeln posnr bstkd.
+        DELETE ADJACENT DUPLICATES FROM gt_vbkd_alt COMPARING vbeln posnr bstkd.
+
+        " Build intermediate table with EBELN type for FOR ALL ENTRIES
+        CLEAR: gt_bstkd_ebeln, gs_bstkd_ebeln.
+        LOOP AT gt_vbkd_alt INTO gs_vbkd_alt WHERE bstkd IS NOT INITIAL.
+          gs_bstkd_ebeln-ebeln = gs_vbkd_alt-bstkd(10).  "Take first 10 characters
+          COLLECT gs_bstkd_ebeln INTO gt_bstkd_ebeln.
+          CLEAR: gs_vbkd_alt, gs_bstkd_ebeln.
+        ENDLOOP.
+
+        IF gt_bstkd_ebeln IS NOT INITIAL.
+          " Step 4: Get Purchase Document details from EKPO using converted BSTKD
+          SELECT ebeln ebelp konnr ktpnr ktmng bednr
+            FROM ekpo
+            INTO TABLE gt_ekpo_alt
+            FOR ALL ENTRIES IN gt_bstkd_ebeln
+            WHERE ebeln = gt_bstkd_ebeln-ebeln.
+
+          IF sy-subrc = 0.
+            SORT gt_ekpo_alt BY ebeln ebelp.
+
+            " Step 5: Get Contract Header details from EKKO
+            SELECT ebeln bedat kdatb kdate submi
+              FROM ekko
+              INTO TABLE gt_ekko_alt
+              FOR ALL ENTRIES IN gt_ekpo_alt
+              WHERE ebeln = gt_ekpo_alt-konnr.
+
+            IF sy-subrc = 0.
+              SORT gt_ekko_alt BY ebeln.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+ENDIF.
+"""""""""""""""""""""""""""""""END OF ALTERNATIVE LOGIC DATA FETCH - UJWAL 04.02.2026"""""""""""""""""""""""""""""""""
