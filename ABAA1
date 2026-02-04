@@ -23,6 +23,28 @@
 *EOC--UJWAL--02.02.2026
 
 
+*BOC--UJWAL--02.02.2026
+          CLEAR: gv_planned_gi.
+*EOC--UJWAL--02.02.2026
+          SELECT SINGLE vbeln
+            FROM vbkd INTO lv_ord
+            WHERE bstkd = vbkd-bstkd.
+
+          IF sy-subrc EQ 0.
+            sale_ord = lv_ord.
+            SELECT SINGLE vbeln
+              FROM vbfa INTO lv_del
+              WHERE vbelv = lv_ord
+              AND vbtyp_n = 'J'.
+*BOC--UJWAL--02.02.2026
+         IF lv_del IS NOT INITIAL.
+            SELECT SINGLE wadat
+              FROM likp INTO gv_planned_gi
+              WHERE vbeln = lv_del.
+           ENDIF.
+*EOC--UJWAL--02.02.2026
+
+
 
 
 
