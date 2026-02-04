@@ -21,3 +21,57 @@
                   WHERE vbeln = lv_delivery.
               ENDIF.
 *EOC--UJWAL--02.02.2026
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+**BOC--UJWAL--02.02.2026.
+          CLEAR: gv_planned_gi, gt_planned_gi, gt_vbeln_wadat.
+           "Fetch all VBELN for this IHREZ
+           SELECT vbeln ihrez
+             FROM vbkd
+             INTO TABLE gt_vbkd
+             WHERE ihrez = vbkd-ihrez.
+
+           IF sy-subrc EQ 0.
+             "Fetch WADAT from VBEP for given vbeln
+             IF gt_vbkd IS NOT INITIAL.
+               SELECT vbeln wadat
+                 FROM vbep
+                 INTO TABLE gt_vbeln_wadat
+                 FOR ALL ENTRIES IN gt_vbkd
+                 WHERE vbeln = gt_vbkd-vbeln.
+
+               "WADAT for display (initial value)
+               IF gt_vbeln_wadat IS NOT INITIAL.
+                 SORT gt_vbeln_wadat BY vbeln.
+                 READ TABLE gt_vbeln_wadat INTO gs_vbeln_wadat INDEX 1.
+                  IF sy-subrc = 0.
+                    gv_planned_gi = gs_vbeln_wadat-wadat.
+                  ENDIF.
+               ENDIF.
+             ENDIF.
+
+             "Fetch delivery documents
+             SELECT vbelv vbeln
+               FROM vbfa
+               INTO TABLE gt_vbfa
+               FOR ALL ENTRIES IN gt_vbkd
+               WHERE vbelv = gt_vbkd-vbeln
+               AND vbtyp_n = 'J'.
+**EOC--UJWAL--02.02.2026.
