@@ -321,3 +321,131 @@ IF lt_shipment_range IS NOT INITIAL.
   ENDIF.
 ENDIF.
 """""""""""""""""""""""""""""""END OF ALTERNATIVE LOGIC DATA FETCH - UJWAL 04.02.2026"""""""""""""""""""""""""""""""""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ENDIF.  " IF gs_ekpo-konnr IS NOT INITIAL
+        ENDIF.    " IF sy-subrc = 0 for gt_ekpo
+      ENDIF.      " IF sy-subrc = 0 for gt_ekbe
+    ENDIF.        " IF sy-subrc = 0 for gt_rbkp
+  ENDIF.          " IF wa_vbrp-pship IS NOT INITIAL
+
+ENDIF.            " IF wa_vbrp-pship IS NOT INITIAL (outer)
+*  """"""""""""""""""""""""""End Ujwal Code 01.12.2025""""""""""""""""""""""""""
+
+"""""""""""""""""""""""""""""""START OF ALTERNATIVE LOGIC IN LOOP - UJWAL 04.02.2026"""""""""""""""""""""""""""""""""
+" If EBELN is still blank, try alternative logic using Shipment Number
+IF wa_vbrp-ebeln IS INITIAL AND wa_vbrp-shipment_no IS NOT INITIAL.
+
+  CLEAR: gs_vttp_alt, gs_lips_alt, gs_vbkd_alt, gs_ekpo_alt, gs_ekko_alt, lv_ebeln_alt.
+
+  " Step 1: Get Delivery from Shipment
+  READ TABLE gt_vttp_alt INTO gs_vttp_alt
+    WITH KEY tknum = wa_vbrp-shipment_no
+    BINARY SEARCH.
+
+  IF sy-subrc = 0.
+    " Step 2: Get Reference Document from Delivery
+    READ TABLE gt_lips_alt INTO gs_lips_alt
+      WITH KEY vbeln = gs_vttp_alt-vbeln
+      BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      " Step 3: Get Customer PO from VBKD
+      READ TABLE gt_vbkd_alt INTO gs_vbkd_alt
+        WITH KEY vbeln = gs_lips_alt-vgbel
+                 posnr = gs_lips_alt-vgpos
+        BINARY SEARCH.
+
+      IF sy-subrc = 0 AND gs_vbkd_alt-bstkd IS NOT INITIAL.
+        " Convert BSTKD to EBELN length for READ
+        lv_ebeln_alt = gs_vbkd_alt-bstkd(10).
+
+        " Step 4: Get Purchase Document details from EKPO
+        READ TABLE gt_ekpo_alt INTO gs_ekpo_alt
+          WITH KEY ebeln = lv_ebeln_alt
+          BINARY SEARCH.
+
+        IF sy-subrc = 0.
+          wa_vbrp-ebeln = gs_ekpo_alt-ebeln.
+          wa_vbrp-ebelp = gs_ekpo_alt-ebelp.
+          wa_vbrp-konnr = gs_ekpo_alt-konnr.
+          wa_vbrp-ktpnr = gs_ekpo_alt-ktpnr.
+          wa_vbrp-ktmng = gs_ekpo_alt-ktmng.
+          wa_vbrp-bednr = gs_ekpo_alt-bednr.
+
+          " Step 5: Get Contract Header details
+          IF gs_ekpo_alt-konnr IS NOT INITIAL.
+            READ TABLE gt_ekko_alt INTO gs_ekko_alt
+              WITH KEY ebeln = gs_ekpo_alt-konnr
+              BINARY SEARCH.
+
+            IF sy-subrc = 0.
+              wa_vbrp-bedat = gs_ekko_alt-bedat.
+              wa_vbrp-kdatb = gs_ekko_alt-kdatb.
+              wa_vbrp-kdate = gs_ekko_alt-kdate.
+              wa_vbrp-submi = gs_ekko_alt-submi.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+  CLEAR: gs_vttp_alt, gs_lips_alt, gs_vbkd_alt, gs_ekpo_alt, gs_ekko_alt, lv_ebeln_alt.
+ENDIF.
+"""""""""""""""""""""""""""""""END OF ALTERNATIVE LOGIC IN LOOP - UJWAL 04.02.2026"""""""""""""""""""""""""""""""""
+
+  MODIFY it_vbrp FROM wa_vbrp.
+  CLEAR wa_vbrp.
+ENDLOOP.
+```
+
+---
+
+## Summary of Changes
+
+| Section | Location | Description |
+|---------|----------|-------------|
+| **Type Definitions** | After ty_ekko (~line 485) | 4 new types for VTTP, LIPS, VBKD, EKPO |
+| **Data Declarations** | After gt_ekko (~line 500) | Internal tables, work areas, range table, conversion variables |
+| **Data Fetch Logic** | After preship ENDIF, before 2nd LOOP | 5-step SELECT with type conversion for BSTKD→EBELN |
+| **Loop Logic** | Inside 2nd LOOP, after existing contract logic | READ tables and populate fields only when EBELN is blank |
+
+---
+
+## Logic Flow
+```
+Existing Logic (Preship-based):
+Preship → RBKP → EKBE → EKPO → EKKO → Populate fields
+
+Alternative Logic (Shipment-based) - Only if EBELN is blank:
+Shipment No (TKNUM)
+    ↓
+VTTP → Delivery (VBELN)
+    ↓
+LIPS → Reference Doc (VGBEL, VGPOS)
+    ↓
+VBKD → Customer PO (BSTKD)
+    ↓
+Convert BSTKD(35) → EBELN(10)
+    ↓
+EKPO → EBELN, EBELP, KONNR, KTPNR, KTMNG, BEDNR
+    ↓
+EKKO (using KONNR) → BEDAT, KDATB, KDATE, SUBMI
