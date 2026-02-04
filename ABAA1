@@ -1,0 +1,23 @@
+*BOC--UJWAL--02.02.2026
+            CLEAR: gv_planned_gi.
+              "Sales Order from VBKD using BSTKD (Customer PO)
+            SELECT SINGLE vbeln
+              FROM vbkd INTO lv_ord
+              WHERE bstkd = vbkd-bstkd.
+
+            IF sy-subrc EQ 0.
+              wa_ysdssop-sales_order = lv_ord.
+
+              "Delivery from VBFA
+              SELECT SINGLE vbeln
+                FROM vbfa INTO lv_delivery
+                WHERE vbelv = lv_ord
+                AND vbtyp_n = 'J'.
+
+              "Planned GI Date (WADAT) from LIKP using Delivery
+              IF lv_delivery IS NOT INITIAL.
+                SELECT SINGLE wadat
+                  FROM likp INTO gv_planned_gi
+                  WHERE vbeln = lv_delivery.
+              ENDIF.
+*EOC--UJWAL--02.02.2026
