@@ -97,3 +97,122 @@
                WHERE vbelv = gt_vbkd-vbeln
                AND vbtyp_n = 'J'.
 **EOC--UJWAL--02.02.2026.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+""""""""""""""""""""""""""""""""""""""""""Ujwal Start OF CODE 01.12.2025"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Collect unique pship values from main table
+DATA: lt_pship_range TYPE RANGE OF vbeln,
+      ls_pship_range LIKE LINE OF lt_pship_range.
+
+LOOP AT it_vbrp INTO wa_vbrp WHERE pship IS NOT INITIAL.
+  ls_pship_range-sign = 'I'.
+  ls_pship_range-option = 'EQ'.
+  ls_pship_range-low = |{ wa_vbrp-pship ALPHA = IN }|.
+  COLLECT ls_pship_range INTO lt_pship_range.
+  CLEAR: wa_vbrp, ls_pship_range.
+ENDLOOP.
+
+IF lt_pship_range IS NOT INITIAL.
+
+  " Step 1: Get MM Invoice Header from RBKP using pship as reference
+  SELECT xblnr belnr gjahr
+    FROM rbkp
+    INTO TABLE gt_rbkp
+    WHERE xblnr IN lt_pship_range.
+
+  IF sy-subrc = 0.
+    SORT gt_rbkp BY xblnr belnr gjahr.
+    DELETE ADJACENT DUPLICATES FROM gt_rbkp COMPARING xblnr belnr gjahr.
+  ENDIF.
+
+  IF gt_rbkp IS NOT INITIAL.
+
+    " Step 2: Get Purchase Order History from EKBE
+    SELECT belnr gjahr buzei ebeln ebelp bewtp
+      FROM ekbe
+      INTO TABLE gt_ekbe
+      FOR ALL ENTRIES IN gt_rbkp
+      WHERE belnr = gt_rbkp-belnr
+        AND gjahr = gt_rbkp-gjahr
+        AND bewtp = 'Q'
+        AND ebeln NE space.
+
+    IF sy-subrc = 0.
+      SORT gt_ekbe BY belnr gjahr ebeln ebelp.
+      DELETE ADJACENT DUPLICATES FROM gt_ekbe COMPARING belnr gjahr ebeln ebelp.
+    ENDIF.
+
+    IF gt_ekbe IS NOT INITIAL.
+
+      " Step 3: Get PO Items to find Contract Reference
+      SELECT ebeln ebelp konnr ktpnr ktmng bednr
+        FROM ekpo
+        INTO TABLE gt_ekpo
+        FOR ALL ENTRIES IN gt_ekbe
+        WHERE ebeln = gt_ekbe-ebeln
+          AND ebelp = gt_ekbe-ebelp.
+
+      IF sy-subrc = 0.
+        SORT gt_ekpo BY ebeln ebelp.
+
+        " Step 4: Get CONTRACT Items (for Quantity)
+        SELECT ebeln ebelp konnr ktpnr ktmng bednr
+          FROM ekpo
+          APPENDING TABLE gt_ekpo
+          FOR ALL ENTRIES IN gt_ekpo
+          WHERE ebeln = gt_ekpo-konnr
+            AND ebelp = gt_ekpo-ktpnr
+            AND konnr NE space.
+
+        IF sy-subrc = 0.
+          SORT gt_ekpo BY ebeln ebelp.
+          DELETE ADJACENT DUPLICATES FROM gt_ekpo COMPARING ebeln ebelp.
+        ENDIF.
+      ENDIF.
+
+      IF gt_ekpo IS NOT INITIAL.
+
+        " Step 5: Get CONTRACT Headers (for Dates)
+        SELECT ebeln bedat kdatb kdate submi
+          FROM ekko
+          INTO TABLE gt_ekko
+          FOR ALL ENTRIES IN gt_ekpo
+          WHERE ebeln = gt_ekpo-konnr
+            AND konnr NE space.
+
+        IF sy-subrc = 0.
+          SORT gt_ekko BY ebeln.
+          DELETE ADJACENT DUPLICATES FROM gt_ekko COMPARING ebeln.
+        ENDIF.
+
+      ENDIF.
+    ENDIF.
+  ENDIF.
+ENDIF.
+""""""""""""""""""""""""""""""""""""""""""Ujwal END OF CODE 01.12.2025"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
