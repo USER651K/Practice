@@ -538,3 +538,119 @@ ENDFORM.
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form DISPLAY_ALV
+*&---------------------------------------------------------------------*
+FORM display_alv.
+
+  DATA: lt_fieldcat TYPE slis_t_fieldcat_alv,
+        ls_fieldcat TYPE slis_fieldcat_alv,
+        ls_layout   TYPE slis_layout_alv,
+        lv_num      TYPE i,
+        lv_col      TYPE char10.
+
+  " Build Field Catalog
+  CLEAR ls_fieldcat.
+  ls_fieldcat-fieldname = 'FM_AREA'.
+  ls_fieldcat-seltext_l = 'FM Area'.
+  ls_fieldcat-seltext_m = 'FM Area'.
+  ls_fieldcat-seltext_s = 'FMA'.
+  ls_fieldcat-col_pos   = 1.
+  APPEND ls_fieldcat TO lt_fieldcat.
+
+  CLEAR ls_fieldcat.
+  ls_fieldcat-fieldname = 'FUNDSCTR'.
+  ls_fieldcat-seltext_l = 'Fund Center'.
+  ls_fieldcat-seltext_m = 'Fund Ctr'.
+  ls_fieldcat-seltext_s = 'FC'.
+  ls_fieldcat-col_pos   = 2.
+  APPEND ls_fieldcat TO lt_fieldcat.
+
+  CLEAR ls_fieldcat.
+  ls_fieldcat-fieldname = 'CMMTITEM'.
+  ls_fieldcat-seltext_l = 'Commitment Item'.
+  ls_fieldcat-seltext_m = 'Cmmt Item'.
+  ls_fieldcat-seltext_s = 'CI'.
+  ls_fieldcat-col_pos   = 3.
+  APPEND ls_fieldcat TO lt_fieldcat.
+
+  CLEAR ls_fieldcat.
+  ls_fieldcat-fieldname = 'FISCYEAR'.
+  ls_fieldcat-seltext_l = 'Fiscal Year'.
+  ls_fieldcat-seltext_m = 'Fisc Year'.
+  ls_fieldcat-seltext_s = 'Year'.
+  ls_fieldcat-col_pos   = 4.
+  APPEND ls_fieldcat TO lt_fieldcat.
+
+  " Add Period columns dynamically
+  DO 12 TIMES.
+    lv_num = sy-index.
+    CLEAR ls_fieldcat.
+    ls_fieldcat-fieldname = |PERIOD{ lv_num WIDTH = 2 ALIGN = RIGHT PAD = '0' }|.
+    ls_fieldcat-seltext_l = |Period { lv_num WIDTH = 2 ALIGN = RIGHT PAD = '0' }|.
+    ls_fieldcat-seltext_m = |Period { lv_num WIDTH = 2 ALIGN = RIGHT PAD = '0' }|.
+    ls_fieldcat-seltext_s = |P{ lv_num WIDTH = 2 ALIGN = RIGHT PAD = '0' }|.
+    ls_fieldcat-col_pos   = 4 + lv_num.
+    ls_fieldcat-do_sum    = 'X'.  " Enable subtotals
+
+    " Hide non-selected periods
+    IF s_period[] IS NOT INITIAL.
+      IF NOT lv_num IN s_period.
+        ls_fieldcat-no_out = 'X'.
+      ENDIF.
+    ENDIF.
+
+    APPEND ls_fieldcat TO lt_fieldcat.
+  ENDDO.
+
+  " Total column
+  CLEAR ls_fieldcat.
+  ls_fieldcat-fieldname = 'TOTAL'.
+  ls_fieldcat-seltext_l = 'Total'.
+  ls_fieldcat-seltext_m = 'Total'.
+  ls_fieldcat-seltext_s = 'Tot'.
+  ls_fieldcat-col_pos   = 17.
+  ls_fieldcat-do_sum    = 'X'.
+  APPEND ls_fieldcat TO lt_fieldcat.
+
+  " Layout settings
+  ls_layout-zebra             = 'X'.
+  ls_layout-colwidth_optimize = 'X'.
+
+  " Display ALV
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = sy-repid
+      is_layout          = ls_layout
+      it_fieldcat        = lt_fieldcat
+      i_grid_title       = 'Funds Management Budget Report'
+      i_save             = 'A'
+    TABLES
+      t_outtab           = gt_output
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+ENDFORM.
+
+
+
