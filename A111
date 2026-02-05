@@ -323,3 +323,31 @@ ENDFORM.
 * S_YEAR   = Fiscal Year
 * S_PERIOD = Period
 *----------------------------------------------------------------------*
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DATA: gv_fundsctr TYPE c LENGTH 16,
+      gv_cmmtitem TYPE c LENGTH 14,
+      gv_fiscyear TYPE gjahr,
+      gv_fm_area  TYPE c LENGTH 4.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  PARAMETERS:     p_fmarea TYPE c LENGTH 4 OBLIGATORY.
+  SELECT-OPTIONS: s_fundsc FOR gv_fundsctr,
+                  s_cmmtit FOR gv_cmmtitem,
+                  s_year   FOR gv_fiscyear,
+                  s_period FOR sy-index NO-EXTENSION.
+SELECTION-SCREEN END OF BLOCK b1.
