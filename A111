@@ -454,3 +454,87 @@ ELSEIF vttk-tknum IS NOT INITIAL.
 
 
 
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form PROCESS_DATA
+*&---------------------------------------------------------------------*
+FORM process_data.
+
+  DATA: ls_fmbl      TYPE ty_fmbl,
+        lv_fieldname TYPE string,
+        lv_period    TYPE i.
+        
+  FIELD-SYMBOLS: <lv_value> TYPE any.
+
+  " Sort data for grouping
+  SORT gt_fmbl BY fm_area fundsctr cmmtitem fiscyear.
+
+  " Aggregate data by FM Area, Fund Center, Commitment Item, Year
+  LOOP AT gt_fmbl INTO ls_fmbl.
+    AT NEW fiscyear.
+      CLEAR gs_output.
+      gs_output-fm_area  = ls_fmbl-fm_area.
+      gs_output-fundsctr = ls_fmbl-fundsctr.
+      gs_output-cmmtitem = ls_fmbl-cmmtitem.
+      gs_output-fiscyear = ls_fmbl-fiscyear.
+    ENDAT.
+
+    " Sum up period values (negate as per requirement)
+    gs_output-period01 = gs_output-period01 - ls_fmbl-tval01.
+    gs_output-period02 = gs_output-period02 - ls_fmbl-tval02.
+    gs_output-period03 = gs_output-period03 - ls_fmbl-tval03.
+    gs_output-period04 = gs_output-period04 - ls_fmbl-tval04.
+    gs_output-period05 = gs_output-period05 - ls_fmbl-tval05.
+    gs_output-period06 = gs_output-period06 - ls_fmbl-tval06.
+    gs_output-period07 = gs_output-period07 - ls_fmbl-tval07.
+    gs_output-period08 = gs_output-period08 - ls_fmbl-tval08.
+    gs_output-period09 = gs_output-period09 - ls_fmbl-tval09.
+    gs_output-period10 = gs_output-period10 - ls_fmbl-tval10.
+    gs_output-period11 = gs_output-period11 - ls_fmbl-tval11.
+    gs_output-period12 = gs_output-period12 - ls_fmbl-tval12.
+
+    AT END OF fiscyear.
+      " Calculate total dynamically based on selected periods
+      CLEAR gs_output-total.
+
+      IF s_period[] IS INITIAL.
+        " No period filter - sum all periods
+        DO 12 TIMES.
+          lv_period = sy-index.
+          lv_fieldname = |GS_OUTPUT-PERIOD{ lv_period WIDTH = 2 ALIGN = RIGHT PAD = '0' }|.
+          ASSIGN (lv_fieldname) TO <lv_value>.
+          IF sy-subrc = 0.
+            gs_output-total = gs_output-total + <lv_value>.
+          ENDIF.
+        ENDDO.
+      ELSE.
+        " Sum only selected periods
+        DO 12 TIMES.
+          lv_period = sy-index.
+          IF lv_period IN s_period.
+            lv_fieldname = |GS_OUTPUT-PERIOD{ lv_period WIDTH = 2 ALIGN = RIGHT PAD = '0' }|.
+            ASSIGN (lv_fieldname) TO <lv_value>.
+            IF sy-subrc = 0.
+              gs_output-total = gs_output-total + <lv_value>.
+            ENDIF.
+          ENDIF.
+        ENDDO.
+      ENDIF.
+
+      APPEND gs_output TO gt_output.
+    ENDAT.
+  ENDLOOP.
+
+  IF gt_output IS INITIAL.
+    MESSAGE s003(00) WITH 'No data after processing' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.
+
+
+
