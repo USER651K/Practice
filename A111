@@ -351,3 +351,106 @@ SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
                   s_year   FOR gv_fiscyear,
                   s_period FOR sy-index NO-EXTENSION.
 SELECTION-SCREEN END OF BLOCK b1.
+
+
+
+
+
+
+
+
+
+
+
+
+
+ELSEIF vttk-tknum IS NOT INITIAL.
+*BOC--UJWAL--05.02.2026
+            CLEAR: gv_planned_gi.
+            DATA: lv_vttp_vbeln TYPE vbeln_vl,
+                  lv_sales_ord  TYPE vbeln.
+
+            "Step 1: Get Delivery (VBELN) from VTTP using Shipment number
+            SELECT SINGLE vbeln
+              FROM vttp INTO lv_vttp_vbeln
+              WHERE tknum = vttk-tknum.
+
+            IF sy-subrc EQ 0 AND lv_vttp_vbeln IS NOT INITIAL.
+              "Step 2: Get Sales Order (VBELV) from VBFA using Delivery
+              SELECT SINGLE vbelv
+                FROM vbfa INTO lv_sales_ord
+                WHERE vbeln = lv_vttp_vbeln
+                AND vbtyp_v = 'C'.
+
+              IF sy-subrc EQ 0 AND lv_sales_ord IS NOT INITIAL.
+                "Step 3: Get WADAT from VBEP using Sales Order
+                SELECT SINGLE wadat
+                  FROM vbep INTO gv_planned_gi
+                  WHERE vbeln = lv_sales_ord.
+              ENDIF.
+            ENDIF.
+*EOC--UJWAL--05.02.2026
+
+            REFRESH:gt_vbfa_del,gt_vbfa_ord.
+            SELECT vbelv
+              FROM vbfa INTO TABLE gt_vbfa_del
+              WHERE vbeln = vttk-tknum
+              AND vbtyp_v = 'J'.
+
+
+
+
+
+
+
+
+ELSEIF vttk-tknum IS NOT INITIAL.
+*BOC--UJWAL--05.02.2026
+          CLEAR: gv_planned_gi.
+          DATA: lv_vttp_vbeln TYPE vbeln_vl,
+                lv_sales_ord  TYPE vbeln.
+
+          "Step 1: Get Delivery (VBELN) from VTTP using Shipment number
+          SELECT SINGLE vbeln
+            FROM vttp INTO lv_vttp_vbeln
+            WHERE tknum = vttk-tknum.
+
+          IF sy-subrc EQ 0 AND lv_vttp_vbeln IS NOT INITIAL.
+            "Step 2: Get Sales Order (VBELV) from VBFA using Delivery
+            SELECT SINGLE vbelv
+              FROM vbfa INTO lv_sales_ord
+              WHERE vbeln = lv_vttp_vbeln
+              AND vbtyp_v = 'C'.
+
+            IF sy-subrc EQ 0 AND lv_sales_ord IS NOT INITIAL.
+              "Step 3: Get WADAT from VBEP using Sales Order
+              SELECT SINGLE wadat
+                FROM vbep INTO gv_planned_gi
+                WHERE vbeln = lv_sales_ord.
+            ENDIF.
+          ENDIF.
+*EOC--UJWAL--05.02.2026
+
+*          gv_tknum = vttk-tknum.
+          SELECT vbelv
+            FROM vbfa INTO TABLE gt_vbfa_del
+            WHERE vbeln = vttk-tknum
+            AND vbtyp_v = 'J'.
+```
+
+---
+
+## Data Flow Summary
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   VTTK      │     │   VTTP      │     │   VBFA      │     │   VBEP      │
+│   TKNUM     │────►│   VBELN     │────►│   VBELV     │────►│   WADAT     │
+│  (Shipment) │     │  (Delivery) │     │(Sales Order)│     │(Planned GI) │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+
+
+
+
+
+
+
