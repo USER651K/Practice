@@ -1,0 +1,211 @@
+ELSEIF vbkd-bstkd IS NOT INITIAL.
+***BOC--UJWAL--05.02.2026--PO Number Delivery Dropdown
+          CLEAR: gv_planned_gi, deliv_ord, sale_ord, ls_fval.
+          CLEAR: gt_del_wadat, gt_lips_del.
+          REFRESH: gt_del_wadat, gt_lips_del, lt_fval.
+
+          " Step 1: Try LIPS (SAP PO as VGBEL)
+          SELECT DISTINCT vbeln
+            FROM lips
+            INTO TABLE gt_lips_del
+            WHERE vgbel = vbkd-bstkd.
+
+          IF sy-subrc = 0 AND gt_lips_del IS NOT INITIAL.
+            " Step 2: Get WADAT from LIKP
+            SELECT vbeln wadat
+              FROM likp
+              INTO TABLE gt_del_wadat
+              FOR ALL ENTRIES IN gt_lips_del
+              WHERE vbeln = gt_lips_del-vbeln.
+
+            IF sy-subrc = 0 AND gt_del_wadat IS NOT INITIAL.
+              SORT gt_del_wadat BY vbeln.
+              DELETE ADJACENT DUPLICATES FROM gt_del_wadat COMPARING vbeln.
+
+              READ TABLE gt_del_wadat INTO gs_del_wadat INDEX 1.
+              IF sy-subrc = 0.
+                gv_planned_gi = gs_del_wadat-wadat.
+                lv_delivery = gs_del_wadat-vbeln.
+                deliv_ord = gs_del_wadat-vbeln.
+
+                " Step 3: Get Sales Order from VBFA using Delivery
+                SELECT SINGLE vbelv
+                  FROM vbfa INTO sale_ord
+                  WHERE vbeln = gs_del_wadat-vbeln
+                  AND vbtyp_v = 'C'.
+              ENDIF.
+
+              " Populate dropdown
+              LOOP AT gt_del_wadat INTO gs_del_wadat.
+                ls_fval-key  = gs_del_wadat-vbeln.
+                ls_fval-text = gs_del_wadat-vbeln.
+                APPEND ls_fval TO lt_fval.
+              ENDLOOP.
+
+              CALL FUNCTION 'VRM_SET_VALUES'
+                EXPORTING
+                  id     = 'DELIV_ORD'
+                  values = lt_fval.
+            ENDIF.
+          ENDIF.
+
+          " Fallback: If no delivery found in LIPS
+          IF gt_del_wadat IS INITIAL.
+            CLEAR: gt_del_wadat, gt_lips_del, deliv_ord.
+            REFRESH: lt_fval.
+
+            CALL FUNCTION 'VRM_SET_VALUES'
+              EXPORTING
+                id     = 'DELIV_ORD'
+                values = lt_fval.
+
+            SELECT SINGLE vbeln
+              FROM vbkd INTO lv_ord
+              WHERE bstkd = vbkd-bstkd.
+
+            IF sy-subrc = 0.
+              wa_ysdssop-sales_order = lv_ord.
+              sale_ord = lv_ord.
+
+              SELECT SINGLE vbeln
+                FROM vbfa INTO lv_delivery
+                WHERE vbelv = lv_ord
+                AND vbtyp_n = 'J'.
+
+              IF sy-subrc = 0 AND lv_delivery IS NOT INITIAL.
+                SELECT SINGLE wadat
+                  FROM likp INTO gv_planned_gi
+                  WHERE vbeln = lv_delivery.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+***EOC--UJWAL--05.02.2026--PO Number Delivery Dropdown
+
+
+
+
+
+
+
+
+
+
+
+
+
+ELSEIF vbkd-bstkd IS NOT INITIAL.
+***BOC--UJWAL--05.02.2026--PO Number Delivery Dropdown
+          CLEAR: gv_planned_gi, gt_del_wadat, gt_lips_del, deliv_ord, sale_ord.
+
+          " Step 1: Try LIPS (SAP PO as VGBEL)
+          SELECT DISTINCT vbeln
+            FROM lips
+            INTO TABLE gt_lips_del
+            WHERE vgbel = vbkd-bstkd.
+
+          IF sy-subrc = 0 AND gt_lips_del IS NOT INITIAL.
+            " Step 2: Get WADAT from LIKP
+            SELECT vbeln wadat
+              FROM likp
+              INTO TABLE gt_del_wadat
+              FOR ALL ENTRIES IN gt_lips_del
+              WHERE vbeln = gt_lips_del-vbeln.
+
+            IF sy-subrc = 0 AND gt_del_wadat IS NOT INITIAL.
+              SORT gt_del_wadat BY vbeln.
+              DELETE ADJACENT DUPLICATES FROM gt_del_wadat COMPARING vbeln.
+
+              READ TABLE gt_del_wadat INTO gs_del_wadat INDEX 1.
+              IF sy-subrc = 0.
+                gv_planned_gi = gs_del_wadat-wadat.
+                lv_del = gs_del_wadat-vbeln.
+                deliv_ord = gs_del_wadat-vbeln.
+
+                " Step 3: Get Sales Order from VBFA using Delivery
+                SELECT SINGLE vbelv
+                  FROM vbfa INTO sale_ord
+                  WHERE vbeln = gs_del_wadat-vbeln
+                  AND vbtyp_v = 'C'.
+              ENDIF.
+            ENDIF.
+          ELSE.
+            " Fallback: VBKD logic
+            CLEAR: gt_del_wadat, gt_lips_del, deliv_ord.
+            SELECT SINGLE vbeln
+              FROM vbkd INTO lv_ord
+              WHERE bstkd = vbkd-bstkd.
+            IF sy-subrc = 0.
+              sale_ord = lv_ord.
+              SELECT SINGLE vbeln
+                FROM vbfa INTO lv_del
+                WHERE vbelv = lv_ord
+                AND vbtyp_n = 'J'.
+              IF sy-subrc = 0 AND lv_del IS NOT INITIAL.
+                SELECT SINGLE wadat
+                  FROM likp INTO gv_planned_gi
+                  WHERE vbeln = lv_del.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+***EOC--UJWAL--05.02.2026--PO Number Delivery Dropdown
+
+
+
+
+
+
+
+
+
+
+
+
+*BOC--UJWAL--05.02.2026--Delivery Dropdown Handler for PO
+  " Handle Delivery dropdown change for PO Number
+  IF vbkd-bstkd IS NOT INITIAL.
+    IF deliv_ord IS NOT INITIAL AND gt_del_wadat IS NOT INITIAL.
+      CLEAR gs_del_wadat.
+      READ TABLE gt_del_wadat INTO gs_del_wadat
+        WITH KEY vbeln = deliv_ord.
+      IF sy-subrc = 0.
+        gv_planned_gi = gs_del_wadat-wadat.
+        
+        " Also update Sales Order for selected delivery
+        SELECT SINGLE vbelv
+          FROM vbfa INTO sale_ord
+          WHERE vbeln = deliv_ord
+          AND vbtyp_v = 'C'.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+*EOC--UJWAL--05.02.2026--Delivery Dropdown Handler for PO
+```
+
+---
+
+## Summary of Missing Pieces
+
+| Issue | Root Cause | Fix |
+|-------|------------|-----|
+| Sales Document not showing | VBFA SELECT missing in LIPS path | Add VBFA SELECT after getting delivery |
+| Planned GI Date not showing | WADAT empty in LIKP | Maintain data in LIKP |
+| Dropdown change doesn't update Sales Doc | Handler missing VBFA SELECT | Add VBFA SELECT in handler |
+
+---
+
+## Complete Flow After Fix
+```
+PO Number
+    ↓
+LIPS (VGBEL = PO)
+    ↓
+Delivery Numbers (gt_lips_del)
+    ↓
+LIKP (FOR ALL ENTRIES) → WADAT → gv_planned_gi ✅
+    ↓
+VBFA (vbeln = delivery, vbtyp_v = 'C') → Sales Order → sale_ord ✅
+    ↓
+Dropdown populated ✅
+    ↓
+On dropdown change → Update WADAT + Sales Order ✅
+
