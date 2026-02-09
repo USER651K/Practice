@@ -209,3 +209,170 @@ Dropdown populated ✅
     ↓
 On dropdown change → Update WADAT + Sales Order ✅
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form FETCH_POSTED_DATA
+*&---------------------------------------------------------------------*
+*& Fetch already posted documents from ZFI_VENDCD_DOC
+*&---------------------------------------------------------------------*
+FORM fetch_posted_data.
+
+  DATA: lv_vendor_name TYPE lfa1-name1,
+        lt_cellstyle   TYPE lvc_t_styl,
+        ls_cellstyle   TYPE lvc_s_styl.
+
+  " Clear all internal tables
+  CLEAR: gt_credit, gt_vendcd_doc, gt_lfa1.
+  REFRESH: gt_credit, gt_vendcd_doc, gt_lfa1.
+
+  " Fetch Posted Documents from ZFI_VENDCD_DOC
+  SELECT *
+    FROM zfi_vendcd_doc
+    INTO TABLE gt_vendcd_doc
+    WHERE bukrs = p_bukrs
+      AND lifnr IN s_zp2pde
+      AND budat = p_budat
+      AND gsber IN s_destpl
+      AND zp2pdemandi IN s_zp2p
+      AND rebzg IN s_trno
+      AND posted = 'X'.
+
+  IF gt_vendcd_doc[] IS INITIAL.
+    CLEAR gv_data_fetched.
+    MESSAGE 'No posted documents found for selection criteria' TYPE 'S'.
+    RETURN.
+  ENDIF.
+
+  " Fetch Vendor Names
+  SELECT lifnr name1
+    FROM lfa1
+    INTO CORRESPONDING FIELDS OF TABLE gt_lfa1
+    FOR ALL ENTRIES IN gt_vendcd_doc
+    WHERE lifnr = gt_vendcd_doc-lifnr.
+
+  SORT gt_lfa1 BY lifnr.
+
+  " Build Output Table from Posted Documents
+  LOOP AT gt_vendcd_doc INTO gs_vendcd_doc.
+    CLEAR gs_credit.
+
+    " Map fields from ZFI_VENDCD_DOC to ty_credit
+    gs_credit-checkmark         = gs_vendcd_doc-checkmark.
+    gs_credit-manual_edit       = gs_vendcd_doc-manual_edit.
+    gs_credit-payment_reason    = gs_vendcd_doc-payment_reason.
+    gs_credit-bukrs             = gs_vendcd_doc-bukrs.
+    gs_credit-zp2pdemandi       = gs_vendcd_doc-zp2pdemandi.
+    gs_credit-lifnr             = gs_vendcd_doc-lifnr.
+    
+    " Get Vendor Name
+    READ TABLE gt_lfa1 INTO gs_lfa1 WITH KEY lifnr = gs_vendcd_doc-lifnr BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_credit-vendor_name = gs_lfa1-name1.
+    ELSE.
+      gs_credit-vendor_name = gs_vendcd_doc-vendor_name.
+    ENDIF.
+
+    gs_credit-gjahr             = gs_vendcd_doc-gjahr.
+    gs_credit-belnr             = gs_vendcd_doc-belnr.
+    gs_credit-buzei             = gs_vendcd_doc-buzei.
+    gs_credit-budat             = gs_vendcd_doc-budat.
+    gs_credit-bldat             = gs_vendcd_doc-bldat.
+    gs_credit-gsber             = gs_vendcd_doc-gsber.
+    gs_credit-waers             = gs_vendcd_doc-waers.
+    gs_credit-wrbtr             = gs_vendcd_doc-wrbtr.
+    gs_credit-skfbt             = gs_vendcd_doc-skfbt.
+    gs_credit-payment_term      = gs_vendcd_doc-payment_term.
+    gs_credit-payment_amt       = gs_vendcd_doc-payment_amt.
+    
+    " *** CORRECTED FIELD NAMES ***
+    gs_credit-cd_pct            = gs_vendcd_doc-cd_percent.      " cd_percent (table) -> cd_pct (ALV)
+    gs_credit-cd_days           = gs_vendcd_doc-cddays.          " cddays (table) -> cd_days (ALV)
+    gs_credit-grace_days        = gs_vendcd_doc-grace_days.
+    gs_credit-net_days          = gs_vendcd_doc-net_days.
+    gs_credit-applicable_cd_pct = gs_vendcd_doc-applicable_cd_pc. " applicable_cd_pc (table) -> applicable_cd_pct (ALV)
+    gs_credit-applicable_cd_amt = gs_vendcd_doc-applicable_cd_am. " applicable_cd_am (table) -> applicable_cd_amt (ALV)
+    
+    gs_credit-rebzg             = gs_vendcd_doc-rebzg.
+    gs_credit-rebzj             = gs_vendcd_doc-rebzj.
+    gs_credit-rebzz             = gs_vendcd_doc-rebzz.
+    gs_credit-debit_note_no     = gs_vendcd_doc-debit_note_no.
+    gs_credit-payment_date      = gs_vendcd_doc-payment_date.
+    gs_credit-posted            = gs_vendcd_doc-posted.
+    gs_credit-post_doc_no       = gs_vendcd_doc-post_doc_no.
+    gs_credit-post_message      = gs_vendcd_doc-post_message.
+    gs_credit-hkont             = gs_vendcd_doc-hkont.
+    gs_credit-kostl             = gs_vendcd_doc-kostl.
+    gs_credit-prctr             = gs_vendcd_doc-prctr.
+    gs_credit-mwskz             = gs_vendcd_doc-mwskz.
+    
+    " TR_NO - Extract first 10 chars from REBZG
+    gs_credit-tr_no = gs_vendcd_doc-rebzg(10).
+    
+    " Initial amount (same as payment amount for posted docs)
+    gs_credit-initial_amt = gs_vendcd_doc-payment_amt.
+    
+    " Calculate zfbdt_days (days from baseline date to today)
+    " Note: ZFBDT in table is DEC(3), which seems wrong, but we'll work with it
+    " gs_credit-zfbdt_days = sy-datum - gs_vendcd_doc-zfbdt.  " Won't work if ZFBDT is DEC
+    gs_credit-zfbdt_days = gs_vendcd_doc-zfbdt_days.  " Use stored value
+    
+    " Amount After CD
+    gs_credit-amt_after_cd = gs_vendcd_doc-payment_amt - gs_vendcd_doc-applicable_cd_am.
+    IF gs_credit-amt_after_cd < 0.
+      gs_credit-amt_after_cd = 0.
+    ENDIF.
+
+    " Disable all editing for posted documents
+    CLEAR lt_cellstyle.
+    REFRESH lt_cellstyle.
+
+    CLEAR ls_cellstyle.
+    ls_cellstyle-fieldname = 'CHECKMARK'.
+    ls_cellstyle-style     = cl_gui_alv_grid=>mc_style_disabled.
+    APPEND ls_cellstyle TO lt_cellstyle.
+
+    CLEAR ls_cellstyle.
+    ls_cellstyle-fieldname = 'MANUAL_EDIT'.
+    ls_cellstyle-style     = cl_gui_alv_grid=>mc_style_disabled.
+    APPEND ls_cellstyle TO lt_cellstyle.
+
+    CLEAR ls_cellstyle.
+    ls_cellstyle-fieldname = 'PAYMENT_AMT'.
+    ls_cellstyle-style     = cl_gui_alv_grid=>mc_style_disabled.
+    APPEND ls_cellstyle TO lt_cellstyle.
+
+    gs_credit-celltab = lt_cellstyle.
+
+    APPEND gs_credit TO gt_credit.
+  ENDLOOP.
+
+  " Set data fetched flag
+  IF gt_credit[] IS NOT INITIAL.
+    gv_data_fetched = 'X'.
+  ELSE.
+    CLEAR gv_data_fetched.
+    MESSAGE 'No posted documents to display' TYPE 'S'.
+  ENDIF.
+
+ENDFORM.
+
