@@ -376,3 +376,110 @@ FORM fetch_posted_data.
 
 ENDFORM.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+WHEN 'PAYMENT_AMT'.
+  " Handle PAYMENT_AMT change - Recalculate Applicable CD Amount
+  lv_new_amt = ls_mod_cell-value.
+
+  " VALIDATION: Payment Amount cannot exceed Initial Amount
+  IF lv_new_amt > ls_credit-initial_amt.
+    " Show error and reset to initial amount
+    CALL METHOD er_data_changed->add_protocol_entry
+      EXPORTING
+        i_msgid     = '00'
+        i_msgno     = '001'
+        i_msgty     = 'E'
+        i_msgv1     = 'Payment Amount cannot exceed'
+        i_msgv2     = 'Initial Amount'
+        i_fieldname = 'PAYMENT_AMT'
+        i_row_id    = ls_mod_cell-row_id.
+
+    " Reset to initial amount
+    ls_credit-payment_amt = ls_credit-initial_amt.
+  ELSE.
+    ls_credit-payment_amt = lv_new_amt.
+  ENDIF.
+
+  " Recalculate Applicable CD Amount based on new Payment Amount
+  PERFORM calculate_applicable_cd
+    USING    ls_credit-zfbdt
+             ls_credit-cd_days
+             ls_credit-grace_days
+             ls_credit-cd_pct
+             ls_credit-cd_pct
+             lv_new_amt
+             ls_credit-net_days
+    CHANGING ls_credit-applicable_cd_pct
+             ls_credit-applicable_cd_amt.
+
+  " Recalculate Amount After CD
+  ls_credit-amt_after_cd = ls_credit-payment_amt - ls_credit-applicable_cd_amt.
+  IF ls_credit-amt_after_cd < 0.
+    ls_credit-amt_after_cd = 0.
+  ENDIF.
+
+  " *** FIX: Keep PAYMENT_AMT editable if MANUAL_EDIT is checked ***
+  CLEAR lt_celltab.
+  REFRESH lt_celltab.
+
+  " PAYMENT_AMT style - remains editable if manual_edit = X
+  CLEAR ls_celltab.
+  ls_celltab-fieldname = 'PAYMENT_AMT'.
+  IF ls_credit-manual_edit = 'X'.
+    ls_celltab-style = cl_gui_alv_grid=>mc_style_enabled.
+  ELSE.
+    ls_celltab-style = cl_gui_alv_grid=>mc_style_disabled.
+  ENDIF.
+  INSERT ls_celltab INTO TABLE lt_celltab.
+
+  " Keep CHECKMARK disabled if no CD applicable or already posted
+  IF ls_credit-applicable_cd_amt <= 0 OR ls_credit-posted = 'X'.
+    CLEAR ls_celltab.
+    ls_celltab-fieldname = 'CHECKMARK'.
+    ls_celltab-style     = cl_gui_alv_grid=>mc_style_disabled.
+    INSERT ls_celltab INTO TABLE lt_celltab.
+  ENDIF.
+
+  " Keep MANUAL_EDIT disabled if already posted
+  IF ls_credit-posted = 'X'.
+    CLEAR ls_celltab.
+    ls_celltab-fieldname = 'MANUAL_EDIT'.
+    ls_celltab-style     = cl_gui_alv_grid=>mc_style_disabled.
+    INSERT ls_celltab INTO TABLE lt_celltab.
+  ENDIF.
+
+  ls_credit-celltab = lt_celltab.
+
+  MODIFY gt_credit FROM ls_credit INDEX lv_tabix.
+
