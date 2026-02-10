@@ -318,3 +318,88 @@ ELSEIF vbkd-bstkd IS NOT INITIAL.
               MESSAGE 'Purchase Order does not exist' TYPE 'I'.
             ENDIF.
 ***EOC--UJWAL--10.02.2026--PO Number - Single SO with WADAT from VBEP
+
+
+
+
+
+
+
+
+
+ELSEIF likp-vbeln IS NOT INITIAL.
+***BOC--UJWAL--10.02.2026--Delivery - Get SO from VBFA, WADAT from VBEP
+            lv_delivery = likp-vbeln.
+
+            " Step 1: Get Sales Order from VBFA using Delivery
+            SELECT SINGLE vbelv
+              FROM vbfa INTO lv_ord
+              WHERE vbeln = likp-vbeln
+              AND vbtyp_v = 'C'.
+
+            IF sy-subrc = 0 AND lv_ord IS NOT INITIAL.
+              wa_ysdssop-sales_order = lv_ord.
+              sale_ord = lv_ord.
+
+              " Step 2: Get WADAT from VBEP (Same as Sales Document)
+              SELECT SINGLE wadat
+                FROM vbep INTO gv_planned_gi
+                WHERE vbeln = lv_ord.
+            ENDIF.
+***EOC--UJWAL--10.02.2026--Delivery - Get SO from VBFA, WADAT from VBEP
+
+
+
+
+
+
+ELSEIF likp-vbeln IS NOT INITIAL.
+***BOC--UJWAL--10.02.2026--Delivery - Get SO from VBFA, WADAT from VBEP
+          lv_del = likp-vbeln.
+
+          " Step 1: Get Sales Order from VBFA using Delivery
+          SELECT SINGLE vbelv
+            FROM vbfa INTO lv_ord
+            WHERE vbeln = likp-vbeln
+            AND vbtyp_v = 'C'.
+
+          IF sy-subrc = 0 AND lv_ord IS NOT INITIAL.
+            sale_ord = lv_ord.
+
+            " Step 2: Get WADAT from VBEP (Same as Sales Document)
+            SELECT SINGLE wadat
+              FROM vbep INTO gv_planned_gi
+              WHERE vbeln = lv_ord.
+          ENDIF.
+***EOC--UJWAL--10.02.2026--Delivery - Get SO from VBFA, WADAT from VBEP
+```
+
+---
+
+## Summary - All Input Types
+
+| Input | Step 1 | Step 2 | Step 3 |
+|-------|--------|--------|--------|
+| **Sales Doc** | Direct use as SO | VBEP → WADAT | VBFA → Delivery |
+| **Delivery** | VBFA (VBTYP_V='C') → SO | VBEP → WADAT | - |
+| **PO Number** | VBKD → SO (count check) | VBEP → WADAT | VBFA → Delivery |
+
+---
+
+## Flow Diagram - Delivery
+```
+Delivery (LIKP-VBELN)
+       │
+       ▼
+VBFA: WHERE vbeln = Delivery AND vbtyp_v = 'C'
+       │
+       ▼
+Get VBELV → Sales Order (sale_ord)
+       │
+       ▼
+VBEP: WHERE vbeln = Sales Order
+       │
+       ▼
+Get WADAT → gv_planned_gi (Planned GI Date)
+
+
