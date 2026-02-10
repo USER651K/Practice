@@ -1,0 +1,119 @@
+" TYPE for ZP2PTTRUCK baseline date lookup
+TYPES: BEGIN OF ty_truck_baseline,
+         zp2pdetrno  TYPE zp2pttruck-zp2pdetrno,
+         grnob_date  TYPE zp2pttruck-grnob_date,
+         zp2pdeoffer TYPE zp2pttruck-zp2pdeoffer,
+       END OF ty_truck_baseline.
+
+" TYPE for ZP2PTPUROFER table
+TYPES: BEGIN OF ty_pur_offer,
+         pur_offer     TYPE zp2ptpurofer-pur_offer,
+         creation_date TYPE zp2ptpurofer-creation_date,
+       END OF ty_pur_offer.
+
+" Internal tables for baseline date calculation
+DATA: gt_truck_baseline TYPE STANDARD TABLE OF ty_truck_baseline,
+      gs_truck_baseline TYPE ty_truck_baseline.
+
+DATA: gt_pur_offer TYPE STANDARD TABLE OF ty_pur_offer,
+      gs_pur_offer TYPE ty_pur_offer.
+
+" Set for business area check
+DATA: gt_gsber_set TYPE STANDARD TABLE OF rgsb4,
+      gs_gsber_set TYPE rgsb4.
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form GET_BASELINE_DATE
+*&---------------------------------------------------------------------*
+*& Calculate baseline date based on business area and TR number
+*&---------------------------------------------------------------------*
+FORM get_baseline_date
+  USING    p_gsber  TYPE gsber
+           p_tr_no  TYPE char10
+  CHANGING p_zfbdt  TYPE bsik-zfbdt.
+
+  DATA: lv_in_set        TYPE char1,
+        lv_grnob_date    TYPE zp2pttruck-grnob_date,
+        lv_zp2pdeoffer   TYPE zp2pttruck-zp2pdeoffer,
+        lv_creation_date TYPE zp2ptpurofer-creation_date.
+
+  CLEAR: p_zfbdt, lv_in_set.
+
+  " Check if Business Area is in set ZFI-PUNJAB_PLANT
+  CLEAR gt_gsber_set.
+  REFRESH gt_gsber_set.
+
+  CALL FUNCTION 'G_SET_GET_ID_FROM_NAME'
+    EXPORTING
+      setname                  = 'ZFI-PUNJAB_PLANT'
+      table_name               = 'RGSB4'
+      ignore_buffer            = 'X'
+    TABLES
+      set_values               = gt_gsber_set
+    EXCEPTIONS
+      set_not_found            = 1
+      table_field_not_found    = 2
+      OTHERS                   = 3.
+
+  IF sy-subrc = 0.
+    " Check if current GSBER is in the set
+    READ TABLE gt_gsber_set INTO gs_gsber_set
+      WITH KEY from = p_gsber.
+    IF sy-subrc = 0.
+      lv_in_set = 'X'.
+    ENDIF.
+  ENDIF.
+
+  IF lv_in_set = 'X'.
+    "------------------------------------------------------------
+    " Scenario 1: Punjab Plant - Get GRNOB_DATE from ZP2PTTRUCK
+    "------------------------------------------------------------
+    SELECT SINGLE grnob_date
+      FROM zp2pttruck
+      INTO lv_grnob_date
+      WHERE zp2pdetrno = p_tr_no.
+
+    IF sy-subrc = 0 AND lv_grnob_date IS NOT INITIAL.
+      p_zfbdt = lv_grnob_date.
+    ELSE.
+      " Fallback to system date
+      p_zfbdt = sy-datum.
+    ENDIF.
+
+  ELSE.
+    "------------------------------------------------------------
+    " Scenario 2: Other Plants - Get creation_date from ZP2PTPUROFER
+    "------------------------------------------------------------
+    " Step 1: Get ZP2PDEOFFER from ZP2PTTRUCK
+    SELECT SINGLE zp2pdeoffer
+      FROM zp2pttruck
+      INTO lv_zp2pdeoffer
+      WHERE zp2pdetrno = p_tr_no.
+
+    IF sy-subrc = 0 AND lv_zp2pdeoffer IS NOT INITIAL.
+      " Step 2: Get creation_date from ZP2PTPUROFER
+      SELECT SINGLE creation_date
+        FROM zp2ptpurofer
+        INTO lv_creation_date
+        WHERE pur_offer = lv_zp2pdeoffer.
+
+      IF sy-subrc = 0 AND lv_creation_date IS NOT INITIAL.
+        p_zfbdt = lv_creation_date.
+      ELSE.
+        " Fallback to system date
+        p_zfbdt = sy-datum.
+      ENDIF.
+    ELSE.
+      " Fallback to system date
+      p_zfbdt = sy-datum.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
