@@ -1,0 +1,177 @@
+ELSEIF vbkd-bstkd IS NOT INITIAL.
+***BOC--UJWAL--10.02.2026--PO Number - WADAT from VBEP via Sales Order
+            " Clear all PO related variables
+            CLEAR: gv_planned_gi, deliv_ord, sale_ord, ls_fval.
+            CLEAR: gt_del_wadat, gt_lips_del.
+            REFRESH: gt_del_wadat, gt_lips_del, lt_fval.
+
+            " Step 1: Get Deliveries from LIPS using PO Number
+            SELECT DISTINCT vbeln
+              FROM lips
+              INTO TABLE gt_lips_del
+              WHERE vgbel = vbkd-bstkd.
+
+            IF sy-subrc = 0 AND gt_lips_del IS NOT INITIAL.
+              " Step 2: Get Deliveries from LIKP (for dropdown list)
+              SELECT vbeln wadat
+                FROM likp
+                INTO TABLE gt_del_wadat
+                FOR ALL ENTRIES IN gt_lips_del
+                WHERE vbeln = gt_lips_del-vbeln.
+
+              IF sy-subrc = 0 AND gt_del_wadat IS NOT INITIAL.
+                SORT gt_del_wadat BY vbeln.
+                DELETE ADJACENT DUPLICATES FROM gt_del_wadat COMPARING vbeln.
+
+                " Set initial delivery
+                READ TABLE gt_del_wadat INTO gs_del_wadat INDEX 1.
+                IF sy-subrc = 0.
+                  lv_delivery = gs_del_wadat-vbeln.
+                  deliv_ord = gs_del_wadat-vbeln.
+
+                  " Step 3: Get Sales Order from VBFA using Delivery
+                  SELECT SINGLE vbelv
+                    FROM vbfa INTO sale_ord
+                    WHERE vbeln = gs_del_wadat-vbeln
+                    AND vbtyp_v = 'C'.
+
+                  " Step 4: Get WADAT from VBEP using Sales Order (SAME AS SALES DOCUMENT)
+                  IF sale_ord IS NOT INITIAL.
+                    SELECT SINGLE wadat
+                      FROM vbep INTO gv_planned_gi
+                      WHERE vbeln = sale_ord.
+                  ENDIF.
+                ENDIF.
+
+                " Populate Delivery dropdown
+                LOOP AT gt_del_wadat INTO gs_del_wadat.
+                  ls_fval-key  = gs_del_wadat-vbeln.
+                  ls_fval-text = gs_del_wadat-vbeln.
+                  APPEND ls_fval TO lt_fval.
+                ENDLOOP.
+
+                CALL FUNCTION 'VRM_SET_VALUES'
+                  EXPORTING
+                    id     = 'DELIV_ORD'
+                    values = lt_fval.
+              ENDIF.
+            ENDIF.
+
+            " Fallback: If no delivery found in LIPS
+            IF gt_del_wadat IS INITIAL.
+              CLEAR: gt_del_wadat, gt_lips_del, deliv_ord.
+              REFRESH: lt_fval.
+
+              " Clear dropdown
+              CALL FUNCTION 'VRM_SET_VALUES'
+                EXPORTING
+                  id     = 'DELIV_ORD'
+                  values = lt_fval.
+
+              SELECT SINGLE vbeln
+                FROM vbkd INTO lv_ord
+                WHERE bstkd = vbkd-bstkd.
+
+              IF sy-subrc = 0.
+                wa_ysdssop-sales_order = lv_ord.
+                sale_ord = lv_ord.
+
+                SELECT SINGLE vbeln
+                  FROM vbfa INTO lv_delivery
+                  WHERE vbelv = lv_ord
+                  AND vbtyp_n = 'J'.
+
+                " Fallback also uses VBEP via Sales Order
+                IF sale_ord IS NOT INITIAL.
+                  SELECT SINGLE wadat
+                    FROM vbep INTO gv_planned_gi
+                    WHERE vbeln = sale_ord.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+***EOC--UJWAL--10.02.2026--PO Number - WADAT from VBEP via Sales Order
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ELSEIF vbkd-bstkd IS NOT INITIAL.
+***BOC--UJWAL--10.02.2026--PO Number - WADAT from VBEP via Sales Order
+          " Clear all PO related variables
+          CLEAR: gv_planned_gi, deliv_ord, sale_ord.
+          CLEAR: gt_del_wadat, gt_lips_del.
+          REFRESH: gt_del_wadat, gt_lips_del.
+
+          " Step 1: Get Deliveries from LIPS using PO Number
+          SELECT DISTINCT vbeln
+            FROM lips
+            INTO TABLE gt_lips_del
+            WHERE vgbel = vbkd-bstkd.
+
+          IF sy-subrc = 0 AND gt_lips_del IS NOT INITIAL.
+            " Step 2: Get Deliveries from LIKP (for dropdown list only)
+            SELECT vbeln wadat
+              FROM likp
+              INTO TABLE gt_del_wadat
+              FOR ALL ENTRIES IN gt_lips_del
+              WHERE vbeln = gt_lips_del-vbeln.
+
+            IF sy-subrc = 0 AND gt_del_wadat IS NOT INITIAL.
+              SORT gt_del_wadat BY vbeln.
+              DELETE ADJACENT DUPLICATES FROM gt_del_wadat COMPARING vbeln.
+
+              " Set initial delivery
+              READ TABLE gt_del_wadat INTO gs_del_wadat INDEX 1.
+              IF sy-subrc = 0.
+                lv_del = gs_del_wadat-vbeln.
+                deliv_ord = gs_del_wadat-vbeln.
+
+                " Step 3: Get Sales Order from VBFA using Delivery
+                SELECT SINGLE vbelv
+                  FROM vbfa INTO sale_ord
+                  WHERE vbeln = gs_del_wadat-vbeln
+                  AND vbtyp_v = 'C'.
+
+                " Step 4: Get WADAT from VBEP using Sales Order (SAME AS SALES DOCUMENT)
+                IF sale_ord IS NOT INITIAL.
+                  SELECT SINGLE wadat
+                    FROM vbep INTO gv_planned_gi
+                    WHERE vbeln = sale_ord.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+
+          " Fallback: If no delivery found in LIPS
+          IF gt_del_wadat IS INITIAL.
+            CLEAR: gt_del_wadat, gt_lips_del, deliv_ord.
+            SELECT SINGLE vbeln
+              FROM vbkd INTO lv_ord
+              WHERE bstkd = vbkd-bstkd.
+            IF sy-subrc = 0.
+              sale_ord = lv_ord.
+              SELECT SINGLE vbeln
+                FROM vbfa INTO lv_del
+                WHERE vbelv = lv_ord
+                AND vbtyp_n = 'J'.
+              " Fallback also uses VBEP via Sales Order
+              IF sale_ord IS NOT INITIAL.
+                SELECT SINGLE wadat
+                  FROM vbep INTO gv_planned_gi
+                  WHERE vbeln = sale_ord.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+***EOC--UJWAL--10.02.2026--PO Number - WADAT from VBEP via Sales Order
+
+
+
