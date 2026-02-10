@@ -117,3 +117,96 @@ FORM get_baseline_date
   ENDIF.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form GET_BASELINE_DATE
+*&---------------------------------------------------------------------*
+*& Calculate baseline date based on business area and TR number
+*&---------------------------------------------------------------------*
+FORM get_baseline_date
+  USING    p_gsber  TYPE gsber
+           p_tr_no  TYPE char10
+  CHANGING p_zfbdt  TYPE bsik-zfbdt.
+
+  DATA: lv_in_set        TYPE char1,
+        lv_grnob_date    TYPE zp2pttruck-grnob_date,
+        lv_zp2pdeoffer   TYPE zp2pttruck-zp2pdeoffer,
+        lv_creation_date TYPE zp2ptpurofer-creation_date.
+
+  DATA: lt_tvarvc TYPE STANDARD TABLE OF tvarvc,
+        ls_tvarvc TYPE tvarvc.
+
+  CLEAR: p_zfbdt, lv_in_set.
+
+  " Get Punjab plant business areas from TVARVC
+  SELECT *
+    FROM tvarvc
+    INTO TABLE lt_tvarvc
+    WHERE name LIKE 'ZFI_PUNJAB_PLANT%'
+      AND type = 'S'.
+
+  " Check if current GSBER is in the list
+  LOOP AT lt_tvarvc INTO ls_tvarvc.
+    IF p_gsber = ls_tvarvc-low.
+      lv_in_set = 'X'.
+      EXIT.
+    ENDIF.
+  ENDLOOP.
+
+  IF lv_in_set = 'X'.
+    "------------------------------------------------------------
+    " Scenario 1: Punjab Plant - Get GRNOB_DATE from ZP2PTTRUCK
+    "------------------------------------------------------------
+    SELECT SINGLE grnob_date
+      FROM zp2pttruck
+      INTO lv_grnob_date
+      WHERE zp2pdetrno = p_tr_no.
+
+    IF sy-subrc = 0 AND lv_grnob_date IS NOT INITIAL.
+      p_zfbdt = lv_grnob_date.
+    ELSE.
+      " Fallback to system date
+      p_zfbdt = sy-datum.
+    ENDIF.
+
+  ELSE.
+    "------------------------------------------------------------
+    " Scenario 2: Other Plants - Get creation_date from ZP2PTPUROFER
+    "------------------------------------------------------------
+    " Step 1: Get ZP2PDEOFFER from ZP2PTTRUCK
+    SELECT SINGLE zp2pdeoffer
+      FROM zp2pttruck
+      INTO lv_zp2pdeoffer
+      WHERE zp2pdetrno = p_tr_no.
+
+    IF sy-subrc = 0 AND lv_zp2pdeoffer IS NOT INITIAL.
+      " Step 2: Get creation_date from ZP2PTPUROFER
+      SELECT SINGLE creation_date
+        FROM zp2ptpurofer
+        INTO lv_creation_date
+        WHERE pur_offer = lv_zp2pdeoffer.
+
+      IF sy-subrc = 0 AND lv_creation_date IS NOT INITIAL.
+        p_zfbdt = lv_creation_date.
+      ELSE.
+        " Fallback to system date
+        p_zfbdt = sy-datum.
+      ENDIF.
+    ELSE.
+      " Fallback to system date
+      p_zfbdt = sy-datum.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
