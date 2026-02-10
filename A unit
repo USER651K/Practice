@@ -814,3 +814,51 @@ FORM call_bdc_vendor_clearing
 
 ENDFORM.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"  Check if Already Posted - Validate LIFNR, DOC NO, and AMOUNT
+    CLEAR gs_vendcd_doc.
+    READ TABLE gt_vendcd_doc INTO gs_vendcd_doc
+      WITH KEY bukrs = gs_bsik_temp-bukrs
+               belnr = gs_bsik_temp-belnr
+               gjahr = gs_bsik_temp-gjahr
+               buzei = gs_bsik_temp-buzei.
+
+IF sy-subrc = 0.
+  " Fully posted with matching LIFNR and Amount - DELETE from ALV
+  IF gs_vendcd_doc-cd_status = 'X' AND 
+     gs_vendcd_doc-clg_status = 'X' AND
+     gs_vendcd_doc-lifnr = gs_bsik_temp-lifnr AND
+     gs_vendcd_doc-wrbtr = gs_bsik_temp-wrbtr.
+    " Match found - Skip this document completely
+    CONTINUE.
+    
+  ELSEIF gs_vendcd_doc-cd_status = 'X' AND gs_vendcd_doc-clg_status <> 'X'.
+    " BAPI done, BDC pending - allow retry
+    gs_credit-posted       = ' '.
+    gs_credit-cd_status    = 'X'.
+    gs_credit-cd_doc       = gs_vendcd_doc-cd_doc.
+    gs_credit-clg_status   = ' '.
+    gs_credit-post_message = 'BDC Pending - Retry'.
+  ENDIF.
+ELSE.
+  gs_credit-posted = ' '.
+  CLEAR gs_credit-post_message.
+ENDIF.
+
