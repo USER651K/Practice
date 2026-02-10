@@ -175,3 +175,33 @@ ELSEIF vbkd-bstkd IS NOT INITIAL.
 
 
 
+
+
+
+
+
+
+
+
+***BOC--UJWAL--10.02.2026--PO Delivery Dropdown Handler - WADAT from VBEP
+  " Handle Delivery dropdown change for PO Number
+  IF vbkd-bstkd IS NOT INITIAL.
+    IF gt_del_wadat IS NOT INITIAL AND deliv_ord IS NOT INITIAL.
+      " Step 1: Get Sales Order for selected Delivery
+      SELECT SINGLE vbelv
+        FROM vbfa INTO sale_ord
+        WHERE vbeln = deliv_ord
+        AND vbtyp_v = 'C'.
+
+      " Step 2: Get WADAT from VBEP using Sales Order (SAME AS SALES DOCUMENT)
+      IF sale_ord IS NOT INITIAL.
+        SELECT SINGLE wadat
+          FROM vbep INTO gv_planned_gi
+          WHERE vbeln = sale_ord.
+      ELSE.
+        CLEAR: gv_planned_gi, sale_ord.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+***EOC--UJWAL--10.02.2026--PO Delivery Dropdown Handler - WADAT from VBEP
+
