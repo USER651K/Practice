@@ -1236,3 +1236,34 @@ ENDFORM.
   CONDENSE lv_amt_after_cd NO-GAPS.
   CONCATENATE lv_amt_after_cd '-' INTO lv_amt_after_cd.
 
+
+
+
+
+
+
+
+
+
+
+
+"------------------------------------------------------------
+  " Screen 7: SAPDF05X / 3100 - Post Document (=BU)
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPDF05X' '3100'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '=BU'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_CURSOR'
+                          'RF05A-ABPOS'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-ABPOS'
+                          '1'
+                    CHANGING lt_bdcdata.
+
+  " Leave AKOBT empty - SAP will auto-populate
+
