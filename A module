@@ -205,3 +205,61 @@ ELSEIF vbkd-bstkd IS NOT INITIAL.
   ENDIF.
 ***EOC--UJWAL--10.02.2026--PO Delivery Dropdown Handler - WADAT from VBEP
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ELSEIF vbkd-bstkd IS NOT INITIAL.
+***BOC--UJWAL--10.02.2026--PO Number - Single SO with WADAT from VBEP
+          CLEAR: gv_planned_gi, sale_ord, lv_del.
+          DATA: lv_so_cnt TYPE i.
+
+          " Count Sales Orders for this Customer PO
+          SELECT COUNT(*) FROM vbkd INTO lv_so_cnt
+            WHERE bstkd = vbkd-bstkd.
+
+          IF lv_so_cnt > 1.
+            " Multiple Sales Orders - Show error
+            MESSAGE 'Multiple Sales Orders found. Search with another reference.' TYPE 'I'.
+            CLEAR: sale_ord, gv_planned_gi.
+          ELSEIF lv_so_cnt = 1.
+            " Single Sales Order - Proceed
+            SELECT SINGLE vbeln
+              FROM vbkd INTO lv_ord
+              WHERE bstkd = vbkd-bstkd.
+
+            IF sy-subrc = 0.
+              sale_ord = lv_ord.
+
+              " Get WADAT from VBEP (Same as Sales Document)
+              SELECT SINGLE wadat
+                FROM vbep INTO gv_planned_gi
+                WHERE vbeln = lv_ord.
+
+              " Get Delivery for GI check
+              SELECT SINGLE vbeln
+                FROM vbfa INTO lv_del
+                WHERE vbelv = lv_ord
+                AND vbtyp_n = 'J'.
+            ENDIF.
+          ENDIF.
+***EOC--UJWAL--10.02.2026--PO Number - Single SO with WADAT from VBEP
+
