@@ -1184,3 +1184,55 @@ FORM call_bdc_vendor_clearing
 
 ENDFORM.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+"------------------------------------------------------------
+  " Prepare Field Values
+  "------------------------------------------------------------
+  " Vendor (with leading zeros)
+  lv_vendor = ps_credit-lifnr.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = lv_vendor
+    IMPORTING
+      output = lv_vendor.
+
+  " Company Code
+  lv_bukrs = ps_credit-bukrs.
+
+  " Posting Date (DD.MM.YYYY)
+  WRITE sy-datum TO lv_budat DD/MM/YYYY.
+
+  " Period (MM)
+  lv_monat = sy-datum+4(2).
+
+  " Currency
+  lv_waers = ps_credit-waers.
+
+  " Original Invoice Document (NO ALPHA - keep as-is)
+  lv_inv_doc = ps_credit-belnr.
+  CONDENSE lv_inv_doc NO-GAPS.
+
+  " Debit Note Document (NO ALPHA - keep as-is)
+  lv_dn_doc = pv_debit_doc.
+  CONDENSE lv_dn_doc NO-GAPS.
+
+  " Calculate residual amount (Payment Amt - CD Amt)
+  lv_residual = ps_credit-payment_amt - ps_credit-applicable_cd_amt.
+  
+  " Format amount: no thousand separator, negative sign at END
+  WRITE lv_residual TO lv_amt_after_cd NO-GROUPING.
+  CONDENSE lv_amt_after_cd NO-GAPS.
+  CONCATENATE lv_amt_after_cd '-' INTO lv_amt_after_cd.
+
