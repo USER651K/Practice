@@ -862,3 +862,325 @@ ELSE.
   CLEAR gs_credit-post_message.
 ENDIF.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form CALL_BDC_VENDOR_CLEARING
+*&---------------------------------------------------------------------*
+FORM call_bdc_vendor_clearing
+  USING    ps_credit      TYPE ty_credit
+           pv_debit_doc   TYPE belnr_d
+  CHANGING pv_clear_doc   TYPE belnr_d
+           pv_message     TYPE char100
+           pv_success     TYPE char1.
+
+  " BDC Data
+  DATA: lt_bdcdata TYPE STANDARD TABLE OF bdcdata,
+        ls_bdcdata TYPE bdcdata.
+
+  " Messages
+  DATA: lt_messtab TYPE STANDARD TABLE OF bdcmsgcoll,
+        ls_messtab TYPE bdcmsgcoll.
+
+  " Local variables
+  DATA: lv_vendor       TYPE char10,
+        lv_bukrs        TYPE char4,
+        lv_budat        TYPE char10,
+        lv_monat        TYPE char2,
+        lv_waers        TYPE char5,
+        lv_amt_after_cd TYPE char20,
+        lv_inv_doc      TYPE char30,
+        lv_dn_doc       TYPE char30,
+        lv_residual     TYPE bsik-wrbtr,
+        lv_belnr        TYPE belnr_d.
+
+  " Clear
+  CLEAR: lt_bdcdata, lt_messtab, pv_clear_doc, pv_message, pv_success.
+  REFRESH: lt_bdcdata, lt_messtab.
+
+  "------------------------------------------------------------
+  " Prepare Field Values
+  "------------------------------------------------------------
+  " Vendor (with leading zeros)
+  lv_vendor = ps_credit-lifnr.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = lv_vendor
+    IMPORTING
+      output = lv_vendor.
+
+  " Company Code
+  lv_bukrs = ps_credit-bukrs.
+
+  " Posting Date (DD.MM.YYYY)
+  WRITE sy-datum TO lv_budat DD/MM/YYYY.
+
+  " Period (MM)
+  lv_monat = sy-datum+4(2).
+
+  " Currency
+  lv_waers = ps_credit-waers.
+
+  " Original Invoice Document (with ALPHA conversion)
+  lv_inv_doc = ps_credit-belnr.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = lv_inv_doc
+    IMPORTING
+      output = lv_inv_doc.
+
+  " Debit Note Document (with ALPHA conversion)
+  lv_dn_doc = pv_debit_doc.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = lv_dn_doc
+    IMPORTING
+      output = lv_dn_doc.
+
+  " Calculate residual amount (Payment Amt - CD Amt)
+  lv_residual = ps_credit-payment_amt - ps_credit-applicable_cd_amt.
+  
+  " Format amount: no thousand separator, negative sign at END
+  WRITE lv_residual TO lv_amt_after_cd NO-GROUPING.
+  CONDENSE lv_amt_after_cd NO-GAPS.
+  CONCATENATE lv_amt_after_cd '-' INTO lv_amt_after_cd.
+
+  "------------------------------------------------------------
+  " Screen 1: SAPMF05A / 0131 - Initial Selection (ENTER)
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPMF05A' '0131'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_CURSOR'
+                          'RF05A-XPOS1(03)'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '/00'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-AGKON'
+                          lv_vendor
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BKPF-BUDAT'
+                          lv_budat
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BKPF-MONAT'
+                          lv_monat
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BKPF-BUKRS'
+                          lv_bukrs
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BKPF-WAERS'
+                          lv_waers
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-XNOPS'
+                          'X'
+                    CHANGING lt_bdcdata.
+
+  " *** CRITICAL FIX: Do NOT check XPOS1(01) ***
+  " Only check XPOS1(03) for debit note selection
+  
+  PERFORM bdc_field USING 'RF05A-XPOS1(03)'
+                          'X'
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Screen 2: SAPMF05A / 0731 - Enter Documents (ENTER)
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPMF05A' '0731'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_CURSOR'
+                          'RF05A-SEL01(02)'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '/00'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-SEL01(01)'
+                          lv_inv_doc
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-SEL01(02)'
+                          lv_dn_doc
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Screen 3: SAPMF05A / 0731 - Process Open Items (=PA)
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPMF05A' '0731'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_CURSOR'
+                          'RF05A-SEL01(01)'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '=PA'
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Screen 4: SAPDF05X / 3100 - Residual Items (=REST)
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPDF05X' '3100'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '=REST'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_CURSOR'
+                          'DF05B-PSSKT(01)'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-ABPOS'
+                          '1'
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Screen 5: SAPDF05X / 3100 - Enter Difference Amount (ENTER)
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPDF05X' '3100'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '/00'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_CURSOR'
+                          'DF05B-PSDIF(01)'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-ABPOS'
+                          '1'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'DF05B-PSDIF(01)'
+                          lv_amt_after_cd
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Screen 6: SAPDF05X / 3100 - Process Items (=PI)
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPDF05X' '3100'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '=PI'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_CURSOR'
+                          'RF05A-AKOBT'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-ABPOS'
+                          '1'
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Screen 7: SAPDF05X / 3100 - Post Document (=BU)
+  "------------------------------------------------------------
+  PERFORM bdc_dynpro USING 'SAPDF05X' '3100'
+                     CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_OKCODE'
+                          '=BU'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'BDC_CURSOR'
+                          'RF05A-AKOBT'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-ABPOS'
+                          '1'
+                    CHANGING lt_bdcdata.
+
+  PERFORM bdc_field USING 'RF05A-AKOBT'
+                          'CD Clearing'
+                    CHANGING lt_bdcdata.
+
+  "------------------------------------------------------------
+  " Call Transaction F-44
+  "------------------------------------------------------------
+  CALL TRANSACTION 'F-44'
+    USING lt_bdcdata
+    MODE 'N'
+    UPDATE 'S'
+    MESSAGES INTO lt_messtab.
+
+  "------------------------------------------------------------
+  " Process Messages
+  "------------------------------------------------------------
+  LOOP AT lt_messtab INTO ls_messtab
+    WHERE msgtyp = 'S'.
+
+    " Document posted message
+    IF ( ls_messtab-msgid = 'F5' AND ls_messtab-msgnr = '312' ) OR
+       ( ls_messtab-msgid = 'F5' AND ls_messtab-msgnr = '313' ) OR
+       ( ls_messtab-msgid = 'FP' AND ls_messtab-msgnr = '001' ).
+
+      " Extract document number
+      lv_belnr = ls_messtab-msgv1.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+        EXPORTING
+          input  = lv_belnr
+        IMPORTING
+          output = pv_clear_doc.
+
+      CONCATENATE 'Clearing Doc' pv_clear_doc 'posted'
+        INTO pv_message SEPARATED BY space.
+      pv_success = 'X'.
+      EXIT.
+    ENDIF.
+  ENDLOOP.
+
+  " If no success, check for errors
+  IF pv_success <> 'X'.
+    LOOP AT lt_messtab INTO ls_messtab
+      WHERE msgtyp = 'E' OR msgtyp = 'A'.
+
+      CALL FUNCTION 'MESSAGE_TEXT_BUILD'
+        EXPORTING
+          msgid               = ls_messtab-msgid
+          msgnr               = ls_messtab-msgnr
+          msgv1               = ls_messtab-msgv1
+          msgv2               = ls_messtab-msgv2
+          msgv3               = ls_messtab-msgv3
+          msgv4               = ls_messtab-msgv4
+        IMPORTING
+          message_text_output = pv_message.
+
+      pv_success = ' '.
+      EXIT.
+    ENDLOOP.
+
+    IF pv_message IS INITIAL.
+      pv_message = 'F-44 Clearing failed'.
+      pv_success = ' '.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+
