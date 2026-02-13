@@ -1,0 +1,67 @@
+*&---------------------------------------------------------------------*
+*& Form CALCULATE_APPLICABLE_CD
+*&---------------------------------------------------------------------*
+FORM calculate_applicable_cd USING p_zfbdt      TYPE bsik-zfbdt
+                                   p_cd_days    TYPE zfi_vendcd_term-cd_days
+                                   p_grace_days TYPE zfi_vendcd_term-grace_days
+                                   p_cd_pct     TYPE zfi_vendcd_term-cd_percent
+                                   p_cd_pct2    TYPE zfi_vendcd_term-cd_percent
+                                   p_amount     TYPE bsik-wrbtr
+                                   p_net_days   TYPE zfi_vendcd_term-net_days
+                          CHANGING p_cd_pct_out TYPE p
+                                   p_cd_amt     TYPE bsik-wrbtr.
+
+  DATA: lv_days   TYPE i,
+        lv_net    TYPE i,
+        lv_cd_pct TYPE p DECIMALS 3.
+
+  CLEAR: p_cd_pct_out, p_cd_amt.
+
+  " Days = SY-DATUM - Baseline Date
+  lv_days = sy-datum - p_zfbdt.
+
+  " Ensure days is positive
+  IF lv_days < 0.
+    lv_days = 0.
+  ENDIF.
+
+  " Net Days
+  lv_net = p_net_days.
+  IF lv_net <= 0.
+    lv_net = 1.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " Applicable CD% Logic:
+  " IF Days <= Grace Days  → App CD% = CD% (Full)
+  " IF Days > Grace Days AND Days <= CD Days → App CD% = CD% × (Days/Net)
+  " ELSE (Days > CD Days) → App CD% = 0
+  "------------------------------------------------------------
+  IF lv_days <= p_grace_days.
+    " Full CD applies - within grace period
+    lv_cd_pct = p_cd_pct.
+
+  ELSEIF lv_days > p_grace_days AND lv_days <= p_cd_days.
+    " Proportional CD - between grace and CD days
+    lv_cd_pct = p_cd_pct * lv_days / lv_net.
+
+    " Cap at maximum CD% (cannot exceed original CD%)
+    IF lv_cd_pct > p_cd_pct.
+      lv_cd_pct = p_cd_pct.
+    ENDIF.
+
+  ELSE.
+    " Beyond CD Days - No CD applicable
+    lv_cd_pct = 0.
+  ENDIF.
+
+  p_cd_pct_out = lv_cd_pct.
+
+  " Applicable CD Amt = Payment Amt × Applicable CD% / 100
+  IF lv_cd_pct > 0.
+    p_cd_amt = ( p_amount * lv_cd_pct ) / 100.
+  ELSE.
+    p_cd_amt = 0.
+  ENDIF.
+
+ENDFORM.
