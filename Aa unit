@@ -65,3 +65,40 @@ FORM calculate_applicable_cd USING p_zfbdt      TYPE bsik-zfbdt
   ENDIF.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+" Check if record already exists
+  SELECT SINGLE bukrs belnr gjahr buzei
+    FROM zfi_vendcd_doc
+    INTO (ls_vendcd_doc-bukrs, ls_vendcd_doc-belnr,
+          ls_vendcd_doc-gjahr, ls_vendcd_doc-buzei)
+    WHERE bukrs = ls_vendcd_doc-bukrs
+      AND belnr = ls_vendcd_doc-belnr
+      AND gjahr = ls_vendcd_doc-gjahr
+      AND buzei = ls_vendcd_doc-buzei.
+
+  IF sy-subrc = 0.
+    " Record exists - UPDATE
+    UPDATE zfi_vendcd_doc FROM ls_vendcd_doc.
+    IF sy-subrc <> 0.
+      MESSAGE |Update failed for Doc: { ls_vendcd_doc-belnr }| TYPE 'W'.
+    ENDIF.
+  ELSE.
+    " Record does not exist - INSERT
+    INSERT zfi_vendcd_doc FROM ls_vendcd_doc.
+    IF sy-subrc <> 0.
+      MESSAGE |Insert failed for Doc: { ls_vendcd_doc-belnr }| TYPE 'W'.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
