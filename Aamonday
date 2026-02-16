@@ -1,0 +1,209 @@
+*    BREAK-POINT.
+    " Fix 1: Applicable CD% validation
+    IF gs_credit-applicable_cd_pct > gs_credit-cd_pct.
+      gs_credit-applicable_cd_pct = gs_credit-cd_pct.
+      gs_credit-applicable_cd_amt = ( gs_credit-payment_amt * gs_credit-cd_pct ) / 100.
+    ENDIF.
+    IF gs_credit-applicable_cd_pct < 0.
+      gs_credit-applicable_cd_pct = 0.
+      gs_credit-applicable_cd_amt = 0.
+    ENDIF.
+
+    gs_credit-amt_after_cd = gs_credit-payment_amt - gs_credit-applicable_cd_amt.
+
+
+
+
+
+
+
+
+" Fix 1: Applicable CD% validation after recalc
+       IF ls_credit-applicable_cd_pct > ls_credit-cd_pct.
+         ls_credit-applicable_cd_pct = ls_credit-cd_pct.
+         ls_credit-applicable_cd_amt = ( ls_credit-payment_amt * ls_credit-cd_pct ) / 100.
+       ENDIF.
+       IF ls_credit-applicable_cd_pct < 0.
+         ls_credit-applicable_cd_pct = 0.
+         ls_credit-applicable_cd_amt = 0.
+       ENDIF.
+
+       " Recalculate Amount After CD
+       ls_credit-amt_after_cd = ls_credit-payment_amt - ls_credit-applicable_cd_amt.
+
+
+
+
+
+
+
+
+WHEN 'SELALL'.
+        " Fix 2: Respect ALV filter - only select visible rows
+        DATA: lt_filtered_rows TYPE lvc_t_fidx,
+              lv_row_index     TYPE i.
+
+        CALL METHOD go_alv_grid->get_filtered_entries
+          IMPORTING
+            et_filtered_entries = lt_filtered_rows.
+
+        LOOP AT gt_credit INTO ls_credit.
+          lv_row_index = sy-tabix.
+          " Skip rows that are filtered out (hidden)
+          READ TABLE lt_filtered_rows WITH KEY table_line = lv_row_index
+            TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            CONTINUE.  " This row is filtered out, skip
+          ENDIF.
+          IF ls_credit-posted <> 'X' AND ls_credit-applicable_cd_amt > 0.
+            ls_credit-checkmark = 'X'.
+            MODIFY gt_credit FROM ls_credit INDEX lv_row_index.
+          ENDIF.
+        ENDLOOP.
+        CALL METHOD go_alv_grid->refresh_table_display.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+WHEN 'DESELALL'.
+        " Fix 2: Respect ALV filter for deselect too
+        DATA: lt_filtered_desel TYPE lvc_t_fidx,
+              lv_desel_index    TYPE i.
+
+        CALL METHOD go_alv_grid->get_filtered_entries
+          IMPORTING
+            et_filtered_entries = lt_filtered_desel.
+
+        LOOP AT gt_credit INTO ls_credit.
+          lv_desel_index = sy-tabix.
+          READ TABLE lt_filtered_desel WITH KEY table_line = lv_desel_index
+            TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            CONTINUE.
+          ENDIF.
+          ls_credit-checkmark = ' '.
+          MODIFY gt_credit FROM ls_credit INDEX lv_desel_index.
+        ENDLOOP.
+        CALL METHOD go_alv_grid->refresh_table_display.
+
+
+
+
+
+
+
+
+DATA: lv_count         TYPE i,
+          lv_answer        TYPE c,
+          lv_message       TYPE char100,
+          lv_post_str      TYPE char10,
+          lv_error_str     TYPE char10,
+          lv_count_str     TYPE char10,
+          ls_credit        TYPE ty_credit,
+          ls_stable        TYPE lvc_s_stbl,
+          lt_filtered_rows TYPE lvc_t_fidx,
+          lv_row_index     TYPE i.
+
+
+
+
+
+
+
+
+
+
+
+
+WHEN 'SELALL'.
+        CLEAR: lt_filtered_rows, lv_row_index.
+        CALL METHOD go_alv_grid->get_filtered_entries
+          IMPORTING
+            et_filtered_entries = lt_filtered_rows.
+
+        LOOP AT gt_credit INTO ls_credit.
+          lv_row_index = sy-tabix.
+          READ TABLE lt_filtered_rows WITH KEY table_line = lv_row_index
+            TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            CONTINUE.
+          ENDIF.
+          IF ls_credit-posted <> 'X' AND ls_credit-applicable_cd_amt > 0.
+            ls_credit-checkmark = 'X'.
+            MODIFY gt_credit FROM ls_credit INDEX lv_row_index.
+          ENDIF.
+        ENDLOOP.
+        CALL METHOD go_alv_grid->refresh_table_display.
+
+
+
+
+
+
+
+
+
+
+
+
+WHEN 'DESELALL'.
+        CLEAR: lt_filtered_rows, lv_row_index.
+        CALL METHOD go_alv_grid->get_filtered_entries
+          IMPORTING
+            et_filtered_entries = lt_filtered_rows.
+
+        LOOP AT gt_credit INTO ls_credit.
+          lv_row_index = sy-tabix.
+          READ TABLE lt_filtered_rows WITH KEY table_line = lv_row_index
+            TRANSPORTING NO FIELDS.
+          IF sy-subrc = 0.
+            CONTINUE.
+          ENDIF.
+          ls_credit-checkmark = ' '.
+          MODIFY gt_credit FROM ls_credit INDEX lv_row_index.
+        ENDLOOP.
+        CALL METHOD go_alv_grid->refresh_table_display.
+
+
+
+
+
+
+
+
+
+
+METHOD on_toolbar.
+
+    DATA: ls_button TYPE stb_button.
+
+    " Fix 8: Remove standard row manipulation buttons
+    DELETE e_object->mt_toolbar WHERE function = '&LOCAL&APPEND'
+                                  OR function = '&LOCAL&INSERT_ROW'
+                                  OR function = '&LOCAL&DELETE_ROW'
+                                  OR function = '&LOCAL&COPY_ROW'
+                                  OR function = '&LOCAL&COPY'
+                                  OR function = '&LOCAL&CUT'
+                                  OR function = '&LOCAL&PASTE'
+                                  OR function = '&LOCAL&UNDO'.
+
+    " Add Separator
+
+
+
+
+
+
+
+
