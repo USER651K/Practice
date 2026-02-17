@@ -340,3 +340,22 @@ gs_fieldcat-fieldname = 'PAYMENT_MESSAGE'.
 gs_fieldcat-coltext   = 'Payment Status'.
 gs_fieldcat-no_out    = 'X'.
 APPEND gs_fieldcat TO gt_fieldcat.
+
+
+
+
+
+
+
+
+
+
+
+ENDLOOP.
+
+  " Delete all fully posted documents from ALV display
+  DELETE gt_credit WHERE cd_status  = 'X'
+                    AND clg_status = 'X'
+                    AND posted     = 'X'.
+
+ENDFORM.
