@@ -252,3 +252,26 @@ gs_credit-post_doc_no       = gs_vendcd_doc-post_doc_no.
 
 
 
+
+
+
+
+
+
+
+
+" Skip if fully posted both bapi and bdc.
+    IF <fs_credit>-cd_status = 'X' AND <fs_credit>-clg_status = 'X'.
+      CONTINUE.
+    ENDIF.
+
+    " Validate: Payment Amount must be > 0
+    IF <fs_credit>-payment_amt <= 0 OR <fs_credit>-payment_amt IS INITIAL.
+      <fs_credit>-post_message = 'Payment Amount is zero/initial'.
+      gv_error_count = gv_error_count + 1.
+      CONTINUE.
+    ENDIF.
+
+    " Validate: Applicable CD Amount must be > 0
+
+
