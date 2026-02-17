@@ -283,11 +283,6 @@ gs_credit-post_doc_no       = gs_vendcd_doc-post_doc_no.
 
 
 
-
-
-
-
-
 WHEN 'PAYMENT_AMT'.
        " Handle PAYMENT_AMT change - Recalculate Applicable CD Amount
        " Validate: Only numeric input allowed
