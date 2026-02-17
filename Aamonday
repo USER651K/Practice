@@ -207,3 +207,30 @@ METHOD on_toolbar.
 
 
 
+
+
+
+
+
+
+ENDLOOP.
+
+  " Bulk save ALL processed records to custom table AFTER all posting is done
+  IF gt_vendcd_save[] IS NOT INITIAL.
+    MODIFY zfi_vendcd_doc FROM TABLE gt_vendcd_save.
+    IF sy-subrc = 0.
+      COMMIT WORK AND WAIT.
+    ELSE.
+      ROLLBACK WORK.
+    ENDIF.
+    CLEAR gt_vendcd_save.
+  ENDIF.
+
+ENDFORM.
+
+
+
+
+
+
+
