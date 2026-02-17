@@ -359,3 +359,17 @@ ENDLOOP.
                     AND posted     = 'X'.
 
 ENDFORM.
+
+
+
+
+
+ENDLOOP.
+
+  " Delete all matched posted records from ALV
+  " Match criteria: CLG_DOC populated + AMT_AFTER_CD valid + LIFNR present
+  DELETE gt_credit WHERE clg_doc    <> space
+                    AND amt_after_cd > 0
+                    AND lifnr       <> space.
+
+ENDFORM.
