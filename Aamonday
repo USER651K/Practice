@@ -234,3 +234,21 @@ ENDFORM.
 
 
 
+
+gs_credit-post_doc_no       = gs_vendcd_doc-post_doc_no.
+    gs_credit-post_message      = gs_vendcd_doc-post_message.
+
+    " CD and Clearing fields
+    gs_credit-cd_status         = gs_vendcd_doc-cd_status.
+    gs_credit-cd_doc            = gs_vendcd_doc-cd_doc.
+    gs_credit-clg_status        = gs_vendcd_doc-clg_status.
+    gs_credit-clg_doc           = gs_vendcd_doc-clg_doc.
+    gs_credit-payment_doc_no    = gs_vendcd_doc-payment_doc_no.
+    gs_credit-payment_posted    = gs_vendcd_doc-payment_posted.
+    gs_credit-payment_message   = gs_vendcd_doc-payment_message.
+    gs_credit-amt_after_cd      = gs_vendcd_doc-amt_after_cd.
+
+    gs_credit-hkont             = gs_vendcd_doc-hkont.
+
+
+
