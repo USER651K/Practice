@@ -304,3 +304,39 @@ WHEN 'PAYMENT_AMT'.
            CONTINUE.
        ENDTRY.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+" PAYMENT_DOC_NO - HIDDEN
+CLEAR gs_fieldcat.
+gs_fieldcat-fieldname = 'PAYMENT_DOC_NO'.
+gs_fieldcat-coltext   = 'Payment Doc'.
+gs_fieldcat-no_out    = 'X'.
+APPEND gs_fieldcat TO gt_fieldcat.
+
+" PAYMENT_POSTED - HIDDEN
+CLEAR gs_fieldcat.
+gs_fieldcat-fieldname = 'PAYMENT_POSTED'.
+gs_fieldcat-coltext   = 'Pmt Posted'.
+gs_fieldcat-checkbox  = 'X'.
+gs_fieldcat-edit      = ' '.
+gs_fieldcat-no_out    = 'X'.
+APPEND gs_fieldcat TO gt_fieldcat.
+
+" PAYMENT_MESSAGE - HIDDEN
+CLEAR gs_fieldcat.
+gs_fieldcat-fieldname = 'PAYMENT_MESSAGE'.
+gs_fieldcat-coltext   = 'Payment Status'.
+gs_fieldcat-no_out    = 'X'.
+APPEND gs_fieldcat TO gt_fieldcat.
