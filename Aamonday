@@ -373,3 +373,86 @@ ENDLOOP.
                     AND lifnr       <> space.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+FORM fill_created_fields.
+
+  DATA: ls_term TYPE zfi_vendcd_term.
+
+  LOOP AT total INTO ls_term.
+    IF ls_term-erdat IS INITIAL.
+      ls_term-erdat = sy-datum.
+      ls_term-ernam = sy-uname.
+      ls_term-aedat = sy-datum.
+      ls_term-aenam = sy-uname.
+      MODIFY total FROM ls_term.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM.
+
+FORM fill_changed_fields.
+
+  DATA: ls_term TYPE zfi_vendcd_term.
+
+  LOOP AT total INTO ls_term WHERE aedat <> sy-datum
+                                OR aenam <> sy-uname.
+    " Only update changed fields, preserve created fields
+    ls_term-aedat = sy-datum.
+    ls_term-aenam = sy-uname.
+    " Set created fields if blank (for old records)
+    IF ls_term-erdat IS INITIAL.
+      ls_term-erdat = sy-datum.
+      ls_term-ernam = sy-uname.
+    ENDIF.
+    MODIFY total FROM ls_term.
+  ENDLOOP.
+
+ENDFORM.
+
+
+
+
+
+
+
+
+
+
+FORM screen_modify.
+
+  DATA: lv_action TYPE sy-ucomm.
+  lv_action = sy-ucomm.
+
+  LOOP AT SCREEN.
+    " Gray out key fields on existing records
+    IF screen-name CS 'BUKRS'
+    OR screen-name CS 'LIFNR'
+    OR screen-name CS 'ZP2PDEMANDI'.
+      IF lv_action <> 'NEWL' AND lv_action <> 'APTS'.
+        screen-input = '0'.
+        MODIFY SCREEN.
+      ENDIF.
+    ENDIF.
+
+    " Always gray out audit fields (auto-populated)
+    IF screen-name CS 'ERDAT'
+    OR screen-name CS 'ERNAM'
+    OR screen-name CS 'AEDAT'
+    OR screen-name CS 'AENAM'.
+      screen-input = '0'.
+      MODIFY SCREEN.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM.
