@@ -1,4 +1,4 @@
-ELSEIF vbkd-bstkd IS NOT INITIAL.
+8ELSEIF vbkd-bstkd IS NOT INITIAL.
 ***BOC--UJWAL--10.02.2026--PO Number - WADAT from VBEP via Sales Order
             " Clear all PO related variables
             CLEAR: gv_planned_gi, deliv_ord, sale_ord, ls_fval.
@@ -403,3 +403,48 @@ VBEP: WHERE vbeln = Sales Order
 Get WADAT → gv_planned_gi (Planned GI Date)
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+REPORT ztest_tvarvc.
+
+DATA: lt_tvarvc TYPE STANDARD TABLE OF tvarvc,
+      ls_tvarvc TYPE tvarvc.
+
+PARAMETERS: p_gsber TYPE gsber DEFAULT '5003'.
+
+SELECT * FROM tvarvc INTO TABLE lt_tvarvc
+  WHERE name LIKE 'ZFI_PUNJAB%'.
+
+IF lt_tvarvc[] IS INITIAL.
+  WRITE: / '*** NO TVARVC ENTRIES FOUND AT ALL ***'.
+ELSE.
+  LOOP AT lt_tvarvc INTO ls_tvarvc.
+    WRITE: / 'NAME:', ls_tvarvc-name,
+           / 'TYPE:', ls_tvarvc-type,
+           / 'LOW:',  ls_tvarvc-low,
+           / 'SIGN:', ls_tvarvc-sign,
+           / 'OPTI:', ls_tvarvc-opti,
+           / '---'.
+    
+    " Test comparison
+    IF p_gsber = ls_tvarvc-low.
+      WRITE: / '>>> MATCH with direct compare'.
+    ENDIF.
+    
+    IF ls_tvarvc-low CS p_gsber.
+      WRITE: / '>>> MATCH with CS (contains string)'.
+    ENDIF.
+  ENDLOOP.
+ENDIF.
