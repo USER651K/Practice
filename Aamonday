@@ -609,3 +609,56 @@ IF lv_clear_success = 'X'.
         INTO <fs_credit>-post_message SEPARATED BY space.
 
       gv_post_count = gv_post_count + 1.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"------------------------------------------------------------
+  " Step 1: Get fiscal year of clearing doc from BKPF
+  "------------------------------------------------------------
+  DATA: lv_gjahr TYPE gjahr.
+
+  SELECT SINGLE gjahr
+    FROM bkpf
+    INTO lv_gjahr
+    WHERE bukrs = ps_credit-bukrs
+      AND belnr = pv_clear_doc
+      AND budat = sy-datum.
+
+  IF sy-subrc <> 0.
+    RETURN.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " Step 2: Find clearing doc line items to update
+  "------------------------------------------------------------
+  SELECT belnr bukrs gjahr buzei zuonr rebzg
+    FROM bseg
+    INTO TABLE lt_bseg_clr
+    WHERE belnr = pv_clear_doc
+      AND bukrs = ps_credit-bukrs
+      AND gjahr = lv_gjahr
+      AND zuonr <> lv_tr_no
+      AND augbl = space.
