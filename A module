@@ -616,3 +616,117 @@ LOOP AT gt_set INTO gs_set.
     WRITE: '  >>> MATCH!'.
   ENDIF.
 ENDLOOP.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+FORM get_baseline_date
+  USING    p_gsber  TYPE gsber
+           p_tr_no  TYPE char10
+  CHANGING p_zfbdt  TYPE bsik-zfbdt.
+
+  DATA: lv_in_set        TYPE char1,
+        lv_grnob_date    TYPE zp2pttruck-grnobdate,
+        lv_zp2pdeoffr    TYPE zp2pttruck-zp2pdepoffr,
+        lv_creation_date TYPE zp2ptpurofr-creation_date,
+        lv_setid         TYPE setid,
+        lv_gsber_str     TYPE rgsb4-from.  " Same type as set value
+
+  CLEAR: p_zfbdt, lv_in_set.
+
+  " Step 1: Get Set ID from Name
+  " Set is defined on Table T001W, Field WERKS
+  CALL FUNCTION 'G_SET_GET_ID_FROM_NAME'
+    EXPORTING
+      shortname = 'ZFI_PUNJAB_PLANT'
+      tabname   = 'T001W'
+      fieldname = 'WERKS'
+    IMPORTING
+      new_setid = lv_setid
+    EXCEPTIONS
+      set_not_found         = 1
+      table_field_not_found = 2
+      OTHERS                = 3.
+
+  IF sy-subrc = 0.
+
+    " Step 2: Get all values using Set ID
+    CLEAR gt_gsber_set.
+    REFRESH gt_gsber_set.
+
+    CALL FUNCTION 'G_SET_GET_ALL_VALUES'
+      EXPORTING
+        setnr      = lv_setid
+      TABLES
+        set_values = gt_gsber_set
+      EXCEPTIONS
+        set_not_found = 1
+        OTHERS        = 2.
+
+    IF sy-subrc = 0.
+      " Step 3: Compare GSBER against set values
+      " RGSB4-FROM is CHAR(45), GSBER is CHAR(4)
+      " Convert GSBER to same type for clean comparison
+      lv_gsber_str = p_gsber.
+
+      LOOP AT gt_gsber_set INTO gs_gsber_set.
+        IF gs_gsber_set-from = lv_gsber_str.
+          lv_in_set = 'X'.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+  ENDIF.
+
+  IF lv_in_set = 'X'.
+    "------------------------------------------------------------
+    " Punjab Plant - Get GRNOB_DATE from ZP2PTTRUCK
+    "------------------------------------------------------------
+    SELECT SINGLE grnobdate
+      FROM zp2pttruck
+      INTO lv_grnob_date
+      WHERE zp2pdetrno = p_tr_no.
+
+    IF sy-subrc = 0 AND lv_grnob_date IS NOT INITIAL.
+      p_zfbdt = lv_grnob_date.
+    ELSE.
+      p_zfbdt = sy-datum.
+    ENDIF.
+
+  ELSE.
+    "------------------------------------------------------------
+    " Other Plants - Get creation_date from ZP2PTPUROFR
+    "------------------------------------------------------------
+    SELECT SINGLE zp2pdepoffr
+      FROM zp2pttruck
+      INTO lv_zp2pdeoffr
+      WHERE zp2pdetrno = p_tr_no.
+
+    IF sy-subrc = 0 AND lv_zp2pdeoffr IS NOT INITIAL.
+      SELECT SINGLE creation_date
+        FROM zp2ptpurofr
+        INTO lv_creation_date
+        WHERE pur_offer = lv_zp2pdeoffr.
+
+      IF sy-subrc = 0 AND lv_creation_date IS NOT INITIAL.
+        p_zfbdt = lv_creation_date.
+      ELSE.
+        p_zfbdt = sy-datum.
+      ENDIF.
+    ELSE.
+      p_zfbdt = sy-datum.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
