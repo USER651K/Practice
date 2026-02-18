@@ -1,0 +1,143 @@
+*&---------------------------------------------------------------------*
+*& Form CALL_FI_DOCUMENT_CHANGE
+*&---------------------------------------------------------------------*
+*& Update REBZG and ZUONR on clearing document line items
+*&---------------------------------------------------------------------*
+FORM call_fi_document_change
+  USING    ps_credit    TYPE ty_credit
+           pv_clear_doc TYPE belnr_d.
+
+  TYPES: BEGIN OF ty_bseg_clr,
+           belnr TYPE bseg-belnr,
+           bukrs TYPE bseg-bukrs,
+           gjahr TYPE bseg-gjahr,
+           buzei TYPE bseg-buzei,
+           zuonr TYPE bseg-zuonr,
+           rebzg TYPE bseg-rebzg,
+         END OF ty_bseg_clr.
+
+  DATA: lt_bseg_clr TYPE STANDARD TABLE OF ty_bseg_clr,
+        ls_bseg_clr TYPE ty_bseg_clr.
+
+  DATA: lt_accchg TYPE STANDARD TABLE OF accchg,
+        ls_accchg TYPE accchg.
+
+  DATA: lv_tr_no TYPE char10,
+        lv_belnr TYPE bseg-belnr,
+        lv_gjahr TYPE gjahr.
+
+  " TR No = first 10 chars from ALV (BSIK-ZUONR)
+  lv_tr_no = ps_credit-tr_no.
+
+  " Document Number from ALV (BSIK-BELNR)
+  lv_belnr = ps_credit-belnr.
+
+  "------------------------------------------------------------
+  " Step 1: Get GJAHR from BKPF (BUDAT is in BKPF, NOT BSEG)
+  "------------------------------------------------------------
+  SELECT SINGLE gjahr
+    FROM bkpf
+    INTO lv_gjahr
+    WHERE bukrs = ps_credit-bukrs
+      AND belnr = pv_clear_doc
+      AND budat = sy-datum.
+
+  IF sy-subrc <> 0.
+    RETURN.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " Step 2: Select clearing doc lines from BSEG
+  " WHERE: BELNR = clearing doc, BUKRS = ALV, ZUONR <> TR No, AUGBL = blank
+  "------------------------------------------------------------
+  SELECT belnr bukrs gjahr buzei zuonr rebzg
+    FROM bseg
+    INTO TABLE lt_bseg_clr
+    WHERE belnr = pv_clear_doc
+      AND bukrs = ps_credit-bukrs
+      AND gjahr = lv_gjahr
+      AND zuonr <> lv_tr_no
+      AND augbl = space.
+
+  IF lt_bseg_clr[] IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  "------------------------------------------------------------
+  " Step 3: Call FI_DOCUMENT_CHANGE for each line found
+  "------------------------------------------------------------
+  LOOP AT lt_bseg_clr INTO ls_bseg_clr.
+
+    CLEAR lt_accchg.
+    REFRESH lt_accchg.
+
+    " Line 1: Change REBZG
+    " OLDVAL = current BSEG-REBZG, NEWVAL = Document No from ALV (BSIK-BELNR)
+    CLEAR ls_accchg.
+    ls_accchg-fdname = 'REBZG'.
+    ls_accchg-oldval = ls_bseg_clr-rebzg.
+    ls_accchg-newval = lv_belnr.
+    APPEND ls_accchg TO lt_accchg.
+
+    " Line 2: Change ZUONR
+    " OLDVAL = current BSEG-ZUONR, NEWVAL = TR No from ALV (first 10 char)
+    CLEAR ls_accchg.
+    ls_accchg-fdname = 'ZUONR'.
+    ls_accchg-oldval = ls_bseg_clr-zuonr.
+    ls_accchg-newval = lv_tr_no.
+    APPEND ls_accchg TO lt_accchg.
+
+    " Call BAPI - I_BUZEI IS a valid parameter (confirmed from SE37)
+    CALL FUNCTION 'FI_DOCUMENT_CHANGE'
+      EXPORTING
+        i_bukrs = ls_bseg_clr-bukrs
+        i_belnr = ls_bseg_clr-belnr
+        i_gjahr = ls_bseg_clr-gjahr
+        i_buzei = ls_bseg_clr-buzei
+      TABLES
+        t_accchg = lt_accchg
+      EXCEPTIONS
+        OTHERS   = 1.
+
+    IF sy-subrc <> 0.
+      CONTINUE.
+    ENDIF.
+
+    " Commit after each line
+    CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+      EXPORTING
+        wait = 'X'.
+
+  ENDLOOP.
+
+ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+IF lv_clear_success = 'X'.
+      " BDC Success - Update Clearing fields
+      <fs_credit>-clg_status      = 'X'.
+      <fs_credit>-clg_doc         = lv_clear_doc.
+      <fs_credit>-payment_posted  = 'X'.
+      <fs_credit>-payment_doc_no  = lv_clear_doc.
+      <fs_credit>-payment_message = lv_clear_msg.
+
+      " Mark as fully posted
+      <fs_credit>-posted = 'X'.
+
+      " *** NEW: Update REBZG and ZUONR on clearing document ***
+      PERFORM call_fi_document_change
+        USING <fs_credit>
+              lv_clear_doc.
+
+      " Combined message
+
