@@ -548,3 +548,71 @@ FORM get_baseline_date
   ENDIF.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+REPORT ztest_set_read.
+
+DATA: gt_set    TYPE STANDARD TABLE OF rgsb4,
+      gs_set    TYPE rgsb4,
+      lv_setid  TYPE setid,
+      lv_gsber  TYPE rgsb4-from.
+
+PARAMETERS: p_gsber TYPE gsber DEFAULT '5003'.
+
+" Step 1: Get ID
+CALL FUNCTION 'G_SET_GET_ID_FROM_NAME'
+  EXPORTING
+    shortname = 'ZFI_PUNJAB_PLANT'
+    tabname   = 'T001W'
+    fieldname = 'WERKS'
+  IMPORTING
+    new_setid = lv_setid
+  EXCEPTIONS
+    OTHERS    = 1.
+
+IF sy-subrc <> 0.
+  WRITE: / '*** G_SET_GET_ID_FROM_NAME FAILED ***'.
+  WRITE: / 'SY-SUBRC:', sy-subrc.
+  RETURN.
+ENDIF.
+
+WRITE: / 'Set ID found:', lv_setid.
+
+" Step 2: Get values
+CALL FUNCTION 'G_SET_GET_ALL_VALUES'
+  EXPORTING
+    setnr      = lv_setid
+  TABLES
+    set_values = gt_set
+  EXCEPTIONS
+    OTHERS     = 1.
+
+IF sy-subrc <> 0.
+  WRITE: / '*** G_SET_GET_ALL_VALUES FAILED ***'.
+  RETURN.
+ENDIF.
+
+WRITE: / 'Values found:', lines( gt_set ).
+ULINE.
+
+" Step 3: Show values and check match
+lv_gsber = p_gsber.
+
+LOOP AT gt_set INTO gs_set.
+  WRITE: / 'FROM:', gs_set-from, 'TO:', gs_set-to.
+  IF gs_set-from = lv_gsber.
+    WRITE: '  >>> MATCH!'.
+  ENDIF.
+ENDLOOP.
