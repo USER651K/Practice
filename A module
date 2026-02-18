@@ -730,3 +730,109 @@ FORM get_baseline_date
   ENDIF.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+LOOP AT gt_bsik_temp INTO gs_bsik_temp.
+    CLEAR: lv_orig_blart, lv_vendor_name, lv_mandi, lv_payment_reason,
+           lv_days, lv_payment_due_date, lv_zuonr_10, gs_credit, 
+           lv_cd_pct, lv_cd_days, lv_grace_days, lv_net_days.
+
+    CLEAR: lt_cellstyle, ls_cellstyle.
+    REFRESH lt_cellstyle.
+
+    "========== DEBUG START ==========
+    WRITE: / '>>> Processing:', 
+             'BELNR=', gs_bsik_temp-belnr, 
+             'BUZEI=', gs_bsik_temp-buzei,
+             'BLART=', gs_bsik_temp-blart,
+             'REBZG=', gs_bsik_temp-rebzg,
+             'REBZJ=', gs_bsik_temp-rebzj,
+             'GSBER=', gs_bsik_temp-gsber.
+    "========== DEBUG END ============
+
+
+
+
+
+" CONTINUE Point 1: TR Filter
+    lv_zuonr_10 = gs_bsik_temp-zuonr(10).
+    IF s_trno[] IS NOT INITIAL.
+      IF NOT lv_zuonr_10 IN s_trno.
+        WRITE: / '*** SKIPPED at TR Filter:', gs_bsik_temp-belnr, gs_bsik_temp-buzei.
+      ENDIF.
+      CHECK lv_zuonr_10 IN s_trno.
+    ENDIF.
+
+    " CONTINUE Point 2: AB Document Check
+    IF gs_bsik_temp-blart = 'AB'.
+      READ TABLE gt_bkpf INTO gs_bkpf
+        WITH KEY bukrs = gs_bsik_temp-bukrs
+                 belnr = gs_bsik_temp-rebzg
+                 gjahr = gs_bsik_temp-rebzj
+        BINARY SEARCH.
+      IF sy-subrc = 0.
+        lv_orig_blart = gs_bkpf-blart.
+      ENDIF.
+      IF lv_orig_blart <> 'RE' AND lv_orig_blart <> 'KR'.
+        WRITE: / '*** SKIPPED at AB Check:', gs_bsik_temp-belnr, gs_bsik_temp-buzei,
+                 'REBZG=', gs_bsik_temp-rebzg, 'orig_blart=', lv_orig_blart.
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    " ... vendor name (no CONTINUE) ...
+
+    " CONTINUE Point 3: Mandi
+    READ TABLE gt_mandi INTO gs_mandi
+      WITH KEY zp2pdetrno = lv_zuonr_10
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_mandi = gs_mandi-zp2pdemandi.
+    ELSE.
+      WRITE: / '*** SKIPPED at Mandi:', gs_bsik_temp-belnr, gs_bsik_temp-buzei.
+      CONTINUE.
+    ENDIF.
+
+    " CONTINUE Point 4: Mandi Selection
+    IF s_zp2p[] IS NOT INITIAL.
+      IF NOT lv_mandi IN s_zp2p.
+        WRITE: / '*** SKIPPED at Mandi Filter:', gs_bsik_temp-belnr, gs_bsik_temp-buzei.
+      ENDIF.
+      CHECK lv_mandi IN s_zp2p.
+    ENDIF.
+
+    " ... CD Terms lookups ...
+    " CONTINUE Point 5: No CD Terms
+        WRITE: / '*** SKIPPED at CD Terms:', gs_bsik_temp-belnr, gs_bsik_temp-buzei.
+        CONTINUE.
+
+
+
+
+
+
+
+
+"========== DEBUG: ROW ADDED ==========
+    WRITE: / '>>> APPENDED:', gs_bsik_temp-belnr, gs_bsik_temp-buzei,
+             'PayAmt=', gs_credit-payment_amt, 'CD=', gs_credit-applicable_cd_amt.
+    "======================================
+
+    APPEND gs_credit TO gt_credit.
+  ENDLOOP.
+
