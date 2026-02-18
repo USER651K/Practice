@@ -448,3 +448,103 @@ ELSE.
     ENDIF.
   ENDLOOP.
 ENDIF.
+
+
+
+
+
+
+
+
+
+
+
+
+FORM get_baseline_date
+  USING    p_gsber  TYPE gsber
+           p_tr_no  TYPE char10
+  CHANGING p_zfbdt  TYPE bsik-zfbdt.
+
+  DATA: lv_in_set        TYPE char1,
+        lv_grnob_date    TYPE zp2pttruck-grnobdate,
+        lv_zp2pdeoffr    TYPE zp2pttruck-zp2pdepoffr,
+        lv_creation_date TYPE zp2ptpurofr-creation_date,
+        lv_setid         TYPE setid.
+
+  CLEAR: p_zfbdt, lv_in_set.
+
+  " Read Set ZFI_PUNJAB_PLANT values
+  CLEAR gt_gsber_set.
+  REFRESH gt_gsber_set.
+
+  " Step 1: Get numeric Set ID from name
+  CALL FUNCTION 'G_SET_GET_ID_FROM_NAME'
+    EXPORTING
+      shortname = 'ZFI_PUNJAB_PLANT'
+    IMPORTING
+      new_setid = lv_setid
+    EXCEPTIONS
+      OTHERS    = 1.
+
+  IF sy-subrc = 0.
+    " Step 2: Get all values using numeric ID
+    CALL FUNCTION 'G_SET_GET_ALL_VALUES'
+      EXPORTING
+        setnr      = lv_setid
+      TABLES
+        set_values = gt_gsber_set
+      EXCEPTIONS
+        OTHERS     = 1.
+
+    IF sy-subrc = 0.
+      " Check if current GSBER is in the set
+      LOOP AT gt_gsber_set INTO gs_gsber_set.
+        IF gs_gsber_set-from = p_gsber.
+          lv_in_set = 'X'.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+  ENDIF.
+
+  IF lv_in_set = 'X'.
+    "------------------------------------------------------------
+    " Punjab Plant - Get GRNOB_DATE from ZP2PTTRUCK
+    "------------------------------------------------------------
+    SELECT SINGLE grnobdate
+      FROM zp2pttruck
+      INTO lv_grnob_date
+      WHERE zp2pdetrno = p_tr_no.
+
+    IF sy-subrc = 0 AND lv_grnob_date IS NOT INITIAL.
+      p_zfbdt = lv_grnob_date.
+    ELSE.
+      p_zfbdt = sy-datum.
+    ENDIF.
+
+  ELSE.
+    "------------------------------------------------------------
+    " Other Plants - Get creation_date from ZP2PTPUROFR
+    "------------------------------------------------------------
+    SELECT SINGLE zp2pdepoffr
+      FROM zp2pttruck
+      INTO lv_zp2pdeoffr
+      WHERE zp2pdetrno = p_tr_no.
+
+    IF sy-subrc = 0 AND lv_zp2pdeoffr IS NOT INITIAL.
+      SELECT SINGLE creation_date
+        FROM zp2ptpurofr
+        INTO lv_creation_date
+        WHERE pur_offer = lv_zp2pdeoffr.
+
+      IF sy-subrc = 0 AND lv_creation_date IS NOT INITIAL.
+        p_zfbdt = lv_creation_date.
+      ELSE.
+        p_zfbdt = sy-datum.
+      ENDIF.
+    ELSE.
+      p_zfbdt = sy-datum.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
