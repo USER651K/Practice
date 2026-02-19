@@ -836,3 +836,70 @@ LOOP AT gt_bsik_temp INTO gs_bsik_temp.
     APPEND gs_credit TO gt_credit.
   ENDLOOP.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+IF gs_bsik_temp-blart = 'AB'.
+      CLEAR lv_orig_blart.
+
+      IF gs_bsik_temp-rebzj IS NOT INITIAL.
+        " Normal case: REBZJ populated
+        READ TABLE gt_bkpf INTO gs_bkpf
+          WITH KEY bukrs = gs_bsik_temp-bukrs
+                   belnr = gs_bsik_temp-rebzg
+                   gjahr = gs_bsik_temp-rebzj
+          BINARY SEARCH.
+        IF sy-subrc = 0.
+          lv_orig_blart = gs_bkpf-blart.
+        ENDIF.
+      ELSE.
+        " REBZJ blank - search without fiscal year
+        LOOP AT gt_bkpf INTO gs_bkpf
+          WHERE bukrs = gs_bsik_temp-bukrs
+            AND belnr = gs_bsik_temp-rebzg.
+          lv_orig_blart = gs_bkpf-blart.
+          EXIT.
+        ENDLOOP.
+      ENDIF.
+
+      IF lv_orig_blart <> 'RE' AND lv_orig_blart <> 'KR'.
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+
+
+
+
+
+
+
+
+
+
+" Extra fetch for blank REBZJ records
+  LOOP AT gt_bsik_temp INTO gs_bsik_temp
+    WHERE blart = 'AB' AND rebzj IS INITIAL AND rebzg IS NOT INITIAL.
+    SELECT SINGLE bukrs belnr gjahr blart
+      FROM bkpf
+      INTO CORRESPONDING FIELDS OF gs_bkpf
+      WHERE bukrs = gs_bsik_temp-bukrs
+        AND belnr = gs_bsik_temp-rebzg.
+    IF sy-subrc = 0.
+      APPEND gs_bkpf TO gt_bkpf.
+    ENDIF.
+  ENDLOOP.
+  SORT gt_bkpf BY bukrs belnr gjahr.
+
+
