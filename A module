@@ -903,3 +903,80 @@ IF gs_bsik_temp-blart = 'AB'.
   SORT gt_bkpf BY bukrs belnr gjahr.
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+gs_credit-celltab = lt_cellstyle.
+
+    " Append to Output Table
+    APPEND gs_credit TO gt_credit.
+
+  ENDLOOP.
+
+  "------------------------------------------------------------
+  " Delete already-cleared residual items from ALV
+  " Requirement: Animesh Kherwar - 19.02.2026
+  " Compare ALV (LIFNR, BELNR, WRBTR) with
+  " ZFI_VENDCD_DOC (LIFNR, CLG_DOC, AMT_AFTER_CD)
+  " If match found → delete from ALV (don't show)
+  "------------------------------------------------------------
+  DATA: lt_clr_docs TYPE STANDARD TABLE OF zfi_vendcd_doc,
+        ls_clr_doc  TYPE zfi_vendcd_doc.
+
+  IF gt_credit[] IS NOT INITIAL.
+    SELECT *
+      FROM zfi_vendcd_doc
+      INTO TABLE lt_clr_docs
+      FOR ALL ENTRIES IN gt_credit
+      WHERE bukrs     = gt_credit-bukrs
+        AND lifnr     = gt_credit-lifnr
+        AND clg_doc   = gt_credit-belnr
+        AND clg_status = 'X'.
+
+    IF lt_clr_docs[] IS NOT INITIAL.
+      SORT lt_clr_docs BY lifnr clg_doc amt_after_cd.
+
+      LOOP AT gt_credit INTO gs_credit.
+        READ TABLE lt_clr_docs TRANSPORTING NO FIELDS
+          WITH KEY lifnr       = gs_credit-lifnr
+                   clg_doc     = gs_credit-belnr
+                   amt_after_cd = gs_credit-wrbtr
+          BINARY SEARCH.
+        IF sy-subrc = 0.
+          DELETE gt_credit.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+  ENDIF.
+
+  " Set data fetched flag
+  IF gt_credit[] IS NOT INITIAL.
+
+
