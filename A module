@@ -980,3 +980,38 @@ gs_credit-celltab = lt_cellstyle.
   IF gt_credit[] IS NOT INITIAL.
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*---------------------------------------------------------------------*
+* Initialization
+*---------------------------------------------------------------------*
+INITIALIZATION.
+
+  " Local variables
+  DATA: lv_sign   TYPE c LENGTH 1 VALUE 'I',
+        lv_option TYPE c LENGTH 2 VALUE 'EQ',
+        lv_year   TYPE gjahr.
+
+  " Get current fiscal year (first 4 digits of system date)
+  lv_year = sy-datum(4).
+
+  " Assign to select-option structure
+  s_year-sign   = lv_sign.
+  s_year-option = lv_option.
+  s_year-low    = lv_year.
+
+  APPEND s_year.
