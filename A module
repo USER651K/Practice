@@ -1163,3 +1163,25 @@ LOOP AT lt_knumh INTO DATA(ls_knumh) WHERE
         READ TABLE lt_kbetr INTO DATA(ls_kbetr) WITH KEY
         ...
 
+
+
+
+
+
+
+
+
+
+
+
+
+lv_kschl = ls_knumh-kschl.
+
+*BOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
+        READ TABLE lt_set_values INTO ls_set_value
+          WITH KEY from = lv_kschl.
+        IF sy-subrc = 0.
+          CONTINUE.
+        ENDIF.
+*EOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
+
