@@ -1306,3 +1306,47 @@ lv_kschl = ls_knumh-kschl.
           CONTINUE.
         ENDIF.
 *EOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+SELECT * FROM setleaf
+  INTO TABLE lt_set_values
+  WHERE setname = 'ZFI_NDTAX'.
+
+IF sy-subrc <> 0.
+  MESSAGE 'Set ZFI_NDTAX not found or has no values maintained' TYPE 'I' DISPLAY LIKE 'W'.
+ENDIF.
+
+
+
+
+
+
+
+lv_kschl = ls_knumh-kschl.
+
+*BOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
+        IF lt_set_values IS NOT INITIAL.
+          READ TABLE lt_set_values INTO ls_set_value
+            WITH KEY valfrom = lv_kschl.
+          IF sy-subrc = 0.
+            CONTINUE.
+          ENDIF.
+        ENDIF.
+*EOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
+
