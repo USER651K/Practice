@@ -1015,3 +1015,84 @@ INITIALIZATION.
   s_year-low    = lv_year.
 
   APPEND s_year.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DATA: lt_set_values TYPE TABLE OF rgsb4,
+      ls_set_value  TYPE rgsb4,
+      lv_setid      TYPE setnr.
+
+
+
+
+
+
+
+
+
+
+
+
+CALL FUNCTION 'G_SET_GET_ID_4'
+  EXPORTING
+    shortname = 'ZFI_NDTAX'
+  IMPORTING
+    new_setid = lv_setid
+  EXCEPTIONS
+    OTHERS    = 1.
+
+IF sy-subrc = 0.
+  CALL FUNCTION 'G_SET_GET_ALL_VALUES'
+    EXPORTING
+      session   = lv_setid
+    TABLES
+      set_values = lt_set_values
+    EXCEPTIONS
+      OTHERS     = 1.
+ENDIF.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+LOOP AT lt_knumh INTO DATA(ls_knumh) WHERE
+      bukrs = ls_data-bukrs AND
+      mwskz = ls_data-tax_code2.
+
+        lv_kschl = ls_knumh-kschl.
+
+*BOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
+        READ TABLE lt_set_values TRANSPORTING NO FIELDS
+          WITH KEY low = lv_kschl.
+        IF sy-subrc = 0.
+          CONTINUE.
+        ENDIF.
+*EOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
+
+        READ TABLE lt_kbetr INTO DATA(ls_kbetr) WITH KEY
+        ...
