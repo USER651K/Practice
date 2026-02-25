@@ -1206,3 +1206,73 @@ DATA: lv_setid      TYPE setnr,
       lt_set_values TYPE STANDARD TABLE OF setvalues,
       ls_set_value  TYPE setvalues.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DATA: lv_setid      TYPE setheader-setid,
+      lt_set_hier   TYPE STANDARD TABLE OF sethier,
+      lt_set_values TYPE STANDARD TABLE OF setvalues,
+      ls_set_value  TYPE setvalues.
+
+
+
+
+
+
+
+
+
+
+SELECT SINGLE setid FROM setheader
+  INTO lv_setid
+  WHERE setname  = 'ZFI_NDTAX'
+  AND   tabname  = 'A003'
+  AND   fieldname = 'KSCHL'.
+
+IF sy-subrc = 0.
+  CALL FUNCTION 'G_SET_TREE_IMPORT'
+    EXPORTING
+      no_descriptions = 'X'
+      setid           = lv_setid
+    TABLES
+      set_hierarchy   = lt_set_hier
+      set_values      = lt_set_values
+    EXCEPTIONS
+      set_not_found   = 1
+      OTHERS          = 2.
+ENDIF.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+lv_kschl = ls_knumh-kschl.
+
+*BOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
+        READ TABLE lt_set_values INTO ls_set_value
+          WITH KEY from = lv_kschl.
+        IF sy-subrc = 0.
+          CONTINUE.
+        ENDIF.
+*EOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
