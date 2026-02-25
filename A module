@@ -1185,3 +1185,24 @@ lv_kschl = ls_knumh-kschl.
         ENDIF.
 *EOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DATA: lv_setid      TYPE setnr,
+      lv_setclass   TYPE setclass,
+      lt_set_hier   TYPE STANDARD TABLE OF sethier,
+      lt_set_values TYPE STANDARD TABLE OF setvalues,
+      ls_set_value  TYPE setvalues.
+
