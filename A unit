@@ -1267,3 +1267,42 @@ ENDFORM.
 
   " Leave AKOBT empty - SAP will auto-populate
 
+
+
+
+
+
+
+
+
+
+
+
+
+DATA: lt_set_values TYPE TABLE OF setleaf,
+      ls_set_value  TYPE setleaf.
+
+
+
+
+
+SELECT * FROM setleaf
+  INTO TABLE lt_set_values
+  WHERE setname = 'ZFI_NDTAX'.
+
+
+
+
+
+
+
+
+lv_kschl = ls_knumh-kschl.
+
+*BOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
+        READ TABLE lt_set_values INTO ls_set_value
+          WITH KEY vaession = lv_kschl.
+        IF sy-subrc = 0.
+          CONTINUE.
+        ENDIF.
+*EOC--Skip ACCOUNTTAX & CURRENCYAMOUNT for KSCHL in SET ZFI_NDTAX
