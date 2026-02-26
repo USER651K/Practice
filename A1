@@ -726,3 +726,60 @@ ENDCASE.
 ENDMODULE.
 
 
+
+
+
+
+
+
+DATA: lv_doc_itemno TYPE bapiacgl09-itemno_acc.
+
+
+
+
+
+
+
+
+ls_accountgl-itemno_tax = lv_count.
+
+*BOC--Code BY Saswati--27/01/2026.
+
+      lv_doc_itemno = lv_count.          " Save GL item number
+      ls_tax-itemno_acc = lv_count.
+      LOOP AT lt_knumh INTO DATA(ls_knumh) WHERE
+
+
+
+
+
+
+
+ENDLOOP.
+*BOC--Fix: Update lv_count to account for tax line numbers
+      IF ls_tax-itemno_acc > lv_count.
+        lv_count = ls_tax-itemno_acc.
+      ENDIF.
+*EOC
+*EOC--Code BY Saswati--27/01/2026.
+
+
+
+
+
+
+
+
+
+
+
+
+
+IF ls_data-koart = 'S'.
+      ls_currencyamount-itemno_acc = lv_doc_itemno.  " Use saved GL item number
+    ELSE.
+      ls_currencyamount-itemno_acc = lv_count.
+    ENDIF.
+    ls_currencyamount-currency = ls_data-waers.
+    ls_currencyamount-amt_doccur = ls_data-dmbtr.
+
