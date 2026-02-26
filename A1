@@ -783,3 +783,58 @@ IF ls_data-koart = 'S'.
     ls_currencyamount-currency = ls_data-waers.
     ls_currencyamount-amt_doccur = ls_data-dmbtr.
 
+
+
+
+
+
+
+
+
+
+DATA: lt_currencyamount_tax TYPE TABLE OF bapiaccr09,
+      ls_currencyamount_tax TYPE bapiaccr09.
+
+
+
+
+
+
+
+ls_currencyamount_tax-itemno_acc = ls_tax-itemno_acc.
+        ls_currencyamount_tax-currency = ls_data-waers.
+        ls_currencyamount_tax-amt_doccur = ls_data-dmbtr * ls_tax-tax_rate / 100.
+        ls_currencyamount_tax-amt_base = ls_data-dmbtr - ( ls_data-dmbtr * ls_tax-tax_rate / 100 ).
+        APPEND ls_currencyamount_tax TO lt_currencyamount_tax.
+        CLEAR ls_currencyamount_tax.
+        APPEND ls_tax TO lt_tax.
+
+
+
+
+
+
+
+*BOC--Renumber tax lines to start after all document lines
+      DATA: lv_new_tax_itemno TYPE bapiacgl09-itemno_acc,
+            lv_tax_idx        TYPE sy-tabix.
+      lv_new_tax_itemno = lv_count.
+      lv_tax_idx = 0.
+
+      LOOP AT lt_tax ASSIGNING FIELD-SYMBOL(<ls_tax_renum>).
+        lv_new_tax_itemno += 1.
+        lv_tax_idx += 1.
+        <ls_tax_renum>-itemno_acc = lv_new_tax_itemno.
+
+        READ TABLE lt_currencyamount_tax INDEX lv_tax_idx
+          ASSIGNING FIELD-SYMBOL(<ls_curr_tax_renum>).
+        IF sy-subrc = 0.
+          <ls_curr_tax_renum>-itemno_acc = lv_new_tax_itemno.
+        ENDIF.
+      ENDLOOP.
+
+      APPEND LINES OF lt_currencyamount_tax TO lt_currencyamount.
+*EOC--Renumber tax lines
+
+      "boc sa 30/01/26
+      SORT lt_currencyamount BY itemno_acc.
