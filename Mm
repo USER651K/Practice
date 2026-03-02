@@ -1,0 +1,297 @@
+*&---------------------------------------------------------------------*
+*& Custom Table Definitions for RVO Weekly Filing
+*&---------------------------------------------------------------------*
+*& Table 1: ZMM_RVO_PB   - Parboiled Rice CN/HSN Codes
+*& Table 2: ZMM_RVO_NPB  - Non-Parboiled Rice CN/HSN Codes
+*&
+*& Purpose: Maintain CN codes to classify materials as Parboiled or
+*&          Non-Parboiled for RVO filing. This avoids hardcoding CN
+*&          codes in the report program ZMM_RVOREP.
+*&
+*& Maintenance: Via Tcode SM30 (Table Maintenance - TMG)
+*& Author: Ujwal
+*& Date: 02.03.2026
+*&---------------------------------------------------------------------*
+
+*======================================================================*
+* TABLE 1: ZMM_RVO_PB (Parboiled Rice CN Codes)
+*======================================================================*
+* SE11 → Create Table → ZMM_RVO_PB
+*
+* Short Description: CN/HSN Codes for Parboiled Rice (RVO Filing)
+* Delivery Class: C (Customizing table, maintenance only by customer)
+* Data Browser/Table View Maint: Display/Maintenance Allowed
+*
+* Fields:
+* -------
+* Field Name     Key  Data Element   Type      Length  Description
+* -------------- ---  -------------- --------- ------  ----------------------------
+* MANDT          X    MANDT          CLNT      3       Client
+* STEUC          X    STEUC          CHAR      16      Control Code (CN/HSN Code)
+* DESCRIPTION         TEXT40         CHAR      40      Description of CN Code
+* ERNAM               ERNAM          CHAR      12      Created By
+* ERDAT               ERDAT          DATS      8       Created On
+* AENAM               AENAM          CHAR      12      Changed By
+* AEDAT               AEDAT          DATS      8       Changed On
+*
+* Technical Settings (SE11 → Technical Settings):
+*   Data Class       : APPL0 (Master data, transparent table)
+*   Size Category    : 0 (0 to 2,200 records)
+*   Buffering        : Buffering Switched On
+*   Buffering Type   : Fully Buffered
+*   Logging          : Not Required
+*
+* Table Maintenance Generator (SE11 → Utilities → Table Maint. Gen.):
+*   Authorization Group: &NC&
+*   Function Group     : ZMM_RVO_PB
+*   Maintenance Type   : One Step (Overview screen only)
+*   Maintenance Screen : 0001 (Screen Number)
+*   Overview Screen    : Generate default
+*
+* Initial Data Entry (SM30 → ZMM_RVO_PB):
+*   STEUC = 1006306792 | DESCRIPTION = Parboiled Milled Rice
+*
+*======================================================================*
+
+*======================================================================*
+* TABLE 2: ZMM_RVO_NPB (Non-Parboiled Rice CN Codes)
+*======================================================================*
+* SE11 → Create Table → ZMM_RVO_NPB
+*
+* Short Description: CN/HSN Codes for Non-Parboiled Rice (RVO Filing)
+* Delivery Class: C (Customizing table, maintenance only by customer)
+* Data Browser/Table View Maint: Display/Maintenance Allowed
+*
+* Fields:
+* -------
+* Field Name     Key  Data Element   Type      Length  Description
+* -------------- ---  -------------- --------- ------  ----------------------------
+* MANDT          X    MANDT          CLNT      3       Client
+* STEUC          X    STEUC          CHAR      16      Control Code (CN/HSN Code)
+* MATCH_TYPE          ZMATCH_TYPE    CHAR      1       Match Type (E=Exact, P=Prefix)
+* DESCRIPTION         TEXT40         CHAR      40      Description of CN Code
+* ERNAM               ERNAM          CHAR      12      Created By
+* ERDAT               ERDAT          DATS      8       Created On
+* AENAM               AENAM          CHAR      12      Changed By
+* AEDAT               AEDAT          DATS      8       Changed On
+*
+* Technical Settings (SE11 → Technical Settings):
+*   Data Class       : APPL0 (Master data, transparent table)
+*   Size Category    : 0 (0 to 2,200 records)
+*   Buffering        : Buffering Switched On
+*   Buffering Type   : Fully Buffered
+*   Logging          : Not Required
+*
+* Table Maintenance Generator (SE11 → Utilities → Table Maint. Gen.):
+*   Authorization Group: &NC&
+*   Function Group     : ZMM_RVO_NPB
+*   Maintenance Type   : One Step (Overview screen only)
+*   Maintenance Screen : 0001 (Screen Number)
+*   Overview Screen    : Generate default
+*
+* MATCH_TYPE field explanation:
+*   'E' = Exact match  → STEUC must match exactly
+*   'P' = Prefix match → STEUC value is used as a prefix (starts with)
+*
+* This is needed because as per the spec, Non-Parboiled codes are
+* identified by PREFIX (starts with 10063098, 10063094), while
+* Parboiled is an exact match (1006306792).
+*
+* Initial Data Entry (SM30 → ZMM_RVO_NPB):
+*   STEUC = 10063098 | MATCH_TYPE = P | DESCRIPTION = Non-Parboiled Milled Rice (98)
+*   STEUC = 10063094 | MATCH_TYPE = P | DESCRIPTION = Non-Parboiled Milled Rice (94)
+*
+*======================================================================*
+
+*======================================================================*
+* DATA ELEMENT: ZMATCH_TYPE (if not reusing an existing one)
+*======================================================================*
+* SE11 → Create Data Element → ZMATCH_TYPE
+*
+* Short Description: Match Type for CN Code Comparison
+* Domain           : Create domain ZMATCH_TYPE
+*   Data Type      : CHAR
+*   Length         : 1
+*   Fixed Values   :
+*     'E' = Exact Match
+*     'P' = Prefix Match
+*
+*======================================================================*
+
+*======================================================================*
+* ALTERNATIVE: Single Table Approach (ZMM_RVO_CNCODE)
+*======================================================================*
+* If the client prefers a single table instead of two:
+*
+* SE11 → Create Table → ZMM_RVO_CNCODE
+*
+* Short Description: CN/HSN Code Classification for RVO Filing
+* Delivery Class: C
+*
+* Fields:
+* -------
+* Field Name     Key  Data Element   Type      Length  Description
+* -------------- ---  -------------- --------- ------  ----------------------------
+* MANDT          X    MANDT          CLNT      3       Client
+* STEUC          X    STEUC          CHAR      16      Control Code (CN/HSN Code)
+* CATEGORY            ZCATEGORY      CHAR      6       Category (PB / Non-PB)
+* MATCH_TYPE          ZMATCH_TYPE    CHAR      1       Match Type (E=Exact, P=Prefix)
+* DESCRIPTION         TEXT40         CHAR      40      Description
+* ERNAM               ERNAM          CHAR      12      Created By
+* ERDAT               ERDAT          DATS      8       Created On
+* AENAM               AENAM          CHAR      12      Changed By
+* AEDAT               AEDAT          DATS      8       Changed On
+*
+* Initial Data Entry:
+*   STEUC = 1006306792 | CATEGORY = PB     | MATCH_TYPE = E | DESC = Parboiled Milled Rice
+*   STEUC = 10063098   | CATEGORY = Non-PB | MATCH_TYPE = P | DESC = Non-Parboiled (98)
+*   STEUC = 10063094   | CATEGORY = Non-PB | MATCH_TYPE = P | DESC = Non-Parboiled (94)
+*
+*======================================================================*
+
+
+*======================================================================*
+* UPDATED REPORT CODE - Category Classification using Custom Tables
+*======================================================================*
+* Replace the hardcoded PB/Non-PB logic in FORM BUILD_OUTPUT with
+* the following code that reads from custom tables:
+*======================================================================*
+
+*--- Add these declarations at the top of the report (global section) ---
+*
+* TYPES: BEGIN OF ty_rvo_pb,
+*          steuc TYPE steuc,
+*        END OF ty_rvo_pb,
+*
+*        BEGIN OF ty_rvo_npb,
+*          steuc      TYPE steuc,
+*          match_type TYPE char1,       " E=Exact, P=Prefix
+*        END OF ty_rvo_npb.
+*
+* DATA: gt_rvo_pb  TYPE STANDARD TABLE OF ty_rvo_pb,
+*       gt_rvo_npb TYPE STANDARD TABLE OF ty_rvo_npb.
+
+*--- Add a new FORM to fetch custom table data (call before BUILD_OUTPUT) ---
+
+*&---------------------------------------------------------------------*
+*& Form FETCH_CN_CODE_MASTER
+*&---------------------------------------------------------------------*
+*& Reads the PB and Non-PB CN code master data from custom tables.
+*& This allows maintaining CN codes via SM30 without code changes.
+*&---------------------------------------------------------------------*
+* FORM fetch_cn_code_master.
+*
+*   " Fetch Parboiled CN codes
+*   SELECT steuc
+*     FROM zmm_rvo_pb
+*     INTO TABLE gt_rvo_pb.
+*
+*   SORT gt_rvo_pb BY steuc.
+*
+*   " Fetch Non-Parboiled CN codes with match type
+*   SELECT steuc
+*          match_type
+*     FROM zmm_rvo_npb
+*     INTO TABLE gt_rvo_npb.
+*
+*   SORT gt_rvo_npb BY steuc.
+*
+*   IF gt_rvo_pb IS INITIAL AND gt_rvo_npb IS INITIAL.
+*     MESSAGE 'CN Code master tables (ZMM_RVO_PB / ZMM_RVO_NPB) are empty. '
+*           & 'Please maintain via SM30.'
+*             TYPE 'S' DISPLAY LIKE 'W'.
+*   ENDIF.
+*
+* ENDFORM.
+
+*--- Replace the category classification section in FORM BUILD_OUTPUT ---
+
+*&---------------------------------------------------------------------*
+*& Updated Category Classification Logic (using custom tables)
+*&---------------------------------------------------------------------*
+*& This replaces the hardcoded IF/ELSEIF block in BUILD_OUTPUT.
+*&---------------------------------------------------------------------*
+*
+*    "--- Category Classification: PB / Non-PB using custom tables ---
+*    DATA: lv_found     TYPE abap_bool,
+*          lv_steuc_chk TYPE steuc.
+*
+*    CLEAR lv_found.
+*
+*    " Step A: Check if STEUC exists in Parboiled table (exact match)
+*    READ TABLE gt_rvo_pb WITH KEY steuc = gs_output-steuc
+*                         BINARY SEARCH TRANSPORTING NO FIELDS.
+*    IF sy-subrc = 0.
+*      gs_output-category = gc_pb.      " Parboiled
+*      lv_found = abap_true.
+*    ENDIF.
+*
+*    " Step B: If not PB, check Non-Parboiled table
+*    IF lv_found = abap_false.
+*      LOOP AT gt_rvo_npb INTO DATA(ls_npb).
+*        IF ls_npb-match_type = 'E'.
+*          " Exact match
+*          IF gs_output-steuc = ls_npb-steuc.
+*            gs_output-category = gc_npb.
+*            lv_found = abap_true.
+*            EXIT.
+*          ENDIF.
+*        ELSEIF ls_npb-match_type = 'P'.
+*          " Prefix match (starts with)
+*          lv_steuc_chk = ls_npb-steuc.
+*          IF gs_output-steuc CP lv_steuc_chk && '*'.
+*            gs_output-category = gc_npb.
+*            lv_found = abap_true.
+*            EXIT.
+*          ENDIF.
+*        ENDIF.
+*      ENDLOOP.
+*    ENDIF.
+*
+*    " Step C: If neither PB nor Non-PB
+*    IF lv_found = abap_false.
+*      gs_output-category = gc_unk.     " Unknown
+*    ENDIF.
+
+
+*======================================================================*
+* STEP-BY-STEP CREATION INSTRUCTIONS
+*======================================================================*
+*
+* 1. Create Table ZMM_RVO_PB in SE11:
+*    a) Go to SE11 → Enter table name ZMM_RVO_PB → Create
+*    b) Enter Short Description
+*    c) Delivery Class: C
+*    d) Add fields as listed above
+*    e) Go to Technical Settings → Data Class: APPL0, Size: 0
+*    f) Activate the table
+*    g) Utilities → Table Maintenance Generator
+*       → Auth Group: &NC&, Function Group: ZMM_RVO_PB
+*       → Maintenance Type: One Step, Screen: 0001
+*       → Create
+*
+* 2. Create Table ZMM_RVO_NPB in SE11:
+*    a) Same steps as above with ZMM_RVO_NPB
+*    b) Include the additional MATCH_TYPE field
+*    c) Generate TMG with Function Group: ZMM_RVO_NPB
+*
+* 3. Create Data Element ZMATCH_TYPE (if needed):
+*    a) SE11 → Data Element → ZMATCH_TYPE → Create
+*    b) Create Domain ZMATCH_TYPE with fixed values E and P
+*    c) Activate
+*
+* 4. Maintain initial data via SM30:
+*    a) SM30 → ZMM_RVO_PB → Maintain
+*       → Add: STEUC = 1006306792, DESCRIPTION = Parboiled Milled Rice
+*
+*    b) SM30 → ZMM_RVO_NPB → Maintain
+*       → Add: STEUC = 10063098, MATCH_TYPE = P, DESC = Non-Parboiled (98)
+*       → Add: STEUC = 10063094, MATCH_TYPE = P, DESC = Non-Parboiled (94)
+*
+* 5. Update ZMM_RVOREP report:
+*    a) Uncomment the type definitions, data declarations
+*    b) Add PERFORM fetch_cn_code_master before PERFORM build_output
+*    c) Replace hardcoded category logic with custom table read logic
+*    d) Activate and test
+*
+*======================================================================*
