@@ -295,3 +295,964 @@
 *    d) Activate and test
 *
 *======================================================================*
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Report ZMM_RVOREP
+*&---------------------------------------------------------------------*
+*& Title       : RVO Weekly Filing Report - Rice Prices
+*& Tcode       : ZMM_RVOREP
+*& Description : Fetches GRN data against POs of type ZEUL for a given
+*&               week, classifies materials as Parboiled/Non-Parboiled
+*&               based on CN codes (from custom tables ZMM_RVO_PB and
+*&               ZMM_RVO_NPB), calculates quantities and values in EUR
+*&               for RVO weekly filing automation.
+*& Author      : Ujwal
+*& Date        : 02.03.2026
+*&---------------------------------------------------------------------*
+*& Change History:
+*& Date        | Author | Description
+*& ------------|--------|----------------------------------------------
+*& 02.03.2026  | Ujwal  | Initial development
+*&---------------------------------------------------------------------*
+REPORT zmm_rvorep.
+
+*----------------------------------------------------------------------*
+* Includes
+*----------------------------------------------------------------------*
+INCLUDE zmm_rvorep_top.                "Global Declarations
+INCLUDE zmm_rvorep_sel.                "Selection Screen
+INCLUDE zmm_rvorep_f01.                "Subroutines
+
+*----------------------------------------------------------------------*
+* Initialization
+*----------------------------------------------------------------------*
+INITIALIZATION.
+  p_year = sy-datum+0(4).
+
+*----------------------------------------------------------------------*
+* AT SELECTION-SCREEN - Input Validation
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN.
+
+  IF p_week < '01' OR p_week > '53'.
+    MESSAGE 'Week number must be between 01 and 53' TYPE 'E'.
+  ENDIF.
+
+  IF p_year < '2020' OR p_year > '2030'.
+    MESSAGE 'Please enter a valid year' TYPE 'E'.
+  ENDIF.
+
+*----------------------------------------------------------------------*
+* START-OF-SELECTION
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  PERFORM process_report.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Include ZMM_RVOREP_TOP
+*&---------------------------------------------------------------------*
+*& Global Declarations: Constants, Types, Internal Tables, Variables,
+*& Ranges, and ALV Object References.
+*&---------------------------------------------------------------------*
+
+*----------------------------------------------------------------------*
+* Constants
+*----------------------------------------------------------------------*
+CONSTANTS: gc_bwart  TYPE bwart    VALUE '101',     "Goods Receipt Mvt Type
+           gc_werks  TYPE werks_d  VALUE '3100',    "Plant
+           gc_bsart  TYPE bsart    VALUE 'ZEUL',    "PO Document Type
+           gc_eur    TYPE waers    VALUE 'EUR',      "EUR Currency
+           gc_pb     TYPE char10   VALUE 'PB',       "Parboiled
+           gc_npb    TYPE char10   VALUE 'Non-PB',   "Non-Parboiled
+           gc_unk    TYPE char10   VALUE 'Unknown'.  "Unknown Category
+
+*----------------------------------------------------------------------*
+* Type Definitions
+*----------------------------------------------------------------------*
+
+* GRN line items (MSEG joined with MKPF for posting date)
+TYPES: BEGIN OF ty_mseg,
+         mblnr TYPE mseg-mblnr,         "Material Document Number
+         mjahr TYPE mseg-mjahr,          "Material Document Year
+         zeile TYPE mseg-zeile,          "Item in Material Document
+         bwart TYPE mseg-bwart,          "Movement Type
+         matnr TYPE mseg-matnr,          "Material Number
+         werks TYPE mseg-werks,          "Plant
+         lifnr TYPE mseg-lifnr,          "Vendor Number
+         menge TYPE mseg-menge,          "Quantity
+         meins TYPE mseg-meins,          "Base Unit of Measure
+         ebeln TYPE mseg-ebeln,          "Purchase Order Number
+         ebelp TYPE mseg-ebelp,          "Purchase Order Item
+         budat TYPE mkpf-budat,          "Posting Date (from MKPF)
+       END OF ty_mseg.
+
+* Purchase Order Header
+TYPES: BEGIN OF ty_ekko,
+         ebeln TYPE ekko-ebeln,          "PO Number
+         bsart TYPE ekko-bsart,          "Document Type
+         waers TYPE ekko-waers,          "Currency Key
+         wkurs TYPE ekko-wkurs,          "Exchange Rate
+       END OF ty_ekko.
+
+* Purchase Order Item
+TYPES: BEGIN OF ty_ekpo,
+         ebeln TYPE ekpo-ebeln,          "PO Number
+         ebelp TYPE ekpo-ebelp,          "PO Item
+         netpr TYPE ekpo-netpr,          "Net Price
+       END OF ty_ekpo.
+
+* Material Plant Data (HSN/CN Code)
+TYPES: BEGIN OF ty_marc,
+         matnr TYPE marc-matnr,          "Material Number
+         werks TYPE marc-werks,          "Plant
+         steuc TYPE marc-steuc,          "Control Code (HSN/CN Code)
+       END OF ty_marc.
+
+* Material Master (Description)
+TYPES: BEGIN OF ty_mara,
+         matnr TYPE mara-matnr,          "Material Number
+         maktx TYPE mara-maktx,          "Material Description
+       END OF ty_mara.
+
+* Vendor Master
+TYPES: BEGIN OF ty_lfa1,
+         lifnr TYPE lfa1-lifnr,          "Vendor Number
+         name1 TYPE lfa1-name1,          "Vendor Name
+       END OF ty_lfa1.
+
+* Custom Table - Parboiled CN Codes (exact match)
+TYPES: BEGIN OF ty_rvo_pb,
+         steuc TYPE steuc,               "CN Code
+       END OF ty_rvo_pb.
+
+* Custom Table - Non-Parboiled CN Codes (exact or prefix match)
+TYPES: BEGIN OF ty_rvo_npb,
+         steuc      TYPE steuc,          "CN Code
+         match_type TYPE char1,          "E=Exact, P=Prefix
+       END OF ty_rvo_npb.
+
+* ALV Output Structure
+TYPES: BEGIN OF ty_output,
+         week_no    TYPE scal-week,       "Week Number (YYYYWW)
+         mblnr      TYPE mseg-mblnr,      "GRN Document Number
+         budat      TYPE mkpf-budat,       "GRN Posting Date
+         mjahr      TYPE mseg-mjahr,       "Document Year
+         menge      TYPE mseg-menge,       "GRN Quantity
+         meins      TYPE mseg-meins,       "Unit of Measure
+         ebeln      TYPE mseg-ebeln,       "PO Number
+         ebelp      TYPE mseg-ebelp,       "PO Item
+         netpr      TYPE ekpo-netpr,       "Net Price per Unit
+         waers      TYPE ekko-waers,       "Currency
+         wkurs      TYPE ekko-wkurs,       "Exchange Rate
+         total_amt  TYPE netpr,            "Total Amount in EUR
+         matnr      TYPE mseg-matnr,       "Material Code
+         maktx      TYPE mara-maktx,       "Material Description
+         steuc      TYPE marc-steuc,       "HSN/CN Code
+         lifnr      TYPE mseg-lifnr,       "Vendor Code
+         name1      TYPE lfa1-name1,       "Vendor Name
+         category   TYPE char10,           "PB / Non-PB
+       END OF ty_output.
+
+*----------------------------------------------------------------------*
+* Internal Tables
+*----------------------------------------------------------------------*
+DATA: gt_mseg    TYPE STANDARD TABLE OF ty_mseg,
+      gt_ekko    TYPE STANDARD TABLE OF ty_ekko,
+      gt_ekpo    TYPE STANDARD TABLE OF ty_ekpo,
+      gt_marc    TYPE STANDARD TABLE OF ty_marc,
+      gt_mara    TYPE STANDARD TABLE OF ty_mara,
+      gt_lfa1    TYPE STANDARD TABLE OF ty_lfa1,
+      gt_rvo_pb  TYPE STANDARD TABLE OF ty_rvo_pb,
+      gt_rvo_npb TYPE STANDARD TABLE OF ty_rvo_npb,
+      gt_output  TYPE STANDARD TABLE OF ty_output.
+
+*----------------------------------------------------------------------*
+* Work Areas
+*----------------------------------------------------------------------*
+DATA: gs_output TYPE ty_output.
+
+*----------------------------------------------------------------------*
+* Global Variables
+*----------------------------------------------------------------------*
+DATA: gv_date_from TYPE sy-datum,        "Week start date
+      gv_date_to   TYPE sy-datum,        "Week end date
+      gv_week      TYPE scal-week.       "Week in YYYYWW format
+
+*----------------------------------------------------------------------*
+* Ranges
+*----------------------------------------------------------------------*
+DATA: lr_ebeln TYPE RANGE OF ebeln,
+      lr_matnr TYPE RANGE OF matnr,
+      lr_lifnr TYPE RANGE OF lifnr.
+
+*----------------------------------------------------------------------*
+* ALV Object References
+*----------------------------------------------------------------------*
+DATA: go_alv        TYPE REF TO cl_salv_table,
+      go_columns    TYPE REF TO cl_salv_columns_table,
+      go_column     TYPE REF TO cl_salv_column,
+      go_functions  TYPE REF TO cl_salv_functions_list,
+      go_display    TYPE REF TO cl_salv_display_settings,
+      go_layout     TYPE REF TO cl_salv_layout,
+      gs_layout_key TYPE salv_s_layout_key.
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Include ZMM_RVOREP_SEL
+*&---------------------------------------------------------------------*
+*& Selection Screen Definition
+*&---------------------------------------------------------------------*
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  PARAMETERS: p_week TYPE n LENGTH 2 OBLIGATORY,    "Week Number (01-53)
+              p_year TYPE gjahr OBLIGATORY.           "Year
+SELECTION-SCREEN END OF BLOCK b1.
+
+*----------------------------------------------------------------------*
+* Text Elements to be maintained in SE38:
+*   TEXT-001 = 'Selection Parameters'
+*
+* Selection Texts to be maintained in SE38:
+*   P_WEEK  = 'Week Number'
+*   P_YEAR  = 'Year'
+*----------------------------------------------------------------------*
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Include ZMM_RVOREP_F01
+*&---------------------------------------------------------------------*
+*& Subroutines for RVO Weekly Filing Report
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& Form PROCESS_REPORT
+*&---------------------------------------------------------------------*
+*& Main orchestrator subroutine. Called from START-OF-SELECTION.
+*& Executes all processing steps in sequence:
+*&   1. Convert week/year → date range
+*&   2. Fetch GRN data (MSEG + MKPF)
+*&   3. Exclude cancelled/reversed documents
+*&   4. Validate PO type = ZEUL (EKKO)
+*&   5. Fetch PO item details (EKPO - NETPR)
+*&   6. Fetch material master (MARC - STEUC, MARA - MAKTX)
+*&   7. Fetch vendor master (LFA1 - NAME1)
+*&   8. Fetch CN code classification (custom tables)
+*&   9. Build consolidated output with calculations
+*&  10. Display ALV
+*&---------------------------------------------------------------------*
+FORM process_report.
+
+  PERFORM convert_week_to_dates.
+  PERFORM fetch_grn_data.
+  PERFORM check_cancelled_documents.
+  PERFORM validate_po_document_type.
+  PERFORM fetch_po_item_details.
+  PERFORM fetch_material_master_data.
+  PERFORM fetch_vendor_data.
+  PERFORM fetch_cn_code_master.
+  PERFORM build_output.
+  PERFORM display_alv.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form CONVERT_WEEK_TO_DATES
+*&---------------------------------------------------------------------*
+*& Converts input Week + Year into a date range.
+*& Uses FM WEEK_GET_FIRST_DAY to get Monday of the week,
+*& adds 6 days for Sunday (end of week).
+*&
+*& Examples from spec:
+*&   Week 1 & 2026 = 29.12.2025 to 04.01.2026
+*&   Week 2 & 2026 = 05.01.2026 to 11.01.2026
+*&---------------------------------------------------------------------*
+FORM convert_week_to_dates.
+
+  DATA: lv_week_input TYPE scal-week.
+
+  " Build YYYYWW format (e.g., 202601)
+  lv_week_input = p_year && p_week.
+  gv_week = lv_week_input.
+
+  " Get Monday (first day) of the given week
+  CALL FUNCTION 'WEEK_GET_FIRST_DAY'
+    EXPORTING
+      week         = lv_week_input
+    IMPORTING
+      date         = gv_date_from
+    EXCEPTIONS
+      week_invalid = 1
+      OTHERS       = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'Invalid week/year combination. Please check.' TYPE 'E'.
+  ENDIF.
+
+  " Sunday = Monday + 6
+  gv_date_to = gv_date_from + 6.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form FETCH_GRN_DATA
+*&---------------------------------------------------------------------*
+*& As per spec (Section 3.1 - Functional Logic & Process):
+*& "Pass posting dates in field BUDAT_MKPF of table MSEG, when
+*&  BWART=101, WERKS=3100 and get EBELN and EBELP"
+*&
+*& Implementation: INNER JOIN MSEG + MKPF on MBLNR/MJAHR.
+*& MKPF provides BUDAT (posting date), MSEG provides GRN line items.
+*& Filters: BUDAT in date range, BWART=101, WERKS=3100.
+*&
+*& NOTE FOR S/4HANA: If BUDAT_MKPF exists as a direct field in MSEG,
+*& the S/4 alternative (commented below) gives better performance.
+*&---------------------------------------------------------------------*
+FORM fetch_grn_data.
+
+  " ECC approach: Join MSEG + MKPF
+  SELECT m~mblnr
+         m~mjahr
+         m~zeile
+         m~bwart
+         m~matnr
+         m~werks
+         m~lifnr
+         m~menge
+         m~meins
+         m~ebeln
+         m~ebelp
+         k~budat
+    FROM mseg AS m
+    INNER JOIN mkpf AS k
+      ON  k~mblnr = m~mblnr
+      AND k~mjahr = m~mjahr
+    INTO TABLE gt_mseg
+    WHERE k~budat BETWEEN gv_date_from AND gv_date_to
+      AND m~bwart = gc_bwart            "101 - Goods Receipt
+      AND m~werks = gc_werks.           "3100
+
+*  " --- S/4HANA Alternative (uncomment if BUDAT_MKPF in MSEG) ---
+*  SELECT mblnr mjahr zeile bwart matnr werks lifnr
+*         menge meins ebeln ebelp budat_mkpf AS budat
+*    FROM mseg
+*    INTO TABLE gt_mseg
+*    WHERE budat_mkpf BETWEEN gv_date_from AND gv_date_to
+*      AND bwart = gc_bwart
+*      AND werks = gc_werks.
+
+  IF gt_mseg IS INITIAL.
+    MESSAGE 'No GRN records found (Mvt 101, Plant 3100) for the given week'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form CHECK_CANCELLED_DOCUMENTS
+*&---------------------------------------------------------------------*
+*& As per spec (Section 3.1):
+*& "Pass all the MBLNR in field SMBLN of table MSEG and if we get
+*&  any record then we should consider that MBLNR because it is
+*&  cancelled."
+*&
+*& Logic: SMBLN in MSEG holds the original document number that was
+*& reversed. If any of our MBLNRs appear as SMBLN → that original
+*& GRN has been cancelled/reversed and must be excluded.
+*&---------------------------------------------------------------------*
+FORM check_cancelled_documents.
+
+  DATA: lt_cancel_range TYPE RANGE OF mblnr,
+        lt_cancel_docs  TYPE STANDARD TABLE OF mblnr.
+
+  " Build range of all our GRN document numbers
+  LOOP AT gt_mseg INTO DATA(ls_mseg_chk).
+    APPEND VALUE #( sign   = 'I'
+                    option = 'EQ'
+                    low    = ls_mseg_chk-mblnr ) TO lt_cancel_range.
+  ENDLOOP.
+  SORT lt_cancel_range BY low.
+  DELETE ADJACENT DUPLICATES FROM lt_cancel_range COMPARING low.
+
+  " Check: which of our MBLNRs exist in SMBLN (i.e., have been reversed)?
+  IF lt_cancel_range IS NOT INITIAL.
+    SELECT DISTINCT smbln
+      FROM mseg
+      INTO TABLE lt_cancel_docs
+      WHERE smbln IN lt_cancel_range
+        AND smbln NE space.
+  ENDIF.
+
+  " Remove cancelled/reversed GRNs from our data
+  IF lt_cancel_docs IS NOT INITIAL.
+    LOOP AT lt_cancel_docs INTO DATA(lv_cancel_mblnr).
+      DELETE gt_mseg WHERE mblnr = lv_cancel_mblnr.
+    ENDLOOP.
+  ENDIF.
+
+  " Check if any records remain
+  IF gt_mseg IS INITIAL.
+    MESSAGE 'All GRN documents for the given week are cancelled/reversed'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form VALIDATE_PO_DOCUMENT_TYPE
+*&---------------------------------------------------------------------*
+*& As per spec (Section 3.1):
+*& "Pass all the EBELN in table EKKO and consider only those EBELN
+*&  which are of document type BSART=ZEUL"
+*&
+*& Also fetches WAERS (currency) and WKURS (exchange rate) from EKKO.
+*& NOTE: Spec mentions WAERS from EKPO, but in standard SAP, WAERS
+*& resides at PO header level in EKKO. Using EKKO is correct.
+*&---------------------------------------------------------------------*
+FORM validate_po_document_type.
+
+  DATA: lt_mseg_valid TYPE STANDARD TABLE OF ty_mseg.
+
+  " Build EBELN range from GRN data
+  CLEAR lr_ebeln.
+  LOOP AT gt_mseg INTO DATA(ls_mseg_po).
+    APPEND VALUE #( sign   = 'I'
+                    option = 'EQ'
+                    low    = ls_mseg_po-ebeln ) TO lr_ebeln.
+  ENDLOOP.
+  SORT lr_ebeln BY low.
+  DELETE ADJACENT DUPLICATES FROM lr_ebeln COMPARING low.
+
+  " Fetch PO headers - only document type ZEUL
+  SELECT ebeln
+         bsart
+         waers
+         wkurs
+    FROM ekko
+    INTO TABLE gt_ekko
+    WHERE ebeln IN lr_ebeln
+      AND bsart = gc_bsart.             "ZEUL
+
+  IF gt_ekko IS INITIAL.
+    MESSAGE 'No Purchase Orders found with document type ZEUL'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  " Remove GRN entries whose PO is not ZEUL
+  SORT gt_ekko BY ebeln.
+
+  LOOP AT gt_mseg INTO DATA(ls_mseg_val).
+    READ TABLE gt_ekko WITH KEY ebeln = ls_mseg_val-ebeln
+                       BINARY SEARCH TRANSPORTING NO FIELDS.
+    IF sy-subrc = 0.
+      APPEND ls_mseg_val TO lt_mseg_valid.
+    ENDIF.
+  ENDLOOP.
+
+  gt_mseg = lt_mseg_valid.
+  FREE lt_mseg_valid.
+
+  IF gt_mseg IS INITIAL.
+    MESSAGE 'No valid GRN records after PO type (ZEUL) validation'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  " Rebuild EBELN range from validated data (for EKPO fetch)
+  CLEAR lr_ebeln.
+  LOOP AT gt_mseg INTO DATA(ls_mseg_eb).
+    APPEND VALUE #( sign   = 'I'
+                    option = 'EQ'
+                    low    = ls_mseg_eb-ebeln ) TO lr_ebeln.
+  ENDLOOP.
+  SORT lr_ebeln BY low.
+  DELETE ADJACENT DUPLICATES FROM lr_ebeln COMPARING low.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form FETCH_PO_ITEM_DETAILS
+*&---------------------------------------------------------------------*
+*& As per spec (Field Mapping Table):
+*& "Take MSEG-EBELN and EBELP, pass in EKPO and take NETPR"
+*&---------------------------------------------------------------------*
+FORM fetch_po_item_details.
+
+  SELECT ebeln
+         ebelp
+         netpr
+    FROM ekpo
+    INTO TABLE gt_ekpo
+    WHERE ebeln IN lr_ebeln.
+
+  SORT gt_ekpo BY ebeln ebelp.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form FETCH_MATERIAL_MASTER_DATA
+*&---------------------------------------------------------------------*
+*& As per spec (Field Mapping Table):
+*&   HSN Code:    "Pass MATNR and WERKS in MARC and take STEUC"
+*&   Description: "Pass MATNR in MARA and take MAKTX"
+*&---------------------------------------------------------------------*
+FORM fetch_material_master_data.
+
+  " Build MATNR range
+  CLEAR lr_matnr.
+  LOOP AT gt_mseg INTO DATA(ls_mseg_mat).
+    APPEND VALUE #( sign   = 'I'
+                    option = 'EQ'
+                    low    = ls_mseg_mat-matnr ) TO lr_matnr.
+  ENDLOOP.
+  SORT lr_matnr BY low.
+  DELETE ADJACENT DUPLICATES FROM lr_matnr COMPARING low.
+
+  " HSN/CN Code from MARC (plant-specific)
+  SELECT matnr
+         werks
+         steuc
+    FROM marc
+    INTO TABLE gt_marc
+    WHERE matnr IN lr_matnr
+      AND werks = gc_werks.             "3100
+
+  SORT gt_marc BY matnr werks.
+
+  " Material Description from MARA
+  SELECT matnr
+         maktx
+    FROM mara
+    INTO TABLE gt_mara
+    WHERE matnr IN lr_matnr.
+
+  SORT gt_mara BY matnr.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form FETCH_VENDOR_DATA
+*&---------------------------------------------------------------------*
+*& As per spec (Field Mapping Table):
+*& "Pass LIFNR to LFA1 and take NAME1"
+*&---------------------------------------------------------------------*
+FORM fetch_vendor_data.
+
+  " Build LIFNR range
+  CLEAR lr_lifnr.
+  LOOP AT gt_mseg INTO DATA(ls_mseg_ven).
+    APPEND VALUE #( sign   = 'I'
+                    option = 'EQ'
+                    low    = ls_mseg_ven-lifnr ) TO lr_lifnr.
+  ENDLOOP.
+  SORT lr_lifnr BY low.
+  DELETE ADJACENT DUPLICATES FROM lr_lifnr COMPARING low.
+
+  SELECT lifnr
+         name1
+    FROM lfa1
+    INTO TABLE gt_lfa1
+    WHERE lifnr IN lr_lifnr.
+
+  SORT gt_lfa1 BY lifnr.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form FETCH_CN_CODE_MASTER
+*&---------------------------------------------------------------------*
+*& Reads PB and Non-PB CN code classifications from custom tables.
+*& These tables are maintained via SM30 to avoid hardcoding.
+*&
+*& ZMM_RVO_PB  → Parboiled CN codes (always exact match)
+*& ZMM_RVO_NPB → Non-Parboiled CN codes (MATCH_TYPE: E=Exact, P=Prefix)
+*&---------------------------------------------------------------------*
+FORM fetch_cn_code_master.
+
+  " Fetch Parboiled CN codes
+  SELECT steuc
+    FROM zmm_rvo_pb
+    INTO TABLE gt_rvo_pb.
+
+  SORT gt_rvo_pb BY steuc.
+
+  " Fetch Non-Parboiled CN codes with match type indicator
+  SELECT steuc
+         match_type
+    FROM zmm_rvo_npb
+    INTO TABLE gt_rvo_npb.
+
+  SORT gt_rvo_npb BY steuc.
+
+  " Warn if both tables are empty
+  IF gt_rvo_pb IS INITIAL AND gt_rvo_npb IS INITIAL.
+    MESSAGE 'CN Code master tables are empty. Please maintain via SM30.'
+            TYPE 'S' DISPLAY LIKE 'W'.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form BUILD_OUTPUT
+*&---------------------------------------------------------------------*
+*& Consolidates all fetched data into the final output table.
+*&
+*& Total Amount Calculation (from spec - Field Mapping Table):
+*&   "multiply EKPO-NETPR with MSEG-MENGE if currency other than EUR,
+*&    then for that line will multiply NETPR with WKURS"
+*&   → If WAERS = EUR:  Total = NETPR × MENGE
+*&   → If WAERS ≠ EUR:  Total = NETPR × WKURS × MENGE
+*&
+*& Category Classification (from spec):
+*&   "If STEUC = 1006306792 then PB"
+*&   "If STEUC starts with 10063098 & 10063094 then Non-Parboiled"
+*&   → Reads from custom tables ZMM_RVO_PB (exact) and ZMM_RVO_NPB
+*&     (exact or prefix based on MATCH_TYPE field)
+*&---------------------------------------------------------------------*
+FORM build_output.
+
+  DATA: ls_ekko TYPE ty_ekko,
+        ls_ekpo TYPE ty_ekpo,
+        ls_marc TYPE ty_marc,
+        ls_mara TYPE ty_mara,
+        ls_lfa1 TYPE ty_lfa1.
+
+  DATA: lv_found     TYPE abap_bool,
+        lv_npb_code  TYPE steuc,
+        lv_steuc_val TYPE steuc,
+        lv_len       TYPE i.
+
+  CLEAR gt_output.
+
+  LOOP AT gt_mseg INTO DATA(ls_mseg).
+
+    CLEAR gs_output.
+
+    "--- Week Number ---
+    gs_output-week_no = gv_week.
+
+    "--- GRN Document Number ---
+    gs_output-mblnr = ls_mseg-mblnr.
+
+    "--- GRN Posting Date (from MKPF via join) ---
+    gs_output-budat = ls_mseg-budat.
+
+    "--- Document Year ---
+    gs_output-mjahr = ls_mseg-mjahr.
+
+    "--- GRN Quantity & Unit of Measure ---
+    gs_output-menge = ls_mseg-menge.
+    gs_output-meins = ls_mseg-meins.
+
+    "--- PO Number & PO Item ---
+    gs_output-ebeln = ls_mseg-ebeln.
+    gs_output-ebelp = ls_mseg-ebelp.
+
+    "--- Net Price from EKPO (by EBELN + EBELP) ---
+    READ TABLE gt_ekpo INTO ls_ekpo
+      WITH KEY ebeln = ls_mseg-ebeln
+               ebelp = ls_mseg-ebelp
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_output-netpr = ls_ekpo-netpr.
+    ENDIF.
+
+    "--- Currency & Exchange Rate from EKKO (by EBELN) ---
+    READ TABLE gt_ekko INTO ls_ekko
+      WITH KEY ebeln = ls_mseg-ebeln
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_output-waers = ls_ekko-waers.
+      gs_output-wkurs = ls_ekko-wkurs.
+    ENDIF.
+
+    "--- Total Amount Calculation (in EUR) ---
+    IF gs_output-waers = gc_eur.
+      " PO is in EUR: Total = NETPR × MENGE
+      gs_output-total_amt = gs_output-netpr * gs_output-menge.
+    ELSE.
+      " PO is in foreign currency: convert first
+      " Total = NETPR × WKURS × MENGE (WKURS converts to EUR)
+      gs_output-total_amt = gs_output-netpr * gs_output-wkurs * gs_output-menge.
+    ENDIF.
+
+    "--- Material Code ---
+    gs_output-matnr = ls_mseg-matnr.
+
+    "--- Material Description from MARA (by MATNR) ---
+    READ TABLE gt_mara INTO ls_mara
+      WITH KEY matnr = ls_mseg-matnr
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_output-maktx = ls_mara-maktx.
+    ENDIF.
+
+    "--- HSN/CN Code from MARC (by MATNR + WERKS) ---
+    READ TABLE gt_marc INTO ls_marc
+      WITH KEY matnr = ls_mseg-matnr
+               werks = gc_werks
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_output-steuc = ls_marc-steuc.
+    ENDIF.
+
+    "--- Vendor Code ---
+    gs_output-lifnr = ls_mseg-lifnr.
+
+    "--- Vendor Name from LFA1 (by LIFNR) ---
+    READ TABLE gt_lfa1 INTO ls_lfa1
+      WITH KEY lifnr = ls_mseg-lifnr
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_output-name1 = ls_lfa1-name1.
+    ENDIF.
+
+    "=== Category Classification: PB / Non-PB ===
+
+    CLEAR lv_found.
+
+    " Step A: Check Parboiled table (exact match only)
+    READ TABLE gt_rvo_pb WITH KEY steuc = gs_output-steuc
+                         BINARY SEARCH TRANSPORTING NO FIELDS.
+    IF sy-subrc = 0.
+      gs_output-category = gc_pb.       " Parboiled
+      lv_found = abap_true.
+    ENDIF.
+
+    " Step B: Check Non-Parboiled table (exact or prefix match)
+    IF lv_found = abap_false.
+      LOOP AT gt_rvo_npb INTO DATA(ls_npb).
+        IF ls_npb-match_type = 'E'.
+          " --- Exact match ---
+          IF gs_output-steuc = ls_npb-steuc.
+            gs_output-category = gc_npb. " Non-Parboiled
+            lv_found = abap_true.
+            EXIT.
+          ENDIF.
+
+        ELSEIF ls_npb-match_type = 'P'.
+          " --- Prefix match (starts with) ---
+          " STEUC is CHAR(16) - must CONDENSE to remove trailing spaces
+          " before doing length-based substring comparison
+          lv_npb_code = ls_npb-steuc.
+          CONDENSE lv_npb_code NO-GAPS.
+          lv_len = strlen( lv_npb_code ).
+
+          lv_steuc_val = gs_output-steuc.
+          CONDENSE lv_steuc_val NO-GAPS.
+
+          IF lv_len > 0 AND strlen( lv_steuc_val ) >= lv_len.
+            IF lv_steuc_val(lv_len) = lv_npb_code.
+              gs_output-category = gc_npb. " Non-Parboiled
+              lv_found = abap_true.
+              EXIT.
+            ENDIF.
+          ENDIF.
+
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+    " Step C: Not classified
+    IF lv_found = abap_false.
+      gs_output-category = gc_unk.      " Unknown
+    ENDIF.
+
+    APPEND gs_output TO gt_output.
+
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form DISPLAY_ALV
+*&---------------------------------------------------------------------*
+*& Displays the output in ALV grid using CL_SALV_TABLE.
+*& Includes all standard functions, striped pattern, layout save,
+*& optimized column widths, and descriptive column texts.
+*&---------------------------------------------------------------------*
+FORM display_alv.
+
+  IF gt_output IS INITIAL.
+    MESSAGE 'No data to display for the given week' TYPE 'S' DISPLAY LIKE 'E'.
+    RETURN.
+  ENDIF.
+
+  TRY.
+      " Create ALV instance
+      cl_salv_table=>factory(
+        IMPORTING
+          r_salv_table = go_alv
+        CHANGING
+          t_table      = gt_output ).
+
+      "--- Enable all standard ALV functions (sort, filter, export) ---
+      go_functions = go_alv->get_functions( ).
+      go_functions->set_all( abap_true ).
+
+      "--- Display Settings ---
+      go_display = go_alv->get_display_settings( ).
+      go_display->set_striped_pattern( abap_true ).
+      go_display->set_list_header(
+        |RVO Weekly Filing - Week { p_week } / { p_year }| &&
+        | ({ gv_date_from DATE = USER } to { gv_date_to DATE = USER })| ).
+
+      "--- Layout Settings (allow user to save layouts) ---
+      go_layout = go_alv->get_layout( ).
+      gs_layout_key-report = sy-repid.
+      go_layout->set_key( gs_layout_key ).
+      go_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+      "--- Column Settings ---
+      go_columns = go_alv->get_columns( ).
+      go_columns->set_optimize( abap_true ).
+
+      TRY.
+          go_column = go_columns->get_column( 'WEEK_NO' ).
+          go_column->set_short_text( 'Week' ).
+          go_column->set_medium_text( 'Week No.' ).
+          go_column->set_long_text( 'Week Number' ).
+
+          go_column = go_columns->get_column( 'MBLNR' ).
+          go_column->set_short_text( 'GRN No.' ).
+          go_column->set_medium_text( 'GRN Number' ).
+          go_column->set_long_text( 'GRN Document Number' ).
+
+          go_column = go_columns->get_column( 'BUDAT' ).
+          go_column->set_short_text( 'Post Date' ).
+          go_column->set_medium_text( 'Posting Date' ).
+          go_column->set_long_text( 'GRN Posting Date' ).
+
+          go_column = go_columns->get_column( 'MJAHR' ).
+          go_column->set_short_text( 'Doc Year' ).
+          go_column->set_medium_text( 'Doc Year' ).
+          go_column->set_long_text( 'Document Year' ).
+
+          go_column = go_columns->get_column( 'MENGE' ).
+          go_column->set_short_text( 'Quantity' ).
+          go_column->set_medium_text( 'GRN Quantity' ).
+          go_column->set_long_text( 'GRN Quantity' ).
+
+          go_column = go_columns->get_column( 'MEINS' ).
+          go_column->set_short_text( 'UOM' ).
+          go_column->set_medium_text( 'UOM' ).
+          go_column->set_long_text( 'Unit of Measure' ).
+
+          go_column = go_columns->get_column( 'EBELN' ).
+          go_column->set_short_text( 'PO No.' ).
+          go_column->set_medium_text( 'PO Number' ).
+          go_column->set_long_text( 'Purchase Order Number' ).
+
+          go_column = go_columns->get_column( 'EBELP' ).
+          go_column->set_short_text( 'PO Item' ).
+          go_column->set_medium_text( 'PO Item' ).
+          go_column->set_long_text( 'Purchase Order Item' ).
+
+          go_column = go_columns->get_column( 'NETPR' ).
+          go_column->set_short_text( 'Net Price' ).
+          go_column->set_medium_text( 'Net Price' ).
+          go_column->set_long_text( 'Net Price per Unit' ).
+
+          go_column = go_columns->get_column( 'WAERS' ).
+          go_column->set_short_text( 'Currency' ).
+          go_column->set_medium_text( 'Currency' ).
+          go_column->set_long_text( 'PO Currency' ).
+
+          go_column = go_columns->get_column( 'WKURS' ).
+          go_column->set_short_text( 'Exch Rate' ).
+          go_column->set_medium_text( 'Exchange Rate' ).
+          go_column->set_long_text( 'Exchange Rate' ).
+
+          go_column = go_columns->get_column( 'TOTAL_AMT' ).
+          go_column->set_short_text( 'Total Amt' ).
+          go_column->set_medium_text( 'Total Amount' ).
+          go_column->set_long_text( 'Total Amount in EUR' ).
+
+          go_column = go_columns->get_column( 'MATNR' ).
+          go_column->set_short_text( 'Mat Code' ).
+          go_column->set_medium_text( 'Material Code' ).
+          go_column->set_long_text( 'Material Number' ).
+
+          go_column = go_columns->get_column( 'MAKTX' ).
+          go_column->set_short_text( 'Mat Desc' ).
+          go_column->set_medium_text( 'Material Desc' ).
+          go_column->set_long_text( 'Material Description' ).
+
+          go_column = go_columns->get_column( 'STEUC' ).
+          go_column->set_short_text( 'HSN Code' ).
+          go_column->set_medium_text( 'HSN/CN Code' ).
+          go_column->set_long_text( 'HSN/CN Code' ).
+
+          go_column = go_columns->get_column( 'LIFNR' ).
+          go_column->set_short_text( 'Vendor' ).
+          go_column->set_medium_text( 'Vendor Code' ).
+          go_column->set_long_text( 'Vendor Number' ).
+
+          go_column = go_columns->get_column( 'NAME1' ).
+          go_column->set_short_text( 'Vend Name' ).
+          go_column->set_medium_text( 'Vendor Name' ).
+          go_column->set_long_text( 'Vendor Name' ).
+
+          go_column = go_columns->get_column( 'CATEGORY' ).
+          go_column->set_short_text( 'Category' ).
+          go_column->set_medium_text( 'PB/Non-PB' ).
+          go_column->set_long_text( 'Parboiled / Non-Parboiled' ).
+
+        CATCH cx_salv_not_found.                     "#EC NO_HANDLER
+      ENDTRY.
+
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO DATA(lo_msg).
+      MESSAGE lo_msg TYPE 'E'.
+  ENDTRY.
+
+ENDFORM.
+
+
