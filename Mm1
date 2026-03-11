@@ -1,0 +1,271 @@
+*&---------------------------------------------------------------------*
+*& Report ZMM_RVOREP
+*&---------------------------------------------------------------------*
+REPORT zmm_rvorep.
+
+INCLUDE zmm_rvorep_top.
+INCLUDE zmm_rvorep_sel.
+INCLUDE zmm_rvorep_f01.
+
+INITIALIZATION.
+  p_year = sy-datum+0(4).
+
+*----------------------------------------------------------------------*
+* AT SELECTION-SCREEN OUTPUT - Toggle field visibility
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN OUTPUT.
+
+  LOOP AT SCREEN.
+    " When Week mode selected → show Week/Year, hide Date Range
+    IF rb_week = abap_true.
+      IF screen-group1 = 'DTR'.
+        screen-active = 0.
+        MODIFY SCREEN.
+      ENDIF.
+    ENDIF.
+
+    " When Date mode selected → show Date Range, hide Week/Year
+    IF rb_date = abap_true.
+      IF screen-group1 = 'WKY'.
+        screen-active = 0.
+        MODIFY SCREEN.
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+
+*----------------------------------------------------------------------*
+* AT SELECTION-SCREEN - Validation
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN.
+
+  " Validate Week mode inputs
+  IF rb_week = abap_true.
+    IF p_week IS INITIAL OR p_year IS INITIAL.
+      MESSAGE 'Please enter both Week Number and Year' TYPE 'E'.
+    ENDIF.
+    IF p_week < '01' OR p_week > '53'.
+      MESSAGE 'Week number must be between 01 and 53' TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+  " Validate Date mode inputs
+  IF rb_date = abap_true.
+    IF p_dtfrom IS INITIAL OR p_dtto IS INITIAL.
+      MESSAGE 'Please enter both From and To dates' TYPE 'E'.
+    ENDIF.
+    IF p_dtfrom > p_dtto.
+      MESSAGE 'From date cannot be greater than To date' TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+START-OF-SELECTION.
+
+  PERFORM process_report.
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Include ZMM_RVOREP_SEL
+*&---------------------------------------------------------------------*
+
+*----------------------------------------------------------------------*
+* Block 1: Input Mode (Radio Buttons)
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+
+  PARAMETERS: rb_week RADIOBUTTON GROUP rb1 DEFAULT 'X' USER-COMMAND uc1,
+              rb_date RADIOBUTTON GROUP rb1.
+
+SELECTION-SCREEN END OF BLOCK b1.
+
+*----------------------------------------------------------------------*
+* Block 2: Week + Year (MODIF ID WKY → toggled by radio button)
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
+
+  PARAMETERS: p_week TYPE n LENGTH 2   MODIF ID wky,
+              p_year TYPE gjahr        MODIF ID wky.
+
+SELECTION-SCREEN END OF BLOCK b2.
+
+*----------------------------------------------------------------------*
+* Block 3: Date Range (MODIF ID DTR → toggled by radio button)
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b3 WITH FRAME TITLE TEXT-003.
+
+  PARAMETERS: p_dtfrom TYPE sy-datum   MODIF ID dtr,
+              p_dtto   TYPE sy-datum   MODIF ID dtr.
+
+SELECTION-SCREEN END OF BLOCK b3.
+
+*----------------------------------------------------------------------*
+* Block 4: Category Filter (Radio Buttons)
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b4 WITH FRAME TITLE TEXT-004.
+
+  PARAMETERS: rb_all RADIOBUTTON GROUP rb2 DEFAULT 'X',
+              rb_pb  RADIOBUTTON GROUP rb2,
+              rb_npb RADIOBUTTON GROUP rb2.
+
+SELECTION-SCREEN END OF BLOCK b4.
+
+*----------------------------------------------------------------------*
+* Text Elements to maintain in SE38:
+*   TEXT-001 = 'Input Mode'
+*   TEXT-002 = 'Week & Year'
+*   TEXT-003 = 'Date Range'
+*   TEXT-004 = 'Category Filter'
+*
+* Selection Texts:
+*   RB_WEEK  = 'By Week & Year'
+*   RB_DATE  = 'By Date Range'
+*   P_WEEK   = 'Week Number'
+*   P_YEAR   = 'Year'
+*   P_DTFROM = 'Date From'
+*   P_DTTO   = 'Date To'
+*   RB_ALL   = 'All (PB + Non-PB)'
+*   RB_PB    = 'Parboiled Only'
+*   RB_NPB   = 'Non-Parboiled Only'
+*----------------------------------------------------------------------*
+
+
+
+
+
+*======================================================================*
+* CHANGES TO APPLY IN ZMM_RVOREP_F01
+* Only the forms that need modification are shown below.
+* All other forms remain UNCHANGED.
+*======================================================================*
+
+*----------------------------------------------------------------------*
+* CHANGE 1: Replace FORM convert_week_to_dates with this version
+*----------------------------------------------------------------------*
+
+FORM convert_week_to_dates.
+
+  DATA: lv_week_input TYPE scal-week.
+
+  IF rb_week = abap_true.
+    " Mode 1: Week + Year → convert to date range
+    lv_week_input = p_year && p_week.
+    gv_week = lv_week_input.
+
+    CALL FUNCTION 'WEEK_GET_FIRST_DAY'
+      EXPORTING
+        week         = lv_week_input
+      IMPORTING
+        date         = gv_date_from
+      EXCEPTIONS
+        week_invalid = 1
+        OTHERS       = 2.
+
+    IF sy-subrc <> 0.
+      MESSAGE 'Invalid week/year combination. Please check.' TYPE 'E'.
+    ENDIF.
+
+    gv_date_to = gv_date_from + 6.
+
+  ELSEIF rb_date = abap_true.
+    " Mode 2: Date Range → use directly
+    gv_date_from = p_dtfrom.
+    gv_date_to   = p_dtto.
+
+    " Also derive week number for ALV display
+    CALL FUNCTION 'DATE_GET_WEEK'
+      EXPORTING
+        date         = gv_date_from
+      IMPORTING
+        week         = gv_week
+      EXCEPTIONS
+        date_invalid = 1
+        OTHERS       = 2.
+
+    IF sy-subrc <> 0.
+      gv_week = '000000'.  "Fallback if date invalid
+    ENDIF.
+
+  ENDIF.
+
+ENDFORM.
+
+*----------------------------------------------------------------------*
+* CHANGE 2: Add this NEW form - call it after build_output
+*           Add "PERFORM filter_by_category." in process_report
+*           AFTER "PERFORM build_output." and BEFORE "PERFORM display_alv."
+*----------------------------------------------------------------------*
+
+FORM filter_by_category.
+
+  " If user selected PB only → remove Non-PB and Unknown
+  IF rb_pb = abap_true.
+    DELETE gt_output WHERE category <> gc_pb.
+  ENDIF.
+
+  " If user selected Non-PB only → remove PB and Unknown
+  IF rb_npb = abap_true.
+    DELETE gt_output WHERE category <> gc_npb.
+  ENDIF.
+
+  " If rb_all is selected → no filtering, show everything (default)
+
+  IF gt_output IS INITIAL.
+    MESSAGE 'No records found for the selected category filter'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.
+
+*----------------------------------------------------------------------*
+* CHANGE 3: Update FORM process_report - add filter_by_category
+*----------------------------------------------------------------------*
+
+FORM process_report.
+
+  PERFORM convert_week_to_dates.
+  PERFORM fetch_grn_data.
+  PERFORM check_cancelled_documents.
+  PERFORM validate_po_document_type.
+  PERFORM fetch_po_item_details.
+  PERFORM fetch_material_master_data.
+  PERFORM fetch_vendor_data.
+  PERFORM fetch_cn_code_master.
+  PERFORM build_output.
+  PERFORM filter_by_category.            "<-- NEW: added here
+  PERFORM display_alv.
+
+ENDFORM.
+
+*----------------------------------------------------------------------*
+* CHANGE 4: Update ALV header in FORM display_alv
+*           Replace the set_list_header line with this:
+*----------------------------------------------------------------------*
+
+*  " Build dynamic header based on input mode
+*  DATA: lv_header TYPE string.
+*
+*  IF rb_week = abap_true.
+*    lv_header = |RVO Weekly Filing - Week { p_week } / { p_year }| &&
+*                | ({ gv_date_from DATE = USER } to { gv_date_to DATE = USER })|.
+*  ELSE.
+*    lv_header = |RVO Weekly Filing - { gv_date_from DATE = USER } to { gv_date_to DATE = USER }|.
+*  ENDIF.
+*
+*  " Add category filter info
+*  IF rb_pb = abap_true.
+*    lv_header = lv_header && | [Parboiled Only]|.
+*  ELSEIF rb_npb = abap_true.
+*    lv_header = lv_header && | [Non-Parboiled Only]|.
+*  ENDIF.
+*
+*  go_display->set_list_header( lv_header ).
+
+
+
+
+
+
+
