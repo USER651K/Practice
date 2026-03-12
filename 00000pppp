@@ -1,3 +1,88 @@
+DATA: gt_csv     TYPE STANDARD TABLE OF string,
+      gv_line    TYPE string,
+      gv_fname   TYPE string,
+      gv_records TYPE i.
+to:
+
+DATA: gv_line    TYPE string,
+      gv_records TYPE i.
+
+...
+
+DATA: gv_filepath  TYPE string,
+      gv_timestamp TYPE timestampl.
+
+remove: both
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
+  PARAMETERS: p_lpath TYPE string LOWER CASE.
+SELECTION-SCREEN END OF BLOCK b2.
+
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_lpath.
+  DATA: lv_folder TYPE string.
+  cl_gui_frontend_services=>directory_browse(
+     ...
+  ).
+
+
+
+
+
+IF gt_alv IS NOT INITIAL.
+    IF p_lpath IS NOT INITIAL.
+      PERFORM build_csv.
+      PERFORM download_csv.
+    ENDIF.
+    PERFORM display_alv.
+
+to
+
+
+IF gt_alv IS NOT INITIAL.
+    PERFORM write_to_server.
+    PERFORM display_alv.
+
+
+
+
+FORM write_to_server.
+  ...
+  gv_filepath = '/mnt/edifiles/In_MKAL_MAST.csv'.
+  GET TIME STAMP FIELD gv_timestamp.
+  REPLACE '.csv' IN gv_filepath WITH |_{ gv_timestamp }.csv|.
+
+  OPEN DATASET gv_filepath FOR OUTPUT IN TEXT MODE ENCODING DEFAULT.
+  ...
+  TRANSFER gv_line TO gv_filepath.    "header
+  ...
+  LOOP AT gt_mkal INTO gs_mkal.
+    ...
+    TRANSFER gv_line TO gv_filepath.  "each data row
+  ENDLOOP.
+
+  CLOSE DATASET gv_filepath.
+  ...
+ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 REPORT zpp_bom_pv_report.
 
 TABLES: mara, t001w.
