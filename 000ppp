@@ -1,0 +1,460 @@
+REPORT zpp_bom_pv_report.
+
+TABLES: mara, t001w.
+
+TYPES:
+  BEGIN OF ty_mkal,
+    mandt TYPE mkal-mandt,
+    matnr TYPE mkal-matnr,
+    werks TYPE mkal-werks,
+    verid TYPE mkal-verid,
+    plnty TYPE mkal-plnty,
+    stlan TYPE mkal-stlan,
+    plnnr TYPE mkal-plnnr,
+    stlal TYPE mkal-stlal,
+    bstmi TYPE mkal-bstmi,
+    alnal TYPE mkal-alnal,
+    bstma TYPE mkal-bstma,
+    adatu TYPE mkal-adatu,
+    bdatu TYPE mkal-bdatu,
+  END OF ty_mkal,
+
+  BEGIN OF ty_mast,
+    matnr TYPE mast-matnr,
+    werks TYPE mast-werks,
+    stlan TYPE mast-stlan,
+    stlal TYPE mast-stlal,
+    stlnr TYPE mast-stlnr,
+  END OF ty_mast,
+
+  BEGIN OF ty_makt,
+    matnr TYPE makt-matnr,
+    spras TYPE makt-spras,
+    maktx TYPE makt-maktx,
+  END OF ty_makt,
+
+  BEGIN OF ty_alv,
+    werks TYPE mkal-werks,
+    matnr TYPE mkal-matnr,
+    maktx TYPE makt-maktx,
+    verid TYPE mkal-verid,
+    adatu TYPE mkal-adatu,
+    bdatu TYPE mkal-bdatu,
+    bstmi TYPE mkal-bstmi,
+    bstma TYPE mkal-bstma,
+    stlnr TYPE mast-stlnr,
+    stlal TYPE mkal-stlal,
+    stlan TYPE mkal-stlan,
+    plnty TYPE mkal-plnty,
+    plnnr TYPE mkal-plnnr,
+    alnal TYPE mkal-alnal,
+  END OF ty_alv.
+
+DATA: gt_mkal TYPE STANDARD TABLE OF ty_mkal,
+      gt_mast TYPE STANDARD TABLE OF ty_mast,
+      gt_makt TYPE STANDARD TABLE OF ty_makt,
+      gt_alv  TYPE STANDARD TABLE OF ty_alv,
+      gs_mkal TYPE ty_mkal,
+      gs_mast TYPE ty_mast,
+      gs_makt TYPE ty_makt,
+      gs_alv  TYPE ty_alv.
+
+DATA: gt_csv     TYPE STANDARD TABLE OF string,
+      gv_line    TYPE string,
+      gv_fname   TYPE string,
+      gv_records TYPE i.
+
+DATA: go_alv     TYPE REF TO cl_salv_table,
+      go_funcs   TYPE REF TO cl_salv_functions_list,
+      go_columns TYPE REF TO cl_salv_columns_table,
+      go_column  TYPE REF TO cl_salv_column,
+      go_display TYPE REF TO cl_salv_display_settings,
+      go_layout  TYPE REF TO cl_salv_layout,
+      gs_lkey    TYPE salv_s_layout_key.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  SELECT-OPTIONS: s_matnr FOR mara-matnr MATCHCODE OBJECT mat1,
+                  s_werks FOR t001w-werks OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b1.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
+  PARAMETERS: p_lpath TYPE string LOWER CASE.
+SELECTION-SCREEN END OF BLOCK b2.
+
+INITIALIZATION.
+  SET PARAMETER ID 'MAT' FIELD s_matnr-low.
+  SET PARAMETER ID 'WRK' FIELD s_werks-low.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_lpath.
+  DATA: lv_folder TYPE string.
+  cl_gui_frontend_services=>directory_browse(
+    EXPORTING
+      window_title    = 'Select Download Folder'
+    CHANGING
+      selected_folder = lv_folder
+    EXCEPTIONS
+      OTHERS          = 4 ).
+  IF sy-subrc = 0 AND lv_folder IS NOT INITIAL.
+    p_lpath = lv_folder.
+  ENDIF.
+
+AT SELECTION-SCREEN.
+
+  IF s_matnr-low IS NOT INITIAL AND s_matnr-high IS INITIAL.
+    SELECT SINGLE matnr FROM mara INTO mara-matnr
+     WHERE matnr = s_matnr-low.
+    IF sy-subrc <> 0.
+      MESSAGE e001(zpp) WITH s_matnr-low.
+    ENDIF.
+  ENDIF.
+
+  IF s_werks-low IS NOT INITIAL AND s_werks-high IS INITIAL.
+    SELECT SINGLE werks FROM t001w INTO t001w-werks
+     WHERE werks = s_werks-low.
+    IF sy-subrc <> 0.
+      MESSAGE e002(zpp) WITH s_werks-low.
+    ENDIF.
+  ENDIF.
+
+START-OF-SELECTION.
+
+  PERFORM extract_data.
+
+  IF gt_alv IS NOT INITIAL.
+    IF p_lpath IS NOT INITIAL.
+      PERFORM build_csv.
+      PERFORM download_csv.
+    ENDIF.
+    PERFORM display_alv.
+  ELSE.
+    MESSAGE e003(zpp).
+  ENDIF.
+
+
+FORM extract_data.
+
+  SELECT mandt matnr werks verid plnty stlan plnnr stlal
+         bstmi alnal bstma adatu bdatu
+    FROM mkal
+    INTO TABLE gt_mkal
+   WHERE matnr IN s_matnr
+     AND werks IN s_werks.
+
+  IF gt_mkal IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  SELECT matnr werks stlan stlal stlnr
+    FROM mast
+    INTO TABLE gt_mast
+     FOR ALL ENTRIES IN gt_mkal
+   WHERE matnr = gt_mkal-matnr
+     AND werks = gt_mkal-werks
+     AND stlan = gt_mkal-stlan
+     AND stlal = gt_mkal-stlal.
+
+  SORT gt_mast BY matnr werks stlan stlal.
+
+  SELECT matnr spras maktx
+    FROM makt
+    INTO TABLE gt_makt
+     FOR ALL ENTRIES IN gt_mkal
+   WHERE matnr = gt_mkal-matnr
+     AND spras = 'EN'.
+
+  SORT gt_makt BY matnr.
+
+  LOOP AT gt_mkal INTO gs_mkal.
+    CLEAR gs_alv.
+
+    gs_alv-werks = gs_mkal-werks.
+    gs_alv-matnr = gs_mkal-matnr.
+    gs_alv-verid = gs_mkal-verid.
+    gs_alv-adatu = gs_mkal-adatu.
+    gs_alv-bdatu = gs_mkal-bdatu.
+    gs_alv-bstmi = gs_mkal-bstmi.
+    gs_alv-bstma = gs_mkal-bstma.
+    gs_alv-stlal = gs_mkal-stlal.
+    gs_alv-stlan = gs_mkal-stlan.
+    gs_alv-plnty = gs_mkal-plnty.
+    gs_alv-plnnr = gs_mkal-plnnr.
+    gs_alv-alnal = gs_mkal-alnal.
+
+    READ TABLE gt_makt INTO gs_makt
+         WITH KEY matnr = gs_mkal-matnr
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_alv-maktx = gs_makt-maktx.
+    ENDIF.
+
+    READ TABLE gt_mast INTO gs_mast
+         WITH KEY matnr = gs_mkal-matnr
+                  werks = gs_mkal-werks
+                  stlan = gs_mkal-stlan
+                  stlal = gs_mkal-stlal
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_alv-stlnr = gs_mast-stlnr.
+    ENDIF.
+
+    APPEND gs_alv TO gt_alv.
+  ENDLOOP.
+
+  gv_records = lines( gt_alv ).
+
+ENDFORM.
+
+
+FORM build_csv.
+
+  DATA: lv_plnty TYPE string,
+        lv_matnr TYPE string,
+        lv_werks TYPE string,
+        lv_verid TYPE string,
+        lv_stlan TYPE string,
+        lv_plnnr TYPE string,
+        lv_stlal TYPE string,
+        lv_bstmi TYPE string,
+        lv_alnal TYPE string,
+        lv_mandt TYPE string,
+        lv_bstma TYPE string,
+        lv_adatu TYPE string,
+        lv_bdatu TYPE string,
+        lv_stlnr TYPE string.
+
+  CONSTANTS: lc_sep TYPE c VALUE ','.
+
+  REFRESH gt_csv.
+
+  CONCATENATE
+    'TaskListType' 'Item' 'Site' 'VersionID' 'BOMUsage'
+    'Group' 'AlternativeBOM' 'MinimumLotSizeQuantity'
+    'GroupCounter' 'SourceId' 'MaximumLotSizeQuantity'
+    'ValidFromDate' 'ValidToDate' 'BillofMaterial'
+    INTO gv_line SEPARATED BY lc_sep.
+  APPEND gv_line TO gt_csv.
+
+  LOOP AT gt_mkal INTO gs_mkal.
+    CLEAR gv_line.
+
+    lv_plnty = gs_mkal-plnty.
+    CONDENSE lv_plnty NO-GAPS.
+
+    CALL FUNCTION 'CONVERSION_EXIT_MATN1_OUTPUT'
+      EXPORTING input  = gs_mkal-matnr
+      IMPORTING output = lv_matnr.
+    CONDENSE lv_matnr NO-GAPS.
+
+    lv_werks = gs_mkal-werks.
+    CONDENSE lv_werks NO-GAPS.
+
+    lv_verid = gs_mkal-verid.
+    CONDENSE lv_verid NO-GAPS.
+
+    lv_stlan = gs_mkal-stlan.
+    CONDENSE lv_stlan NO-GAPS.
+
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+      EXPORTING input  = gs_mkal-plnnr
+      IMPORTING output = lv_plnnr.
+    CONDENSE lv_plnnr NO-GAPS.
+
+    lv_stlal = gs_mkal-stlal.
+    CONDENSE lv_stlal NO-GAPS.
+
+    lv_bstmi = gs_mkal-bstmi.
+    CONDENSE lv_bstmi NO-GAPS.
+
+    lv_alnal = gs_mkal-alnal.
+    CONDENSE lv_alnal NO-GAPS.
+
+    lv_mandt = gs_mkal-mandt.
+    CONDENSE lv_mandt NO-GAPS.
+
+    lv_bstma = gs_mkal-bstma.
+    CONDENSE lv_bstma NO-GAPS.
+
+    PERFORM format_date USING gs_mkal-adatu CHANGING lv_adatu.
+    PERFORM format_date USING gs_mkal-bdatu CHANGING lv_bdatu.
+
+    READ TABLE gt_mast INTO gs_mast
+         WITH KEY matnr = gs_mkal-matnr
+                  werks = gs_mkal-werks
+                  stlan = gs_mkal-stlan
+                  stlal = gs_mkal-stlal
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING input  = gs_mast-stlnr
+        IMPORTING output = lv_stlnr.
+    ELSE.
+      CLEAR lv_stlnr.
+    ENDIF.
+    CONDENSE lv_stlnr NO-GAPS.
+
+    CONCATENATE
+      lv_plnty lv_matnr lv_werks lv_verid lv_stlan
+      lv_plnnr lv_stlal lv_bstmi lv_alnal lv_mandt
+      lv_bstma lv_adatu lv_bdatu lv_stlnr
+      INTO gv_line SEPARATED BY lc_sep.
+    APPEND gv_line TO gt_csv.
+  ENDLOOP.
+
+ENDFORM.
+
+
+FORM format_date USING    iv_date TYPE d
+                 CHANGING ev_str  TYPE string.
+  CLEAR ev_str.
+  IF iv_date IS NOT INITIAL AND iv_date <> '00000000'.
+    CONCATENATE iv_date+6(2) '.' iv_date+4(2) '.' iv_date+0(4) INTO ev_str.
+  ENDIF.
+ENDFORM.
+
+
+FORM download_csv.
+
+  DATA: lv_fullpath TYPE string,
+        lv_path     TYPE string,
+        lv_datum    TYPE string,
+        lv_uzeit    TYPE string.
+
+  lv_path = p_lpath.
+  IF lv_path IS NOT INITIAL.
+    DATA(lv_len) = strlen( lv_path ) - 1.
+    IF lv_path+lv_len(1) <> '\'.
+      CONCATENATE lv_path '\' INTO lv_path.
+    ENDIF.
+  ENDIF.
+
+  lv_datum = sy-datum.
+  lv_uzeit = sy-uzeit.
+  CONCATENATE 'In_MKAL_MAST_' lv_datum '_' lv_uzeit '.csv' INTO gv_fname.
+  CONCATENATE lv_path gv_fname INTO lv_fullpath.
+
+  cl_gui_frontend_services=>gui_download(
+    EXPORTING
+      filename              = lv_fullpath
+      filetype              = 'ASC'
+      write_field_separator = abap_false
+    CHANGING
+      data_tab              = gt_csv
+    EXCEPTIONS
+      OTHERS                = 22 ).
+
+  IF sy-subrc = 0.
+    MESSAGE |File { gv_fname } downloaded. Records: { gv_records }| TYPE 'S'.
+  ELSE.
+    MESSAGE |Error downloading file. SY-SUBRC: { sy-subrc }| TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+ENDFORM.
+
+
+FORM display_alv.
+
+  DATA: lv_msg TYPE REF TO cx_salv_msg,
+        lv_nf  TYPE REF TO cx_salv_not_found.
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = go_alv
+        CHANGING  t_table      = gt_alv ).
+
+      go_funcs = go_alv->get_functions( ).
+      go_funcs->set_all( abap_true ).
+
+      go_display = go_alv->get_display_settings( ).
+      go_display->set_list_header(
+        'RPSG Solvanta - Solar Module Daily Production Report - ALV Output' ).
+      go_display->set_striped_pattern( abap_true ).
+
+      go_layout = go_alv->get_layout( ).
+      gs_lkey-report = sy-repid.
+      go_layout->set_key( gs_lkey ).
+      go_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+      go_columns = go_alv->get_columns( ).
+      go_columns->set_optimize( abap_true ).
+
+      TRY.
+          go_column = go_columns->get_column( 'WERKS' ).
+          go_column->set_short_text( 'Plant' ).
+          go_column->set_medium_text( 'Plant' ).
+          go_column->set_long_text( 'Plant' ).
+
+          go_column = go_columns->get_column( 'MATNR' ).
+          go_column->set_short_text( 'Material' ).
+          go_column->set_medium_text( 'Material' ).
+          go_column->set_long_text( 'Material' ).
+
+          go_column = go_columns->get_column( 'MAKTX' ).
+          go_column->set_short_text( 'Mat Desc' ).
+          go_column->set_medium_text( 'Material Desc' ).
+          go_column->set_long_text( 'Material Description' ).
+
+          go_column = go_columns->get_column( 'VERID' ).
+          go_column->set_short_text( 'ProdVer' ).
+          go_column->set_medium_text( 'Production Ver' ).
+          go_column->set_long_text( 'Production Version' ).
+
+          go_column = go_columns->get_column( 'ADATU' ).
+          go_column->set_short_text( 'ValidFrom' ).
+          go_column->set_medium_text( 'Valid From Date' ).
+          go_column->set_long_text( 'Valid From Date' ).
+
+          go_column = go_columns->get_column( 'BDATU' ).
+          go_column->set_short_text( 'ValidTo' ).
+          go_column->set_medium_text( 'Valid To Date' ).
+          go_column->set_long_text( 'Valid To Date' ).
+
+          go_column = go_columns->get_column( 'BSTMI' ).
+          go_column->set_short_text( 'From Lot' ).
+          go_column->set_medium_text( 'From Lot Size' ).
+          go_column->set_long_text( 'From Lot Size' ).
+
+          go_column = go_columns->get_column( 'BSTMA' ).
+          go_column->set_short_text( 'To Lot' ).
+          go_column->set_medium_text( 'To Lot Size' ).
+          go_column->set_long_text( 'To Lot Size' ).
+
+          go_column = go_columns->get_column( 'STLNR' ).
+          go_column->set_short_text( 'BOM' ).
+          go_column->set_medium_text( 'BOM' ).
+          go_column->set_long_text( 'BOM' ).
+
+          go_column = go_columns->get_column( 'STLAL' ).
+          go_column->set_short_text( 'BOM Alt' ).
+          go_column->set_medium_text( 'BOM Alternative' ).
+          go_column->set_long_text( 'BOM Alternative' ).
+
+          go_column = go_columns->get_column( 'STLAN' ).
+          go_column->set_short_text( 'BOM Usage' ).
+          go_column->set_medium_text( 'BOM Usage' ).
+          go_column->set_long_text( 'BOM Usage' ).
+
+          go_column = go_columns->get_column( 'PLNTY' ).
+          go_column->set_short_text( 'TskLstTyp' ).
+          go_column->set_medium_text( 'Task List Type' ).
+          go_column->set_long_text( 'Task List Type' ).
+
+          go_column = go_columns->get_column( 'PLNNR' ).
+          go_column->set_short_text( 'RtgGroup' ).
+          go_column->set_medium_text( 'Routing Group' ).
+          go_column->set_long_text( 'Routing Group' ).
+
+          go_column = go_columns->get_column( 'ALNAL' ).
+          go_column->set_short_text( 'RtgGrpCtr' ).
+          go_column->set_medium_text( 'Rtg Grp Counter' ).
+          go_column->set_long_text( 'Routing Group Counter' ).
+
+        CATCH cx_salv_not_found INTO lv_nf.
+      ENDTRY.
+
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO lv_msg.
+      MESSAGE lv_msg TYPE 'E'.
+  ENDTRY.
+
+ENDFORM.
