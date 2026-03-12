@@ -1,0 +1,606 @@
+*&---------------------------------------------------------------------*
+*& Report ZMM_BOM_PRODUCED_EXTRACT
+*&---------------------------------------------------------------------*
+*& Description : Extract BOM Produced data from MKAL (Production
+*&               Versions) and MAST (BOM Header) tables and output
+*&               as a CSV file.
+*&
+*& Output File : In_MKAL_MAST_yyyymmdd_hhmmss.csv
+*&
+*& Mapping Ref : InStgOutMapping24122025b.xlsx -> BOMProduced tab
+*&
+*& Selection   : Material  - MARA-MATNR (Range, Optional, S_MATNR)
+*&               Plant     - T001W-WERKS (Range, From value Mandatory)
+*&
+*& Logic       : 1. Fetch all fields from MKAL for given Material/Plant
+*&               2. For each MKAL record, read MAST using MATNR + WERKS
+*&                  + STLAN + STLAL to get BOM Number (STLNR)
+*&               3. Build CSV with 14 columns and download
+*&---------------------------------------------------------------------*
+REPORT zmm_bom_produced_extract.
+
+*----------------------------------------------------------------------*
+* Tables
+*----------------------------------------------------------------------*
+TABLES: mara,    "Material Master - General Data
+        t001w.   "Plants/Branches
+
+*----------------------------------------------------------------------*
+* Type Definitions
+*----------------------------------------------------------------------*
+TYPES:
+  BEGIN OF ty_mkal,
+    mandt TYPE mandt,        "Client
+    matnr TYPE matnr,       "Material Number
+    werks TYPE werks_d,     "Plant
+    verid TYPE verid,       "Production Version
+    plnty TYPE plnty,       "Task List Type
+    stlan TYPE stlan,       "BOM Usage
+    plnnr TYPE plnnr,       "Group (Key for Task Lists)
+    stlal TYPE stlal,       "Alternative BOM
+    bstmi TYPE bstmi_mkal,  "Minimum Lot Size
+    alnal TYPE alnal,       "Group Counter
+    bstma TYPE bstma_mkal,  "Maximum Lot Size
+    adatu TYPE adatu,       "Valid-From Date
+    bdatu TYPE bdatu,       "Valid-To Date
+  END OF ty_mkal,
+
+  BEGIN OF ty_mast,
+    matnr TYPE matnr,       "Material Number
+    werks TYPE werks_d,     "Plant
+    stlan TYPE stlan,       "BOM Usage
+    stlal TYPE stlal,       "Alternative BOM
+    stlnr TYPE stlnr,      "BOM Number (Bill of Material)
+  END OF ty_mast,
+
+  BEGIN OF ty_output,
+    plnty TYPE plnty,               "TaskListType
+    matnr TYPE matnr,               "Item (Material)
+    werks TYPE werks_d,             "Site (Plant)
+    verid TYPE verid,               "VersionID
+    stlan TYPE stlan,               "BOMUsage
+    plnnr TYPE plnnr,               "Group
+    stlal TYPE stlal,               "AlternativeBOM
+    bstmi TYPE bstmi_mkal,          "MinimumLotSizeQuantity
+    alnal TYPE alnal,               "GroupCounter
+    mandt TYPE mandt,               "SourceId (Client)
+    bstma TYPE bstma_mkal,          "MaximumLotSizeQuantity
+    adatu TYPE adatu,               "ValidFromDate  -> TO_DATE(ADATU)
+    bdatu TYPE bdatu,               "ValidToDate    -> TO_DATE(BDATU)
+    stlnr TYPE stlnr,              "BillofMaterial (from MAST)
+  END OF ty_output.
+
+*----------------------------------------------------------------------*
+* Internal Tables & Work Areas
+*----------------------------------------------------------------------*
+DATA: gt_mkal   TYPE STANDARD TABLE OF ty_mkal,
+      gt_mast   TYPE STANDARD TABLE OF ty_mast,
+      gt_output TYPE STANDARD TABLE OF ty_output,
+      gs_mkal   TYPE ty_mkal,
+      gs_mast   TYPE ty_mast,
+      gs_output TYPE ty_output.
+
+DATA: gt_csv    TYPE STANDARD TABLE OF string,
+      gv_line   TYPE string.
+
+DATA: gv_filename TYPE string,
+      gv_records  TYPE i.
+
+*----------------------------------------------------------------------*
+* Selection Screen
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  "Material - MARA-MATNR | Range of values | Optional | Search Help: S_MATNR
+  SELECT-OPTIONS: s_matnr FOR mara-matnr.
+  "Plant - T001W-WERKS | Range of values | From value Mandatory | Search Help: S_MATNR
+  SELECT-OPTIONS: s_werks FOR t001w-werks OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b1.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
+  PARAMETERS: p_local  RADIOBUTTON GROUP rb1 DEFAULT 'X'
+                                              USER-COMMAND uc1,
+              p_server RADIOBUTTON GROUP rb1.
+SELECTION-SCREEN END OF BLOCK b2.
+
+SELECTION-SCREEN BEGIN OF BLOCK b3 WITH FRAME TITLE TEXT-003.
+  PARAMETERS: p_lpath TYPE string LOWER CASE MODIF ID lc,   "Local folder path
+              p_spath TYPE string LOWER CASE MODIF ID sv.   "Application server path
+SELECTION-SCREEN END OF BLOCK b3.
+
+*----------------------------------------------------------------------*
+* AT SELECTION-SCREEN OUTPUT - Toggle visibility
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN OUTPUT.
+  LOOP AT SCREEN.
+    CASE abap_true.
+      WHEN p_local.
+        IF screen-group1 = 'SV'.
+          screen-active = 0.
+        ENDIF.
+      WHEN p_server.
+        IF screen-group1 = 'LC'.
+          screen-active = 0.
+        ENDIF.
+    ENDCASE.
+    MODIFY SCREEN.
+  ENDLOOP.
+
+*----------------------------------------------------------------------*
+* AT SELECTION-SCREEN ON VALUE-REQUEST - F4 for local path
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_lpath.
+  DATA: lv_folder TYPE string.
+  CALL METHOD cl_gui_frontend_services=>directory_browse
+    EXPORTING
+      window_title    = 'Select Download Folder'
+    CHANGING
+      selected_folder = lv_folder
+    EXCEPTIONS
+      OTHERS          = 4.
+  IF sy-subrc = 0 AND lv_folder IS NOT INITIAL.
+    p_lpath = lv_folder.
+  ENDIF.
+
+*----------------------------------------------------------------------*
+* AT SELECTION-SCREEN - Validations
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN.
+  IF p_local  = abap_true AND p_lpath IS INITIAL.
+    MESSAGE 'Please provide a local download folder path' TYPE 'E'.
+  ENDIF.
+  IF p_server = abap_true AND p_spath IS INITIAL.
+    MESSAGE 'Please provide an application server file path' TYPE 'E'.
+  ENDIF.
+
+*----------------------------------------------------------------------*
+* START-OF-SELECTION
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  PERFORM extract_data.
+
+  IF gt_output IS NOT INITIAL.
+    PERFORM build_csv.
+    PERFORM download_file.
+  ELSE.
+    MESSAGE 'No data found for the given selection criteria' TYPE 'S' DISPLAY LIKE 'W'.
+  ENDIF.
+
+*======================================================================*
+*                          S U B R O U T I N E S
+*======================================================================*
+
+*&---------------------------------------------------------------------*
+*& Form EXTRACT_DATA
+*&---------------------------------------------------------------------*
+*& Fetch from MKAL, then MAST and build the output table
+*&---------------------------------------------------------------------*
+FORM extract_data.
+
+  "-------------------------------------------------------------------
+  " Step 1: Fetch Production Version records from MKAL
+  "         Pass input Item-MATNR and Site-WERKS in table MKAL
+  "-------------------------------------------------------------------
+  SELECT mandt
+         matnr
+         werks
+         verid
+         plnty
+         stlan
+         plnnr
+         stlal
+         bstmi
+         alnal
+         bstma
+         adatu
+         bdatu
+    FROM mkal
+    INTO TABLE gt_mkal
+   WHERE matnr IN s_matnr
+     AND werks IN s_werks.
+
+  IF gt_mkal IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  "-------------------------------------------------------------------
+  " Step 2: Fetch BOM Number (STLNR) from MAST
+  "         Pass input Item-MATNR and Site-WERKS in table MAST
+  "         and fetch BOM Number-STLNR
+  "         Also match STLAN + STLAL for correct BOM linkage
+  "-------------------------------------------------------------------
+  SELECT matnr
+         werks
+         stlan
+         stlal
+         stlnr
+    FROM mast
+    INTO TABLE gt_mast
+     FOR ALL ENTRIES IN gt_mkal
+   WHERE matnr = gt_mkal-matnr
+     AND werks = gt_mkal-werks
+     AND stlan = gt_mkal-stlan
+     AND stlal = gt_mkal-stlal.
+
+  SORT gt_mast BY matnr werks stlan stlal.
+
+  "-------------------------------------------------------------------
+  " Step 3: Build output table by combining MKAL + MAST
+  "-------------------------------------------------------------------
+  LOOP AT gt_mkal INTO gs_mkal.
+
+    CLEAR gs_output.
+
+    gs_output-plnty = gs_mkal-plnty.   "TaskListType
+    gs_output-matnr = gs_mkal-matnr.   "Item
+    gs_output-werks = gs_mkal-werks.   "Site
+    gs_output-verid = gs_mkal-verid.   "VersionID
+    gs_output-stlan = gs_mkal-stlan.   "BOMUsage
+    gs_output-plnnr = gs_mkal-plnnr.   "Group
+    gs_output-stlal = gs_mkal-stlal.   "AlternativeBOM
+    gs_output-bstmi = gs_mkal-bstmi.   "MinimumLotSizeQuantity
+    gs_output-alnal = gs_mkal-alnal.   "GroupCounter
+    gs_output-mandt = gs_mkal-mandt.   "SourceId (Client)
+    gs_output-bstma = gs_mkal-bstma.   "MaximumLotSizeQuantity
+    gs_output-adatu = gs_mkal-adatu.   "ValidFromDate
+    gs_output-bdatu = gs_mkal-bdatu.   "ValidToDate
+
+    "Fetch BOM Number from MAST
+    READ TABLE gt_mast INTO gs_mast
+         WITH KEY matnr = gs_mkal-matnr
+                  werks = gs_mkal-werks
+                  stlan = gs_mkal-stlan
+                  stlal = gs_mkal-stlal
+         BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      gs_output-stlnr = gs_mast-stlnr.  "BillofMaterial
+    ENDIF.
+
+    APPEND gs_output TO gt_output.
+
+  ENDLOOP.
+
+  gv_records = lines( gt_output ).
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form BUILD_CSV
+*&---------------------------------------------------------------------*
+*& Construct CSV lines: header + data rows (14 columns)
+*& Column order per mapping:
+*&   TaskListType, Item, Site, VersionID, BOMUsage, Group,
+*&   AlternativeBOM, MinimumLotSizeQuantity, GroupCounter, SourceId,
+*&   MaximumLotSizeQuantity, ValidFromDate, ValidToDate, BillofMaterial
+*&---------------------------------------------------------------------*
+FORM build_csv.
+
+  DATA: lv_plnty TYPE string,
+        lv_matnr TYPE string,
+        lv_werks TYPE string,
+        lv_verid TYPE string,
+        lv_stlan TYPE string,
+        lv_plnnr TYPE string,
+        lv_stlal TYPE string,
+        lv_bstmi TYPE string,
+        lv_alnal TYPE string,
+        lv_mandt TYPE string,
+        lv_bstma TYPE string,
+        lv_adatu TYPE string,
+        lv_bdatu TYPE string,
+        lv_stlnr TYPE string.
+
+  CONSTANTS: lc_sep TYPE c VALUE ','.
+
+  REFRESH gt_csv.
+
+  "-------------------------------------------------------------------
+  " Header Row
+  "-------------------------------------------------------------------
+  CONCATENATE
+    'TaskListType'
+    'Item'
+    'Site'
+    'VersionID'
+    'BOMUsage'
+    'Group'
+    'AlternativeBOM'
+    'MinimumLotSizeQuantity'
+    'GroupCounter'
+    'SourceId'
+    'MaximumLotSizeQuantity'
+    'ValidFromDate'
+    'ValidToDate'
+    'BillofMaterial'
+    INTO gv_line SEPARATED BY lc_sep.
+
+  APPEND gv_line TO gt_csv.
+
+  "-------------------------------------------------------------------
+  " Data Rows
+  "-------------------------------------------------------------------
+  LOOP AT gt_output INTO gs_output.
+
+    CLEAR gv_line.
+
+    "-- TaskListType (PLNTY) --
+    lv_plnty = gs_output-plnty.
+    CONDENSE lv_plnty NO-GAPS.
+
+    "-- Item (MATNR) - Remove leading zeros; keep alphanumeric as-is --
+    CALL FUNCTION 'CONVERSION_EXIT_MATN1_OUTPUT'
+      EXPORTING
+        input  = gs_output-matnr
+      IMPORTING
+        output = lv_matnr.
+    CONDENSE lv_matnr NO-GAPS.
+
+    "-- Site (WERKS) --
+    lv_werks = gs_output-werks.
+    CONDENSE lv_werks NO-GAPS.
+
+    "-- VersionID (VERID) --
+    lv_verid = gs_output-verid.
+    CONDENSE lv_verid NO-GAPS.
+
+    "-- BOMUsage (STLAN) --
+    lv_stlan = gs_output-stlan.
+    CONDENSE lv_stlan NO-GAPS.
+
+    "-- Group (PLNNR) - Remove leading zeros --
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+      EXPORTING
+        input  = gs_output-plnnr
+      IMPORTING
+        output = lv_plnnr.
+    CONDENSE lv_plnnr NO-GAPS.
+
+    "-- AlternativeBOM (STLAL) --
+    lv_stlal = gs_output-stlal.
+    CONDENSE lv_stlal NO-GAPS.
+
+    "-- MinimumLotSizeQuantity (BSTMI) --
+    PERFORM format_quantity USING gs_output-bstmi
+                         CHANGING lv_bstmi.
+
+    "-- GroupCounter (ALNAL) --
+    PERFORM format_quantity USING gs_output-alnal
+                         CHANGING lv_alnal.
+
+    "-- SourceId (MANDT) --
+    lv_mandt = gs_output-mandt.
+    CONDENSE lv_mandt NO-GAPS.
+
+    "-- MaximumLotSizeQuantity (BSTMA) --
+    PERFORM format_quantity USING gs_output-bstma
+                         CHANGING lv_bstma.
+
+    "-- ValidFromDate (ADATU) -> DD.MM.YYYY --
+    PERFORM format_date USING gs_output-adatu
+                     CHANGING lv_adatu.
+
+    "-- ValidToDate (BDATU) -> DD.MM.YYYY --
+    PERFORM format_date USING gs_output-bdatu
+                     CHANGING lv_bdatu.
+
+    "-- BillofMaterial (STLNR) - Remove leading zeros --
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+      EXPORTING
+        input  = gs_output-stlnr
+      IMPORTING
+        output = lv_stlnr.
+    CONDENSE lv_stlnr NO-GAPS.
+
+    "-- Build CSV line --
+    CONCATENATE
+      lv_plnty
+      lv_matnr
+      lv_werks
+      lv_verid
+      lv_stlan
+      lv_plnnr
+      lv_stlal
+      lv_bstmi
+      lv_alnal
+      lv_mandt
+      lv_bstma
+      lv_adatu
+      lv_bdatu
+      lv_stlnr
+      INTO gv_line SEPARATED BY lc_sep.
+
+    APPEND gv_line TO gt_csv.
+
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form FORMAT_DATE
+*&---------------------------------------------------------------------*
+*& Convert SAP date YYYYMMDD -> DD.MM.YYYY for CSV output
+*& Mapping notation: TO_DATE(ADATU), TO_DATE(BDATU)
+*& Sample output  : 01.04.2016, 09.06.2025, 31.12.9999
+*&---------------------------------------------------------------------*
+FORM format_date USING    iv_date TYPE d
+                 CHANGING ev_str  TYPE string.
+
+  CLEAR ev_str.
+
+  IF iv_date IS NOT INITIAL AND iv_date <> '00000000'.
+    CONCATENATE iv_date+6(2) '.'
+                iv_date+4(2) '.'
+                iv_date+0(4)
+      INTO ev_str.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form FORMAT_QUANTITY
+*&---------------------------------------------------------------------*
+*& Convert packed/quantity fields to a clean numeric string for CSV.
+*& Sample data shows values like:
+*&   1, 0, 1.00, 99,999,999.00, 999,999,999.00
+*& Use WRITE with CURRENCY-like formatting to produce readable output.
+*&---------------------------------------------------------------------*
+FORM format_quantity USING    iv_value TYPE any
+                     CHANGING ev_str   TYPE string.
+
+  DATA: lv_temp TYPE string.
+
+  CLEAR ev_str.
+
+  WRITE iv_value TO lv_temp LEFT-JUSTIFIED NO-SIGN.
+  CONDENSE lv_temp.
+
+  ev_str = lv_temp.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form DOWNLOAD_FILE
+*&---------------------------------------------------------------------*
+*& Build filename In_MKAL_MAST_yyyymmdd_hhmmss.csv and download
+*&---------------------------------------------------------------------*
+FORM download_file.
+
+  DATA: lv_datum TYPE string,
+        lv_uzeit TYPE string.
+
+  lv_datum = sy-datum.   "YYYYMMDD
+  lv_uzeit = sy-uzeit.  "HHMMSS
+
+  CONCATENATE 'In_MKAL_MAST_' lv_datum '_' lv_uzeit '.csv'
+    INTO gv_filename.
+
+  IF p_local = abap_true.
+    PERFORM download_to_local.
+  ELSE.
+    PERFORM download_to_server.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form DOWNLOAD_TO_LOCAL
+*&---------------------------------------------------------------------*
+*& Download CSV to presentation server (local PC)
+*&---------------------------------------------------------------------*
+FORM download_to_local.
+
+  DATA: lv_fullpath TYPE string,
+        lv_path     TYPE string.
+
+  lv_path = p_lpath.
+
+  "Ensure trailing backslash
+  IF lv_path IS NOT INITIAL.
+    DATA(lv_len) = strlen( lv_path ) - 1.
+    IF lv_path+lv_len(1) <> '\'.
+      CONCATENATE lv_path '\' INTO lv_path.
+    ENDIF.
+  ENDIF.
+
+  CONCATENATE lv_path gv_filename INTO lv_fullpath.
+
+  CALL METHOD cl_gui_frontend_services=>gui_download
+    EXPORTING
+      filename                = lv_fullpath
+      filetype                = 'ASC'
+      write_field_separator   = abap_false  "Separator already in data
+    CHANGING
+      data_tab                = gt_csv
+    EXCEPTIONS
+      file_write_error        = 1
+      no_batch                = 2
+      gui_refuse_filetransfer = 3
+      invalid_type            = 4
+      no_authority            = 5
+      unknown_error           = 6
+      header_not_allowed      = 7
+      separator_not_allowed   = 8
+      filesize_not_allowed    = 9
+      header_too_long         = 10
+      dp_error_create         = 11
+      dp_error_send           = 12
+      dp_error_write          = 13
+      unknown_dp_error        = 14
+      access_denied           = 15
+      dp_out_of_memory        = 16
+      disk_full               = 17
+      dp_timeout              = 18
+      file_not_found          = 19
+      dataprovider_exception  = 20
+      control_flush_error     = 21
+      OTHERS                  = 22.
+
+  IF sy-subrc = 0.
+    WRITE: / 'File downloaded successfully:', lv_fullpath.
+    WRITE: / 'Total records:', gv_records.
+    MESSAGE |File { gv_filename } downloaded successfully. Records: { gv_records }|
+      TYPE 'S'.
+  ELSE.
+    MESSAGE |Error downloading file. SY-SUBRC: { sy-subrc }| TYPE 'E'.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form DOWNLOAD_TO_SERVER
+*&---------------------------------------------------------------------*
+*& Save CSV to application server
+*&---------------------------------------------------------------------*
+FORM download_to_server.
+
+  DATA: lv_fullpath TYPE string,
+        lv_path     TYPE string,
+        lv_csv_line TYPE string.
+
+  lv_path = p_spath.
+
+  "Ensure trailing slash (Unix-style for app server)
+  IF lv_path IS NOT INITIAL.
+    DATA(lv_len) = strlen( lv_path ) - 1.
+    IF lv_path+lv_len(1) <> '/'.
+      CONCATENATE lv_path '/' INTO lv_path.
+    ENDIF.
+  ENDIF.
+
+  CONCATENATE lv_path gv_filename INTO lv_fullpath.
+
+  OPEN DATASET lv_fullpath FOR OUTPUT IN TEXT MODE ENCODING UTF-8.
+  IF sy-subrc <> 0.
+    MESSAGE |Error opening server file: { lv_fullpath }| TYPE 'E'.
+    RETURN.
+  ENDIF.
+
+  LOOP AT gt_csv INTO lv_csv_line.
+    TRANSFER lv_csv_line TO lv_fullpath.
+  ENDLOOP.
+
+  CLOSE DATASET lv_fullpath.
+
+  WRITE: / 'File saved to server successfully:', lv_fullpath.
+  WRITE: / 'Total records:', gv_records.
+  MESSAGE |File { gv_filename } saved to server. Records: { gv_records }|
+    TYPE 'S'.
+
+ENDFORM.
+
+*----------------------------------------------------------------------*
+* Text Elements  (Maintain via SE38 -> Goto -> Text Elements -> Titles)
+*----------------------------------------------------------------------*
+* TEXT-001 = Selection Criteria
+* TEXT-002 = Download Option
+* TEXT-003 = File Path
+*
+* Selection Texts (SE38 -> Goto -> Text Elements -> Selection Texts):
+* S_MATNR  = Material
+* S_WERKS  = Plant
+* P_LOCAL  = Local PC
+* P_SERVER = Application Server
+* P_LPATH  = Local Folder Path
+* P_SPATH  = Server Directory Path
+*----------------------------------------------------------------------*
