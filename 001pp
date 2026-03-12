@@ -1,0 +1,783 @@
+*&---------------------------------------------------------------------*
+*& Report ZPP_BOM_PV_REPORT
+*&---------------------------------------------------------------------*
+*& Title       : LT Foods_PP_BOM PV Report_V1.0
+*& TCode       : ZPP_DPR
+*& Description : BOM PV details - viewed via ALV, sent to o9 Server
+*&               for Planning purpose.
+*&
+*& Input Screen Title : RPSG Solvanta - Solar Module Daily Production
+*&                       Report - Initial Screen
+*& ALV Screen Title   : RPSG Solvanta - Solar Module Daily Production
+*&                       Report - ALV Output
+*&
+*& Tables Used : MKAL (Production Versions)
+*&               MAST (Material BOM)
+*&               MAKT (Material Descriptions)
+*&               MARA (Material Master - Validation)
+*&               T001W (Plants - Validation)
+*&
+*& Output      : 1. ALV Report (14 columns) with full standard functions
+*&               2. CSV file to o9 server: In_MKAL_MAST_yyyymmdd_hhmmss.csv
+*&
+*& Message Class: ZPP (or existing one)
+*&---------------------------------------------------------------------*
+REPORT zpp_bom_pv_report.
+
+*----------------------------------------------------------------------*
+* Tables
+*----------------------------------------------------------------------*
+TABLES: mara,    "Material Master - General Data
+        t001w.   "Plants/Branches
+
+*----------------------------------------------------------------------*
+* Type Definitions
+*----------------------------------------------------------------------*
+TYPES:
+  "-- MKAL: Production Versions --
+  BEGIN OF ty_mkal,
+    mandt TYPE mandt,        "Client
+    matnr TYPE matnr,       "Material Number
+    werks TYPE werks_d,     "Plant
+    verid TYPE verid,       "Production Version
+    plnty TYPE plnty,       "Task List Type
+    stlan TYPE stlan,       "BOM Usage
+    plnnr TYPE plnnr,       "Group (Routing Group)
+    stlal TYPE stlal,       "Alternative BOM
+    bstmi TYPE bstmi_mkal,  "Minimum Lot Size (From Lot Size)
+    alnal TYPE alnal,       "Group Counter (Routing Group Counter)
+    bstma TYPE bstma_mkal,  "Maximum Lot Size (To Lot Size)
+    adatu TYPE adatu,       "Valid-From Date
+    bdatu TYPE bdatu,       "Valid-To Date
+  END OF ty_mkal,
+
+  "-- MAST: Material BOM --
+  BEGIN OF ty_mast,
+    matnr TYPE matnr,       "Material Number
+    werks TYPE werks_d,     "Plant
+    stlan TYPE stlan,       "BOM Usage
+    stlal TYPE stlal,       "Alternative BOM
+    stlnr TYPE stlnr,      "BOM Number
+  END OF ty_mast,
+
+  "-- MAKT: Material Descriptions --
+  BEGIN OF ty_makt,
+    matnr TYPE matnr,       "Material Number
+    spras TYPE spras,       "Language Key
+    maktx TYPE maktx,       "Material Description
+  END OF ty_makt,
+
+  "-- ALV Output Structure (14 columns per spec section 1.3) --
+  BEGIN OF ty_alv,
+    werks TYPE werks_d,             "1.  Plant
+    matnr TYPE matnr,               "2.  Material
+    maktx TYPE maktx,               "3.  Material Description (MAKT)
+    verid TYPE verid,               "4.  Production Version
+    adatu TYPE adatu,               "5.  Valid From Date
+    bdatu TYPE bdatu,               "6.  Valid To Date
+    bstmi TYPE bstmi_mkal,          "7.  From Lot Size
+    bstma TYPE bstma_mkal,          "8.  To Lot Size
+    stlnr TYPE stlnr,              "9.  BOM (MAST)
+    stlal TYPE stlal,               "10. BOM Alternative
+    stlan TYPE stlan,               "11. BOM Usage
+    plnty TYPE plnty,               "12. Task List Type
+    plnnr TYPE plnnr,               "13. Routing Group
+    alnal TYPE alnal,               "14. Routing Group Counter
+  END OF ty_alv,
+
+  "-- Outbound CSV Structure (14 columns per spec Outbound Interface) --
+  BEGIN OF ty_csv_out,
+    plnty TYPE plnty,               "1.  TaskListType
+    matnr TYPE matnr,               "2.  Item
+    werks TYPE werks_d,             "3.  Site
+    verid TYPE verid,               "4.  VersionID
+    stlan TYPE stlan,               "5.  BOMUsage
+    plnnr TYPE plnnr,               "6.  Group
+    stlal TYPE stlal,               "7.  AlternativeBOM
+    bstmi TYPE bstmi_mkal,          "8.  MinimumLotSizeQuantity
+    alnal TYPE alnal,               "9.  GroupCounter
+    mandt TYPE mandt,               "10. SourceID
+    bstma TYPE bstma_mkal,          "11. MaximumLotSizeQuantity
+    adatu TYPE adatu,               "12. ValidFromDate
+    bdatu TYPE bdatu,               "13. ValidToDate
+    stlnr TYPE stlnr,              "14. BillofMaterial
+  END OF ty_csv_out.
+
+*----------------------------------------------------------------------*
+* Internal Tables & Work Areas
+*----------------------------------------------------------------------*
+DATA: gt_mkal    TYPE STANDARD TABLE OF ty_mkal,
+      gt_mast    TYPE STANDARD TABLE OF ty_mast,
+      gt_makt    TYPE STANDARD TABLE OF ty_makt,
+      gt_alv     TYPE STANDARD TABLE OF ty_alv,
+      gt_csv_out TYPE STANDARD TABLE OF ty_csv_out,
+      gs_mkal    TYPE ty_mkal,
+      gs_mast    TYPE ty_mast,
+      gs_makt    TYPE ty_makt,
+      gs_alv     TYPE ty_alv,
+      gs_csv_out TYPE ty_csv_out.
+
+DATA: gt_csv_lines TYPE STANDARD TABLE OF string,
+      gv_line      TYPE string.
+
+DATA: gv_filename TYPE string,
+      gv_records  TYPE i.
+
+*----------------------------------------------------------------------*
+* ALV Data
+*----------------------------------------------------------------------*
+DATA: go_alv     TYPE REF TO cl_salv_table,
+      go_funcs   TYPE REF TO cl_salv_functions_list,
+      go_columns TYPE REF TO cl_salv_columns_table,
+      go_column  TYPE REF TO cl_salv_column,
+      go_display TYPE REF TO cl_salv_display_settings,
+      go_layout  TYPE REF TO cl_salv_layout,
+      gs_layout_key TYPE salv_s_layout_key.
+
+*----------------------------------------------------------------------*
+* Selection Screen
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  "Material Number - MARA-MATNR | Optional | Range | Search Help MAT1
+  SELECT-OPTIONS: s_matnr FOR mara-matnr
+                    MATCHCODE OBJECT mat1.                  "#EC *
+  "Plant - T001W-WERKS | From Value Mandatory | Range | Search Help T001W
+  SELECT-OPTIONS: s_werks FOR t001w-werks OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b1.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
+  PARAMETERS: p_server TYPE rlgrap-filename.                "o9 Server path
+SELECTION-SCREEN END OF BLOCK b2.
+
+*----------------------------------------------------------------------*
+* INITIALIZATION - Set Parameter IDs and Screen Title
+*----------------------------------------------------------------------*
+INITIALIZATION.
+
+  "Set Parameter IDs to pick up SPA/GPA memory
+  SET PARAMETER ID 'MAT' FIELD s_matnr-low.
+  SET PARAMETER ID 'WRK' FIELD s_werks-low.
+
+*----------------------------------------------------------------------*
+* AT SELECTION-SCREEN - Input Validations
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN.
+
+  "-------------------------------------------------------------------
+  " Validation 1: Invalid Material
+  " In case of Single input Material, pass input MATNR in MARA
+  " and fetch MATNR and MTART.
+  " If no entry in MARA -> error:
+  "   "The material XXXXXXXXXX does not exist or is not activated"
+  "   Message Class ZPP
+  "-------------------------------------------------------------------
+  IF s_matnr-low IS NOT INITIAL AND s_matnr-high IS INITIAL.
+    "Single value entered - validate against MARA
+    SELECT SINGLE matnr mtart
+      FROM mara
+      INTO (mara-matnr, mara-mtart)
+     WHERE matnr = s_matnr-low.
+    IF sy-subrc <> 0.
+      "Use message class ZPP; if not created yet, use hardcoded text
+      MESSAGE e001(zpp) WITH s_matnr-low.
+      "Fallback if ZPP not maintained:
+      "MESSAGE |The material { s_matnr-low } does not exist or is not activated| TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+  "-------------------------------------------------------------------
+  " Validation 2: Invalid Plant
+  " In case of Single input Plant, pass input WERKS in T001W
+  " and fetch MATNR (actually validate plant exists).
+  " If no entry in T001W -> error:
+  "   "Plant XXXX does not exist"
+  "   Message Class ZPP
+  "-------------------------------------------------------------------
+  IF s_werks-low IS NOT INITIAL AND s_werks-high IS INITIAL.
+    "Single value entered - validate against T001W
+    SELECT SINGLE werks
+      FROM t001w
+      INTO t001w-werks
+     WHERE werks = s_werks-low.
+    IF sy-subrc <> 0.
+      MESSAGE e002(zpp) WITH s_werks-low.
+      "Fallback if ZPP not maintained:
+      "MESSAGE |Plant { s_werks-low } does not exist| TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+*----------------------------------------------------------------------*
+* START-OF-SELECTION
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  PERFORM extract_data.
+
+  IF gt_alv IS NOT INITIAL.
+    "Build CSV outbound data
+    PERFORM build_csv_data.
+    "Send CSV to o9 server (outbound interface)
+    PERFORM send_to_server.
+    "Display ALV report
+    PERFORM display_alv.
+  ELSE.
+    "-------------------------------------------------------------------
+    " Validation 3: No Data Found
+    " In case for the given Data there is no Output -> error:
+    "   "No Data Found"
+    "   Message Class ZPP
+    "-------------------------------------------------------------------
+    MESSAGE e003(zpp).
+    "Fallback if ZPP not maintained:
+    "MESSAGE 'No Data Found' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+*======================================================================*
+*                          S U B R O U T I N E S
+*======================================================================*
+
+*&---------------------------------------------------------------------*
+*& Form EXTRACT_DATA
+*&---------------------------------------------------------------------*
+*& Fetch from MKAL -> MAST -> MAKT and build ALV + CSV output tables
+*&---------------------------------------------------------------------*
+FORM extract_data.
+
+  "-------------------------------------------------------------------
+  " Step 1: Fetch from MKAL
+  " Logic: Pass the Input Material-MATNR and WERKS in table MKAL
+  "        and fetch MANDT, PLNTY, VERID, STLAN, PLNNR, STLAL,
+  "        BSTMI, ALNAL, BSTMA, ADATU, BDATU
+  "-------------------------------------------------------------------
+  SELECT mandt
+         matnr
+         werks
+         verid
+         plnty
+         stlan
+         plnnr
+         stlal
+         bstmi
+         alnal
+         bstma
+         adatu
+         bdatu
+    FROM mkal
+    INTO TABLE gt_mkal
+   WHERE matnr IN s_matnr
+     AND werks IN s_werks.
+
+  IF gt_mkal IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  "-------------------------------------------------------------------
+  " Step 2: Fetch from MAST
+  " Logic: Pass the Input Material-MATNR and WERKS and above fetched
+  "        STLAN, STLAL in table MAST and fetch STLNR
+  "-------------------------------------------------------------------
+  SELECT matnr
+         werks
+         stlan
+         stlal
+         stlnr
+    FROM mast
+    INTO TABLE gt_mast
+     FOR ALL ENTRIES IN gt_mkal
+   WHERE matnr = gt_mkal-matnr
+     AND werks = gt_mkal-werks
+     AND stlan = gt_mkal-stlan
+     AND stlal = gt_mkal-stlal.
+
+  SORT gt_mast BY matnr werks stlan stlal.
+
+  "-------------------------------------------------------------------
+  " Step 3: Fetch from MAKT
+  " Logic: Pass the Input Material-MATNR and SPRAS=EN in table MAKT
+  "        and fetch MAKTX
+  "-------------------------------------------------------------------
+  SELECT matnr
+         spras
+         maktx
+    FROM makt
+    INTO TABLE gt_makt
+     FOR ALL ENTRIES IN gt_mkal
+   WHERE matnr = gt_mkal-matnr
+     AND spras = 'EN'.                                      "English
+
+  SORT gt_makt BY matnr.
+
+  "-------------------------------------------------------------------
+  " Step 4: Build ALV output table (14 columns per ALV Output spec)
+  "-------------------------------------------------------------------
+  LOOP AT gt_mkal INTO gs_mkal.
+
+    CLEAR gs_alv.
+
+    gs_alv-werks = gs_mkal-werks.       "1.  Plant
+    gs_alv-matnr = gs_mkal-matnr.       "2.  Material
+    gs_alv-verid = gs_mkal-verid.       "4.  Production Version
+    gs_alv-adatu = gs_mkal-adatu.       "5.  Valid From Date
+    gs_alv-bdatu = gs_mkal-bdatu.       "6.  Valid To Date
+    gs_alv-bstmi = gs_mkal-bstmi.       "7.  From Lot Size
+    gs_alv-bstma = gs_mkal-bstma.       "8.  To Lot Size
+    gs_alv-stlal = gs_mkal-stlal.       "10. BOM Alternative
+    gs_alv-stlan = gs_mkal-stlan.       "11. BOM Usage
+    gs_alv-plnty = gs_mkal-plnty.       "12. Task List Type
+    gs_alv-plnnr = gs_mkal-plnnr.       "13. Routing Group
+    gs_alv-alnal = gs_mkal-alnal.       "14. Routing Group Counter
+
+    "3. Material Description from MAKT
+    READ TABLE gt_makt INTO gs_makt
+         WITH KEY matnr = gs_mkal-matnr
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_alv-maktx = gs_makt-maktx.
+    ENDIF.
+
+    "9. BOM from MAST
+    READ TABLE gt_mast INTO gs_mast
+         WITH KEY matnr = gs_mkal-matnr
+                  werks = gs_mkal-werks
+                  stlan = gs_mkal-stlan
+                  stlal = gs_mkal-stlal
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_alv-stlnr = gs_mast-stlnr.
+    ENDIF.
+
+    APPEND gs_alv TO gt_alv.
+
+  ENDLOOP.
+
+  gv_records = lines( gt_alv ).
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form BUILD_CSV_DATA
+*&---------------------------------------------------------------------*
+*& Build CSV outbound table (different column order than ALV)
+*& Outbound Interface sequence per spec:
+*&   1.TaskListType 2.Item 3.Site 4.VersionID 5.BOMUsage
+*&   6.Group 7.AlternativeBOM 8.MinimumLotSizeQuantity
+*&   9.GroupCounter 10.SourceID 11.MaximumLotSizeQuantity
+*&   12.ValidFromDate 13.ValidToDate 14.BillofMaterial
+*&---------------------------------------------------------------------*
+FORM build_csv_data.
+
+  DATA: lv_plnty TYPE string,
+        lv_matnr TYPE string,
+        lv_werks TYPE string,
+        lv_verid TYPE string,
+        lv_stlan TYPE string,
+        lv_plnnr TYPE string,
+        lv_stlal TYPE string,
+        lv_bstmi TYPE string,
+        lv_alnal TYPE string,
+        lv_mandt TYPE string,
+        lv_bstma TYPE string,
+        lv_adatu TYPE string,
+        lv_bdatu TYPE string,
+        lv_stlnr TYPE string.
+
+  CONSTANTS: lc_sep TYPE c VALUE ','.
+
+  REFRESH gt_csv_lines.
+
+  "-------------------------------------------------------------------
+  " Header Row
+  "-------------------------------------------------------------------
+  CONCATENATE
+    'TaskListType'
+    'Item'
+    'Site'
+    'VersionID'
+    'BOMUsage'
+    'Group'
+    'AlternativeBOM'
+    'MinimumLotSizeQuantity'
+    'GroupCounter'
+    'SourceId'
+    'MaximumLotSizeQuantity'
+    'ValidFromDate'
+    'ValidToDate'
+    'BillofMaterial'
+    INTO gv_line SEPARATED BY lc_sep.
+
+  APPEND gv_line TO gt_csv_lines.
+
+  "-------------------------------------------------------------------
+  " Data Rows - sourced from MKAL data (use gt_mkal for MANDT access)
+  "-------------------------------------------------------------------
+  LOOP AT gt_mkal INTO gs_mkal.
+
+    CLEAR gv_line.
+
+    "-- 1. TaskListType (PLNTY) --
+    lv_plnty = gs_mkal-plnty.
+    CONDENSE lv_plnty NO-GAPS.
+
+    "-- 2. Item (MATNR) - Remove leading zeros --
+    CALL FUNCTION 'CONVERSION_EXIT_MATN1_OUTPUT'
+      EXPORTING
+        input  = gs_mkal-matnr
+      IMPORTING
+        output = lv_matnr.
+    CONDENSE lv_matnr NO-GAPS.
+
+    "-- 3. Site (WERKS) --
+    lv_werks = gs_mkal-werks.
+    CONDENSE lv_werks NO-GAPS.
+
+    "-- 4. VersionID (VERID) --
+    lv_verid = gs_mkal-verid.
+    CONDENSE lv_verid NO-GAPS.
+
+    "-- 5. BOMUsage (STLAN) --
+    lv_stlan = gs_mkal-stlan.
+    CONDENSE lv_stlan NO-GAPS.
+
+    "-- 6. Group (PLNNR) - Remove leading zeros --
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+      EXPORTING
+        input  = gs_mkal-plnnr
+      IMPORTING
+        output = lv_plnnr.
+    CONDENSE lv_plnnr NO-GAPS.
+
+    "-- 7. AlternativeBOM (STLAL) --
+    lv_stlal = gs_mkal-stlal.
+    CONDENSE lv_stlal NO-GAPS.
+
+    "-- 8. MinimumLotSizeQuantity (BSTMI) --
+    PERFORM format_quantity USING gs_mkal-bstmi
+                         CHANGING lv_bstmi.
+
+    "-- 9. GroupCounter (ALNAL) --
+    PERFORM format_quantity USING gs_mkal-alnal
+                         CHANGING lv_alnal.
+
+    "-- 10. SourceID (MANDT) --
+    lv_mandt = gs_mkal-mandt.
+    CONDENSE lv_mandt NO-GAPS.
+
+    "-- 11. MaximumLotSizeQuantity (BSTMA) --
+    PERFORM format_quantity USING gs_mkal-bstma
+                         CHANGING lv_bstma.
+
+    "-- 12. ValidFromDate (ADATU) -> DD.MM.YYYY --
+    PERFORM format_date USING gs_mkal-adatu
+                     CHANGING lv_adatu.
+
+    "-- 13. ValidToDate (BDATU) -> DD.MM.YYYY --
+    PERFORM format_date USING gs_mkal-bdatu
+                     CHANGING lv_bdatu.
+
+    "-- 14. BillofMaterial (STLNR from MAST) - Remove leading zeros --
+    READ TABLE gt_mast INTO gs_mast
+         WITH KEY matnr = gs_mkal-matnr
+                  werks = gs_mkal-werks
+                  stlan = gs_mkal-stlan
+                  stlal = gs_mkal-stlal
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = gs_mast-stlnr
+        IMPORTING
+          output = lv_stlnr.
+    ELSE.
+      CLEAR lv_stlnr.
+    ENDIF.
+    CONDENSE lv_stlnr NO-GAPS.
+
+    "-- Build CSV line --
+    CONCATENATE
+      lv_plnty
+      lv_matnr
+      lv_werks
+      lv_verid
+      lv_stlan
+      lv_plnnr
+      lv_stlal
+      lv_bstmi
+      lv_alnal
+      lv_mandt
+      lv_bstma
+      lv_adatu
+      lv_bdatu
+      lv_stlnr
+      INTO gv_line SEPARATED BY lc_sep.
+
+    APPEND gv_line TO gt_csv_lines.
+
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form FORMAT_DATE
+*&---------------------------------------------------------------------*
+*& Convert SAP date YYYYMMDD -> DD.MM.YYYY for CSV output
+*& Mapping notation: TO_DATE(ADATU), TO_DATE(BDATU)
+*&---------------------------------------------------------------------*
+FORM format_date USING    iv_date TYPE d
+                 CHANGING ev_str  TYPE string.
+
+  CLEAR ev_str.
+
+  IF iv_date IS NOT INITIAL AND iv_date <> '00000000'.
+    CONCATENATE iv_date+6(2) '.'
+                iv_date+4(2) '.'
+                iv_date+0(4)
+      INTO ev_str.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form FORMAT_QUANTITY
+*&---------------------------------------------------------------------*
+*& Convert packed/quantity fields to a clean numeric string for CSV
+*&---------------------------------------------------------------------*
+FORM format_quantity USING    iv_value TYPE any
+                     CHANGING ev_str   TYPE string.
+
+  DATA: lv_temp TYPE string.
+
+  CLEAR ev_str.
+
+  WRITE iv_value TO lv_temp LEFT-JUSTIFIED NO-SIGN.
+  CONDENSE lv_temp.
+
+  ev_str = lv_temp.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form SEND_TO_SERVER
+*&---------------------------------------------------------------------*
+*& Send CSV file to o9 application server
+*& Filename: In_MKAL_MAST_yyyymmdd_hhmmss.csv
+*&---------------------------------------------------------------------*
+FORM send_to_server.
+
+  DATA: lv_fullpath TYPE string,
+        lv_path     TYPE string,
+        lv_datum    TYPE string,
+        lv_uzeit    TYPE string,
+        lv_csv_line TYPE string.
+
+  CHECK p_server IS NOT INITIAL.
+
+  lv_path = p_server.
+
+  "Ensure trailing slash (Unix-style for app server)
+  IF lv_path IS NOT INITIAL.
+    DATA(lv_len) = strlen( lv_path ) - 1.
+    IF lv_path+lv_len(1) <> '/'.
+      CONCATENATE lv_path '/' INTO lv_path.
+    ENDIF.
+  ENDIF.
+
+  "Build dynamic filename with timestamp
+  lv_datum = sy-datum.   "YYYYMMDD
+  lv_uzeit = sy-uzeit.  "HHMMSS
+
+  CONCATENATE 'In_MKAL_MAST_' lv_datum '_' lv_uzeit '.csv'
+    INTO gv_filename.
+
+  CONCATENATE lv_path gv_filename INTO lv_fullpath.
+
+  OPEN DATASET lv_fullpath FOR OUTPUT IN TEXT MODE ENCODING UTF-8.
+  IF sy-subrc <> 0.
+    MESSAGE |Error opening server file: { lv_fullpath }| TYPE 'S' DISPLAY LIKE 'E'.
+    RETURN.
+  ENDIF.
+
+  LOOP AT gt_csv_lines INTO lv_csv_line.
+    TRANSFER lv_csv_line TO lv_fullpath.
+  ENDLOOP.
+
+  CLOSE DATASET lv_fullpath.
+
+  MESSAGE |File { gv_filename } sent to o9 server. Records: { gv_records }|
+    TYPE 'S'.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form DISPLAY_ALV
+*&---------------------------------------------------------------------*
+*& Display ALV report with all standard functions
+*& ALV Title: RPSG Solvanta - Solar Module Daily Production Report
+*&            - ALV Output
+*& Functions: Filter, Totals, Sub Totals, Export, Save Layout, etc.
+*&---------------------------------------------------------------------*
+FORM display_alv.
+
+  DATA: lv_msg TYPE REF TO cx_salv_msg,
+        lv_not_found TYPE REF TO cx_salv_not_found.
+
+  TRY.
+      "Create ALV instance
+      cl_salv_table=>factory(
+        IMPORTING
+          r_salv_table = go_alv
+        CHANGING
+          t_table      = gt_alv ).
+
+      "-------------------------------------------------------------------
+      " Enable ALL Standard ALV Functions
+      " (Filter, Totals, Sub Totals, Export, Save Layout, etc.)
+      "-------------------------------------------------------------------
+      go_funcs = go_alv->get_functions( ).
+      go_funcs->set_all( abap_true ).
+
+      "-------------------------------------------------------------------
+      " Set ALV Display Title
+      "-------------------------------------------------------------------
+      go_display = go_alv->get_display_settings( ).
+      go_display->set_list_header(
+        'RPSG Solvanta - Solar Module Daily Production Report - ALV Output' ).
+      go_display->set_striped_pattern( abap_true ).
+
+      "-------------------------------------------------------------------
+      " Enable Layout Save (User-specific and Global)
+      "-------------------------------------------------------------------
+      go_layout = go_alv->get_layout( ).
+      gs_layout_key-report = sy-repid.
+      go_layout->set_key( gs_layout_key ).
+      go_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+      "-------------------------------------------------------------------
+      " Set Column Texts (matching spec ALV Output column names)
+      "-------------------------------------------------------------------
+      go_columns = go_alv->get_columns( ).
+      go_columns->set_optimize( abap_true ).
+
+      TRY.
+          "1. Plant
+          go_column = go_columns->get_column( 'WERKS' ).
+          go_column->set_short_text( 'Plant' ).
+          go_column->set_medium_text( 'Plant' ).
+          go_column->set_long_text( 'Plant' ).
+
+          "2. Material
+          go_column = go_columns->get_column( 'MATNR' ).
+          go_column->set_short_text( 'Material' ).
+          go_column->set_medium_text( 'Material' ).
+          go_column->set_long_text( 'Material' ).
+
+          "3. Material Description
+          go_column = go_columns->get_column( 'MAKTX' ).
+          go_column->set_short_text( 'Mat Desc' ).
+          go_column->set_medium_text( 'Material Desc' ).
+          go_column->set_long_text( 'Material Description' ).
+
+          "4. Production Version
+          go_column = go_columns->get_column( 'VERID' ).
+          go_column->set_short_text( 'ProdVer' ).
+          go_column->set_medium_text( 'Production Ver' ).
+          go_column->set_long_text( 'Production Version' ).
+
+          "5. Valid From Date
+          go_column = go_columns->get_column( 'ADATU' ).
+          go_column->set_short_text( 'ValidFrom' ).
+          go_column->set_medium_text( 'Valid From Date' ).
+          go_column->set_long_text( 'Valid From Date' ).
+
+          "6. Valid To Date
+          go_column = go_columns->get_column( 'BDATU' ).
+          go_column->set_short_text( 'ValidTo' ).
+          go_column->set_medium_text( 'Valid To Date' ).
+          go_column->set_long_text( 'Valid To Date' ).
+
+          "7. From Lot Size
+          go_column = go_columns->get_column( 'BSTMI' ).
+          go_column->set_short_text( 'From Lot' ).
+          go_column->set_medium_text( 'From Lot Size' ).
+          go_column->set_long_text( 'From Lot Size' ).
+
+          "8. To Lot Size
+          go_column = go_columns->get_column( 'BSTMA' ).
+          go_column->set_short_text( 'To Lot' ).
+          go_column->set_medium_text( 'To Lot Size' ).
+          go_column->set_long_text( 'To Lot Size' ).
+
+          "9. BOM
+          go_column = go_columns->get_column( 'STLNR' ).
+          go_column->set_short_text( 'BOM' ).
+          go_column->set_medium_text( 'BOM' ).
+          go_column->set_long_text( 'BOM' ).
+
+          "10. BOM Alternative
+          go_column = go_columns->get_column( 'STLAL' ).
+          go_column->set_short_text( 'BOM Alt' ).
+          go_column->set_medium_text( 'BOM Alternative' ).
+          go_column->set_long_text( 'BOM Alternative' ).
+
+          "11. BOM Usage
+          go_column = go_columns->get_column( 'STLAN' ).
+          go_column->set_short_text( 'BOM Usage' ).
+          go_column->set_medium_text( 'BOM Usage' ).
+          go_column->set_long_text( 'BOM Usage' ).
+
+          "12. Task List Type
+          go_column = go_columns->get_column( 'PLNTY' ).
+          go_column->set_short_text( 'TskLstTyp' ).
+          go_column->set_medium_text( 'Task List Type' ).
+          go_column->set_long_text( 'Task List Type' ).
+
+          "13. Routing Group
+          go_column = go_columns->get_column( 'PLNNR' ).
+          go_column->set_short_text( 'RtgGroup' ).
+          go_column->set_medium_text( 'Routing Group' ).
+          go_column->set_long_text( 'Routing Group' ).
+
+          "14. Routing Group Counter
+          go_column = go_columns->get_column( 'ALNAL' ).
+          go_column->set_short_text( 'RtgGrpCtr' ).
+          go_column->set_medium_text( 'Rtg Grp Counter' ).
+          go_column->set_long_text( 'Routing Group Counter' ).
+
+        CATCH cx_salv_not_found INTO lv_not_found.        "#EC NO_HANDLER
+      ENDTRY.
+
+      "-------------------------------------------------------------------
+      " Display ALV
+      "-------------------------------------------------------------------
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO lv_msg.
+      MESSAGE lv_msg TYPE 'E'.
+  ENDTRY.
+
+ENDFORM.
+
+*----------------------------------------------------------------------*
+* Text Elements  (Maintain via SE38 -> Goto -> Text Elements)
+*----------------------------------------------------------------------*
+* Program Title:
+*   RPSG Solvanta - Solar Module Daily Production Report
+*
+* TEXT-001 = Selection Criteria
+* TEXT-002 = Outbound Server Path
+*
+* Selection Texts (SE38 -> Goto -> Text Elements -> Selection Texts):
+* S_MATNR  = Material Number
+* S_WERKS  = Plant
+* P_SERVER = o9 Server Directory Path
+*----------------------------------------------------------------------*
+* Message Class ZPP - Messages to maintain:
+*   001 = The material &1 does not exist or is not activated
+*   002 = Plant &1 does not exist
+*   003 = No Data Found
+*----------------------------------------------------------------------*
+* TCode ZPP_DPR:
+*   Create via SE93 -> Transaction Type: Report Transaction
+*   Program: ZPP_BOM_PV_REPORT
+*   Screen Title: RPSG Solvanta - Solar Module Daily Production Report
+*                 - Initial Screen
+*----------------------------------------------------------------------*
