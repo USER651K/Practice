@@ -1,0 +1,542 @@
+*&---------------------------------------------------------------------*
+*& Report ZMM_RVOLAYOUT
+*&---------------------------------------------------------------------*
+REPORT zmm_rvolayout.
+
+INCLUDE zmm_rvolayout_top.
+INCLUDE zmm_rvolayout_sel.
+INCLUDE zmm_rvolayout_f01.
+
+INITIALIZATION.
+  p_year = sy-datum+0(4).
+
+START-OF-SELECTION.
+
+  PERFORM process_layout.
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Include ZMM_RVOLAYOUT_TOP
+*&---------------------------------------------------------------------*
+
+CONSTANTS: gc_bwart  TYPE bwart    VALUE '101',
+           gc_werks  TYPE werks_d  VALUE '3100',
+           gc_bsart  TYPE bsart    VALUE 'ZEUL',
+           gc_eur    TYPE waers    VALUE 'EUR',
+           gc_pb     TYPE char10   VALUE 'PB',
+           gc_npb    TYPE char10   VALUE 'Non-PB',
+           gc_unk    TYPE char10   VALUE 'Unknown',
+           gc_sf     TYPE tdsfname VALUE 'ZSF_RVO_PRICES'.
+
+TYPES: BEGIN OF ty_mseg,
+         mblnr TYPE mseg-mblnr,
+         mjahr TYPE mseg-mjahr,
+         zeile TYPE mseg-zeile,
+         bwart TYPE mseg-bwart,
+         matnr TYPE mseg-matnr,
+         werks TYPE mseg-werks,
+         lifnr TYPE mseg-lifnr,
+         menge TYPE mseg-menge,
+         meins TYPE mseg-meins,
+         ebeln TYPE mseg-ebeln,
+         ebelp TYPE mseg-ebelp,
+         budat TYPE mkpf-budat,
+       END OF ty_mseg.
+
+TYPES: BEGIN OF ty_ekko,
+         ebeln TYPE ekko-ebeln,
+         bsart TYPE ekko-bsart,
+         waers TYPE ekko-waers,
+         wkurs TYPE ekko-wkurs,
+       END OF ty_ekko.
+
+TYPES: BEGIN OF ty_ekpo,
+         ebeln TYPE ekpo-ebeln,
+         ebelp TYPE ekpo-ebelp,
+         netpr TYPE ekpo-netpr,
+       END OF ty_ekpo.
+
+TYPES: BEGIN OF ty_marc,
+         matnr TYPE marc-matnr,
+         werks TYPE marc-werks,
+         steuc TYPE marc-steuc,
+       END OF ty_marc.
+
+TYPES: BEGIN OF ty_rvo_pb,
+         steuc TYPE steuc,
+       END OF ty_rvo_pb.
+
+TYPES: BEGIN OF ty_rvo_npb,
+         steuc      TYPE steuc,
+         match_type TYPE char1,
+       END OF ty_rvo_npb.
+
+DATA: gt_mseg    TYPE STANDARD TABLE OF ty_mseg,
+      gt_ekko    TYPE STANDARD TABLE OF ty_ekko,
+      gt_ekpo    TYPE STANDARD TABLE OF ty_ekpo,
+      gt_marc    TYPE STANDARD TABLE OF ty_marc,
+      gt_rvo_pb  TYPE STANDARD TABLE OF ty_rvo_pb,
+      gt_rvo_npb TYPE STANDARD TABLE OF ty_rvo_npb.
+
+DATA: gv_date_from   TYPE sy-datum,
+      gv_date_to     TYPE sy-datum,
+      gv_week        TYPE scal-week,
+      gv_pb_qty      TYPE mseg-menge,
+      gv_pb_val      TYPE netpr,
+      gv_npb_qty     TYPE mseg-menge,
+      gv_npb_val     TYPE netpr,
+      gv_pb_display  TYPE char50,
+      gv_npb_display TYPE char50,
+      gv_fm_name     TYPE rs38l_fnam.
+
+DATA: lr_ebeln TYPE RANGE OF ebeln,
+      lr_matnr TYPE RANGE OF matnr.
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Include ZMM_RVOLAYOUT_SEL
+*&---------------------------------------------------------------------*
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  PARAMETERS: p_week TYPE n LENGTH 2 OBLIGATORY,
+              p_year TYPE gjahr OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b1.
+
+*----------------------------------------------------------------------*
+* TEXT-001 = 'Selection Parameters'
+* P_WEEK   = 'Week Number'
+* P_YEAR   = 'Year'
+*----------------------------------------------------------------------*
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Include ZMM_RVOLAYOUT_F01
+*&---------------------------------------------------------------------*
+
+FORM process_layout.
+
+  PERFORM convert_week_to_dates.
+  PERFORM fetch_grn_data.
+  PERFORM check_cancelled_documents.
+  PERFORM validate_po_document_type.
+  PERFORM fetch_po_item_details.
+  PERFORM fetch_material_master_data.
+  PERFORM fetch_cn_code_master.
+  PERFORM build_and_aggregate.
+  PERFORM prepare_display_text.
+  PERFORM call_smartform.
+
+ENDFORM.
+
+FORM convert_week_to_dates.
+
+  DATA: lv_week_input TYPE scal-week.
+
+  lv_week_input = p_year && p_week.
+  gv_week = lv_week_input.
+
+  CALL FUNCTION 'WEEK_GET_FIRST_DAY'
+    EXPORTING
+      week         = lv_week_input
+    IMPORTING
+      date         = gv_date_from
+    EXCEPTIONS
+      week_invalid = 1
+      OTHERS       = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'Invalid week/year combination. Please check.' TYPE 'E'.
+  ENDIF.
+
+  gv_date_to = gv_date_from + 6.
+
+ENDFORM.
+
+FORM fetch_grn_data.
+
+  SELECT mblnr mjahr zeile bwart matnr werks lifnr
+         menge meins ebeln ebelp budat_mkpf AS budat
+    FROM mseg
+    INTO TABLE gt_mseg
+    WHERE budat_mkpf BETWEEN gv_date_from AND gv_date_to
+      AND bwart = gc_bwart
+      AND werks = gc_werks.
+
+  IF gt_mseg IS INITIAL.
+    MESSAGE 'No GRN records found (Mvt 101, Plant 3100) for the given week'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.
+
+FORM check_cancelled_documents.
+
+  DATA: lt_cancel_range TYPE RANGE OF mblnr,
+        lt_cancel_docs  TYPE STANDARD TABLE OF mblnr.
+
+  LOOP AT gt_mseg INTO DATA(ls_mseg_chk).
+    APPEND VALUE #( sign = 'I' option = 'EQ' low = ls_mseg_chk-mblnr )
+           TO lt_cancel_range.
+  ENDLOOP.
+  SORT lt_cancel_range BY low.
+  DELETE ADJACENT DUPLICATES FROM lt_cancel_range COMPARING low.
+
+  IF lt_cancel_range IS NOT INITIAL.
+    SELECT DISTINCT smbln
+      FROM mseg
+      INTO TABLE lt_cancel_docs
+      WHERE smbln IN lt_cancel_range
+        AND smbln NE space.
+  ENDIF.
+
+  IF lt_cancel_docs IS NOT INITIAL.
+    LOOP AT lt_cancel_docs INTO DATA(lv_cancel_mblnr).
+      DELETE gt_mseg WHERE mblnr = lv_cancel_mblnr.
+    ENDLOOP.
+  ENDIF.
+
+  IF gt_mseg IS INITIAL.
+    MESSAGE 'All GRN documents for the given week are cancelled/reversed'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.
+
+FORM validate_po_document_type.
+
+  DATA: lt_mseg_valid TYPE STANDARD TABLE OF ty_mseg.
+
+  CLEAR lr_ebeln.
+  LOOP AT gt_mseg INTO DATA(ls_mseg_po).
+    APPEND VALUE #( sign = 'I' option = 'EQ' low = ls_mseg_po-ebeln )
+           TO lr_ebeln.
+  ENDLOOP.
+  SORT lr_ebeln BY low.
+  DELETE ADJACENT DUPLICATES FROM lr_ebeln COMPARING low.
+
+  SELECT ebeln bsart waers wkurs
+    FROM ekko
+    INTO TABLE gt_ekko
+    WHERE ebeln IN lr_ebeln
+      AND bsart = gc_bsart.
+
+  IF gt_ekko IS INITIAL.
+    MESSAGE 'No Purchase Orders found with document type ZEUL'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  SORT gt_ekko BY ebeln.
+
+  LOOP AT gt_mseg INTO DATA(ls_mseg_val).
+    READ TABLE gt_ekko WITH KEY ebeln = ls_mseg_val-ebeln
+                       BINARY SEARCH TRANSPORTING NO FIELDS.
+    IF sy-subrc = 0.
+      APPEND ls_mseg_val TO lt_mseg_valid.
+    ENDIF.
+  ENDLOOP.
+
+  gt_mseg = lt_mseg_valid.
+  FREE lt_mseg_valid.
+
+  IF gt_mseg IS INITIAL.
+    MESSAGE 'No valid GRN records after PO type (ZEUL) validation'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  CLEAR lr_ebeln.
+  LOOP AT gt_mseg INTO DATA(ls_mseg_eb).
+    APPEND VALUE #( sign = 'I' option = 'EQ' low = ls_mseg_eb-ebeln )
+           TO lr_ebeln.
+  ENDLOOP.
+  SORT lr_ebeln BY low.
+  DELETE ADJACENT DUPLICATES FROM lr_ebeln COMPARING low.
+
+ENDFORM.
+
+FORM fetch_po_item_details.
+
+  SELECT ebeln ebelp netpr
+    FROM ekpo
+    INTO TABLE gt_ekpo
+    WHERE ebeln IN lr_ebeln.
+
+  SORT gt_ekpo BY ebeln ebelp.
+
+ENDFORM.
+
+FORM fetch_material_master_data.
+
+  CLEAR lr_matnr.
+  LOOP AT gt_mseg INTO DATA(ls_mseg_mat).
+    APPEND VALUE #( sign = 'I' option = 'EQ' low = ls_mseg_mat-matnr )
+           TO lr_matnr.
+  ENDLOOP.
+  SORT lr_matnr BY low.
+  DELETE ADJACENT DUPLICATES FROM lr_matnr COMPARING low.
+
+  SELECT matnr werks steuc
+    FROM marc
+    INTO TABLE gt_marc
+    WHERE matnr IN lr_matnr
+      AND werks = gc_werks.
+
+  SORT gt_marc BY matnr werks.
+
+ENDFORM.
+
+FORM fetch_cn_code_master.
+
+  SELECT steuc FROM zmm_rvo_pb INTO TABLE gt_rvo_pb.
+  SORT gt_rvo_pb BY steuc.
+
+  SELECT steuc match_type FROM zmm_rvo_npb INTO TABLE gt_rvo_npb.
+  SORT gt_rvo_npb BY steuc.
+
+  IF gt_rvo_pb IS INITIAL AND gt_rvo_npb IS INITIAL.
+    MESSAGE 'CN Code master tables are empty. Please maintain via SM30.'
+            TYPE 'S' DISPLAY LIKE 'W'.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form BUILD_AND_AGGREGATE
+*&---------------------------------------------------------------------*
+*& Processes each GRN line, calculates total in EUR (handling both
+*& direct and indirect exchange rate quotation), classifies PB/Non-PB,
+*& and aggregates totals by category.
+*&---------------------------------------------------------------------*
+FORM build_and_aggregate.
+
+  DATA: ls_ekko   TYPE ty_ekko,
+        ls_ekpo   TYPE ty_ekpo,
+        ls_marc   TYPE ty_marc.
+
+  DATA: lv_found     TYPE abap_bool,
+        lv_npb_code  TYPE steuc,
+        lv_steuc_val TYPE steuc,
+        lv_steuc_raw TYPE steuc,
+        lv_len       TYPE i,
+        lv_category  TYPE char10,
+        lv_total_amt TYPE netpr,
+        lv_netpr     TYPE ekpo-netpr,
+        lv_waers     TYPE ekko-waers,
+        lv_wkurs     TYPE ekko-wkurs.
+
+  CLEAR: gv_pb_qty, gv_pb_val, gv_npb_qty, gv_npb_val.
+
+  LOOP AT gt_mseg INTO DATA(ls_mseg).
+
+    CLEAR: lv_netpr, lv_waers, lv_wkurs, lv_total_amt,
+           lv_steuc_raw, lv_category, lv_found.
+
+    "--- Net Price from EKPO ---
+    READ TABLE gt_ekpo INTO ls_ekpo
+      WITH KEY ebeln = ls_mseg-ebeln
+               ebelp = ls_mseg-ebelp
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_netpr = ls_ekpo-netpr.
+    ENDIF.
+
+    "--- Currency & Exchange Rate from EKKO ---
+    READ TABLE gt_ekko INTO ls_ekko
+      WITH KEY ebeln = ls_mseg-ebeln
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_waers = ls_ekko-waers.
+      lv_wkurs = ls_ekko-wkurs.
+    ENDIF.
+
+    "--- Total Amount in EUR ---
+    " SAP exchange rate handling:
+    "   Positive WKURS = direct quotation → multiply
+    "   Negative WKURS = indirect quotation → divide by |WKURS|
+    IF lv_waers = gc_eur.
+      lv_total_amt = lv_netpr * ls_mseg-menge.
+    ELSE.
+      IF lv_wkurs > 0.
+        lv_total_amt = lv_netpr * lv_wkurs * ls_mseg-menge.
+      ELSEIF lv_wkurs < 0.
+        lv_total_amt = ( lv_netpr / abs( lv_wkurs ) ) * ls_mseg-menge.
+      ENDIF.
+    ENDIF.
+
+    "--- HSN/CN Code from MARC ---
+    READ TABLE gt_marc INTO ls_marc
+      WITH KEY matnr = ls_mseg-matnr
+               werks = gc_werks
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_steuc_raw = ls_marc-steuc.
+    ENDIF.
+
+    "=== Category Classification ===
+    READ TABLE gt_rvo_pb WITH KEY steuc = lv_steuc_raw
+                         BINARY SEARCH TRANSPORTING NO FIELDS.
+    IF sy-subrc = 0.
+      lv_category = gc_pb.
+      lv_found = abap_true.
+    ENDIF.
+
+    IF lv_found = abap_false.
+      LOOP AT gt_rvo_npb INTO DATA(ls_npb).
+        IF ls_npb-match_type = 'E'.
+          IF lv_steuc_raw = ls_npb-steuc.
+            lv_category = gc_npb.
+            lv_found = abap_true.
+            EXIT.
+          ENDIF.
+        ELSEIF ls_npb-match_type = 'P'.
+          lv_npb_code = ls_npb-steuc.
+          CONDENSE lv_npb_code NO-GAPS.
+          lv_len = strlen( lv_npb_code ).
+
+          lv_steuc_val = lv_steuc_raw.
+          CONDENSE lv_steuc_val NO-GAPS.
+
+          IF lv_len > 0 AND strlen( lv_steuc_val ) >= lv_len.
+            IF lv_steuc_val(lv_len) = lv_npb_code.
+              lv_category = gc_npb.
+              lv_found = abap_true.
+              EXIT.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+    " Skip Unknown - only aggregate PB and Non-PB
+    IF lv_found = abap_false.
+      CONTINUE.
+    ENDIF.
+
+    "=== Aggregate by Category ===
+    CASE lv_category.
+      WHEN gc_pb.
+        gv_pb_qty = gv_pb_qty + ls_mseg-menge.
+        gv_pb_val = gv_pb_val + lv_total_amt.
+      WHEN gc_npb.
+        gv_npb_qty = gv_npb_qty + ls_mseg-menge.
+        gv_npb_val = gv_npb_val + lv_total_amt.
+    ENDCASE.
+
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form PREPARE_DISPLAY_TEXT
+*&---------------------------------------------------------------------*
+*& Format from spec: "178 MT- 856 EUR"
+*& If no data: "NIL"
+*&---------------------------------------------------------------------*
+FORM prepare_display_text.
+
+  DATA: lv_pb_qty_i  TYPE i,
+        lv_pb_val_i  TYPE i,
+        lv_npb_qty_i TYPE i,
+        lv_npb_val_i TYPE i.
+
+  IF gv_pb_qty > 0.
+    lv_pb_qty_i = gv_pb_qty.
+    lv_pb_val_i = gv_pb_val.
+    gv_pb_display = |{ lv_pb_qty_i } MT- { lv_pb_val_i } EUR|.
+  ELSE.
+    gv_pb_display = 'NIL'.
+  ENDIF.
+
+  IF gv_npb_qty > 0.
+    lv_npb_qty_i = gv_npb_qty.
+    lv_npb_val_i = gv_npb_val.
+    gv_npb_display = |{ lv_npb_qty_i } MT- { lv_npb_val_i } EUR|.
+  ELSE.
+    gv_npb_display = 'NIL'.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form CALL_SMARTFORM
+*&---------------------------------------------------------------------*
+FORM call_smartform.
+
+  DATA: ls_control  TYPE ssfctrlop,
+        ls_output   TYPE ssfcompop,
+        ls_job_info TYPE ssfcrescl.
+
+  DATA: lv_year  TYPE char4,
+        lv_week  TYPE char2,
+        lv_email TYPE char30.
+
+  lv_year  = p_year.
+  lv_week  = p_week.
+  lv_email = 'marktinfo@rvo.nl'.
+
+  CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+    EXPORTING
+      formname           = gc_sf
+    IMPORTING
+      fm_name            = gv_fm_name
+    EXCEPTIONS
+      no_form            = 1
+      no_function_module = 2
+      OTHERS             = 3.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'SmartForm not found. Please create and activate it first.'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    RETURN.
+  ENDIF.
+
+  ls_control-preview   = abap_true.
+  ls_control-no_dialog = abap_true.
+
+  CALL FUNCTION gv_fm_name
+    EXPORTING
+      control_parameters = ls_control
+      output_options     = ls_output
+      iv_year            = lv_year
+      iv_week            = lv_week
+      iv_email           = lv_email
+      iv_pb_display      = gv_pb_display
+      iv_npb_display     = gv_npb_display
+    IMPORTING
+      job_output_info    = ls_job_info
+    EXCEPTIONS
+      formatting_error   = 1
+      internal_error     = 2
+      send_error         = 3
+      user_canceled      = 4
+      OTHERS             = 5.
+
+  IF sy-subrc <> 0.
+    CASE sy-subrc.
+      WHEN 1.
+        MESSAGE 'SmartForm formatting error' TYPE 'S' DISPLAY LIKE 'E'.
+      WHEN 2.
+        MESSAGE 'SmartForm internal error' TYPE 'S' DISPLAY LIKE 'E'.
+      WHEN 4.
+        MESSAGE 'Print preview cancelled by user' TYPE 'S' DISPLAY LIKE 'W'.
+      WHEN OTHERS.
+        MESSAGE 'Error calling SmartForm' TYPE 'S' DISPLAY LIKE 'E'.
+    ENDCASE.
+  ENDIF.
+
+ENDFORM.
