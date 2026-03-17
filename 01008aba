@@ -1,0 +1,486 @@
+*&---------------------------------------------------------------------*
+*& Report ZPP_BOM_HDR
+*&---------------------------------------------------------------------*
+*& TCode : ZO9_BOM_HDR
+*& Title : BOM Produced Report
+*&---------------------------------------------------------------------*
+REPORT zpp_bom_hdr.
+
+TABLES: mara, t001w.
+
+TYPES: BEGIN OF ty_mast,
+         matnr TYPE mast-matnr,
+         werks TYPE mast-werks,
+         stlan TYPE mast-stlan,
+         stlal TYPE mast-stlal,
+         stlnr TYPE mast-stlnr,
+       END OF ty_mast,
+
+       BEGIN OF ty_stko,
+         stlty TYPE stko-stlty,
+         stlnr TYPE stko-stlnr,
+         stlal TYPE stko-stlal,
+         bmein TYPE stko-bmein,
+         bmeng TYPE stko-bmeng,
+         stlst TYPE stko-stlst,
+         datuv TYPE stko-datuv,
+         loekz TYPE stko-loekz,
+       END OF ty_stko,
+
+       BEGIN OF ty_makt,
+         matnr TYPE makt-matnr,
+         spras TYPE makt-spras,
+         maktx TYPE makt-maktx,
+       END OF ty_makt,
+
+       BEGIN OF ty_t006,
+         msehi TYPE t006-msehi,
+         dimid TYPE t006-dimid,
+         zaehl TYPE t006-zaehl,
+         nennr TYPE t006-nennr,
+       END OF ty_t006,
+
+       BEGIN OF ty_alv,
+         werks  TYPE mast-werks,
+         matnr  TYPE mast-matnr,
+         maktx  TYPE makt-maktx,
+         stlty  TYPE stko-stlty,
+         stlnr  TYPE mast-stlnr,
+         stlal  TYPE mast-stlal,
+         bmein  TYPE stko-bmein,
+         bmeng  TYPE stko-bmeng,
+         qty_mt TYPE p LENGTH 13 DECIMALS 3,
+         stlst  TYPE stko-stlst,
+         datuv  TYPE stko-datuv,
+         loekz  TYPE stko-loekz,
+       END OF ty_alv.
+
+DATA: gt_mast TYPE STANDARD TABLE OF ty_mast,
+      gt_stko TYPE STANDARD TABLE OF ty_stko,
+      gt_makt TYPE STANDARD TABLE OF ty_makt,
+      gt_t006 TYPE STANDARD TABLE OF ty_t006,
+      gt_alv  TYPE STANDARD TABLE OF ty_alv,
+      gs_mast TYPE ty_mast,
+      gs_stko TYPE ty_stko,
+      gs_makt TYPE ty_makt,
+      gs_t006 TYPE ty_t006,
+      gs_alv  TYPE ty_alv.
+
+DATA: gv_line    TYPE string,
+      gv_records TYPE i.
+
+DATA: gv_mtart     TYPE mara-mtart,
+      gv_matnr_ext TYPE matnr.
+
+DATA: gv_filepath  TYPE string,
+      gv_timestamp TYPE timestamp,
+      lv_ts        TYPE string.
+
+DATA: go_alv     TYPE REF TO cl_salv_table,
+      go_funcs   TYPE REF TO cl_salv_functions_list,
+      go_columns TYPE REF TO cl_salv_columns_table,
+      go_column  TYPE REF TO cl_salv_column,
+      go_display TYPE REF TO cl_salv_display_settings,
+      go_layout  TYPE REF TO cl_salv_layout,
+      gs_lkey    TYPE salv_s_layout_key.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  SELECT-OPTIONS: s_matnr FOR mara-matnr MATCHCODE OBJECT mat1,
+                  s_werks FOR t001w-werks.
+  PARAMETERS:     p_file  AS CHECKBOX DEFAULT space.
+SELECTION-SCREEN END OF BLOCK b1.
+
+INITIALIZATION.
+  GET PARAMETER ID 'MAT' FIELD s_matnr-low.
+  GET PARAMETER ID 'WRK' FIELD s_werks-low.
+
+AT SELECTION-SCREEN.
+
+  IF s_matnr-low IS NOT INITIAL AND s_matnr-high IS INITIAL.
+    SELECT SINGLE matnr mtart
+      FROM mara
+      INTO (mara-matnr, gv_mtart)
+     WHERE matnr = s_matnr-low.
+    IF sy-subrc <> 0.
+      CALL FUNCTION 'CONVERSION_EXIT_MATN1_OUTPUT'
+        EXPORTING input  = s_matnr-low
+        IMPORTING output = gv_matnr_ext.
+      MESSAGE |The material { gv_matnr_ext } does not exist or is not activated| TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+  IF s_werks-low IS NOT INITIAL AND s_werks-high IS INITIAL.
+    SELECT SINGLE werks
+      FROM t001w
+      INTO t001w-werks
+     WHERE werks = s_werks-low.
+    IF sy-subrc <> 0.
+      MESSAGE |Plant { s_werks-low } does not exist| TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+START-OF-SELECTION.
+
+  PERFORM extract_data.
+
+  IF gt_alv IS NOT INITIAL.
+    IF p_file = abap_true.
+      PERFORM write_to_server.
+    ENDIF.
+    PERFORM display_alv.
+  ELSE.
+    MESSAGE 'No Data Found' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+
+FORM extract_data.
+
+  DATA: ls_t006_uom TYPE ty_t006,
+        ls_t006_mt  TYPE ty_t006,
+        lv_qty_kg   TYPE f,
+        lv_qty_mt   TYPE f.
+
+  SELECT matnr werks stlan stlal stlnr
+    FROM mast
+    INTO TABLE gt_mast
+   WHERE matnr IN s_matnr
+     AND werks IN s_werks.
+
+  IF gt_mast IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  SELECT matnr spras maktx
+    FROM makt
+    INTO TABLE gt_makt
+     FOR ALL ENTRIES IN gt_mast
+   WHERE matnr = gt_mast-matnr
+     AND spras = 'EN'.
+
+  SORT gt_makt BY matnr.
+
+  SELECT stlty stlnr stlal bmein bmeng stlst datuv loekz
+    FROM stko
+    INTO TABLE gt_stko
+     FOR ALL ENTRIES IN gt_mast
+   WHERE stlnr = gt_mast-stlnr
+     AND stlal = gt_mast-stlal.
+
+  SORT gt_stko BY stlnr stlal.
+
+  IF gt_stko IS NOT INITIAL.
+    DATA: lt_bmein TYPE STANDARD TABLE OF meins,
+          ls_bmein TYPE meins.
+
+    LOOP AT gt_stko INTO gs_stko.
+      APPEND gs_stko-bmein TO lt_bmein.
+    ENDLOOP.
+    ls_bmein = 'MT'.
+    APPEND ls_bmein TO lt_bmein.
+    SORT lt_bmein.
+    DELETE ADJACENT DUPLICATES FROM lt_bmein.
+
+    SELECT msehi dimid zaehl nennr
+      FROM t006
+      INTO TABLE gt_t006
+       FOR ALL ENTRIES IN lt_bmein
+     WHERE msehi = lt_bmein-table_line.
+
+    SORT gt_t006 BY msehi.
+  ENDIF.
+
+  READ TABLE gt_t006 INTO ls_t006_mt
+       WITH KEY msehi = 'MT'
+       BINARY SEARCH.
+
+  SORT gt_mast BY werks matnr stlnr.
+
+  LOOP AT gt_mast INTO gs_mast.
+
+    READ TABLE gt_stko INTO gs_stko
+         WITH KEY stlnr = gs_mast-stlnr
+                  stlal = gs_mast-stlal
+         BINARY SEARCH.
+
+    IF sy-subrc <> 0.
+      CONTINUE.
+    ENDIF.
+
+    CLEAR gs_alv.
+
+    gs_alv-werks = gs_mast-werks.
+    gs_alv-matnr = gs_mast-matnr.
+    gs_alv-stlty = gs_stko-stlty.
+    gs_alv-stlnr = gs_mast-stlnr.
+    gs_alv-stlal = gs_mast-stlal.
+    gs_alv-bmein = gs_stko-bmein.
+    gs_alv-bmeng = gs_stko-bmeng.
+    gs_alv-stlst = gs_stko-stlst.
+    gs_alv-datuv = gs_stko-datuv.
+    gs_alv-loekz = gs_stko-loekz.
+
+    READ TABLE gt_makt INTO gs_makt
+         WITH KEY matnr = gs_mast-matnr
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_alv-maktx = gs_makt-maktx.
+    ENDIF.
+
+    CLEAR: lv_qty_kg, lv_qty_mt, gs_alv-qty_mt.
+
+    READ TABLE gt_t006 INTO ls_t006_uom
+         WITH KEY msehi = gs_stko-bmein
+         BINARY SEARCH.
+
+    IF sy-subrc = 0 AND ls_t006_uom-dimid = 'MASS'.
+
+      CASE gs_stko-bmein.
+
+        WHEN 'MT'.
+          gs_alv-qty_mt = gs_stko-bmeng.
+
+        WHEN 'KG'.
+          IF ls_t006_mt-zaehl <> 0.
+            lv_qty_mt = gs_stko-bmeng *
+                        ( ls_t006_mt-nennr / ls_t006_mt-zaehl ).
+            gs_alv-qty_mt = lv_qty_mt.
+          ENDIF.
+
+        WHEN 'LB'.
+          IF ls_t006_uom-nennr <> 0 AND ls_t006_mt-zaehl <> 0.
+            lv_qty_kg = gs_stko-bmeng *
+                        ( ls_t006_uom-zaehl / ls_t006_uom-nennr ).
+            lv_qty_mt = lv_qty_kg *
+                        ( ls_t006_mt-nennr / ls_t006_mt-zaehl ).
+            gs_alv-qty_mt = lv_qty_mt.
+          ENDIF.
+
+        WHEN OTHERS.
+          IF ls_t006_uom-nennr <> 0 AND ls_t006_mt-zaehl <> 0.
+            lv_qty_kg = gs_stko-bmeng *
+                        ( ls_t006_uom-zaehl / ls_t006_uom-nennr ).
+            lv_qty_mt = lv_qty_kg *
+                        ( ls_t006_mt-nennr / ls_t006_mt-zaehl ).
+            gs_alv-qty_mt = lv_qty_mt.
+          ENDIF.
+
+      ENDCASE.
+
+    ENDIF.
+
+    APPEND gs_alv TO gt_alv.
+
+  ENDLOOP.
+
+  gv_records = lines( gt_alv ).
+  SORT gt_alv BY werks matnr stlnr.
+
+ENDFORM.
+
+
+FORM write_to_server.
+
+  DATA: lv_matnr TYPE string,
+        lv_werks TYPE string,
+        lv_stlty TYPE string,
+        lv_stlal TYPE string,
+        lv_bmein TYPE string,
+        lv_stlnr TYPE string,
+        lv_bmeng TYPE string,
+        lv_qty_mt TYPE string,
+        lv_stlst TYPE string,
+        lv_datuv TYPE string,
+        lv_loekz TYPE string,
+        lv_mandt TYPE string,
+        lv_temp  TYPE c LENGTH 24.
+
+  gv_filepath = '/mnt/edifiles/In_STKO.csv'.
+
+  GET TIME STAMP FIELD gv_timestamp.
+  lv_ts = gv_timestamp.
+  CONDENSE lv_ts NO-GAPS.
+  REPLACE '.csv' IN gv_filepath WITH |_{ lv_ts(8) }_{ lv_ts+8(6) }.csv|.
+
+  OPEN DATASET gv_filepath FOR OUTPUT IN TEXT MODE ENCODING DEFAULT.
+  IF sy-subrc NE 0.
+    MESSAGE 'Error opening file' TYPE 'E'.
+    RETURN.
+  ENDIF.
+
+  CONCATENATE
+    'Site'
+    'SourceID'
+    'BOMCategory'
+    'AlternativeBOM'
+    'BOMProducedUOM'
+    'BillofMaterial'
+    'Quantity'
+    'QuantityinMT'
+    'BOMStatus'
+    'ValidFrom'
+    'DeletionFlag'
+    INTO gv_line SEPARATED BY ','.
+  TRANSFER gv_line TO gv_filepath.
+
+  LOOP AT gt_alv INTO gs_alv.
+
+    CLEAR gv_line.
+
+    lv_werks = gs_alv-werks.
+    CONDENSE lv_werks NO-GAPS.
+
+    lv_mandt = sy-mandt.
+    CONDENSE lv_mandt NO-GAPS.
+
+    lv_stlty = gs_alv-stlty.
+    CONDENSE lv_stlty NO-GAPS.
+
+    lv_stlal = gs_alv-stlal.
+    CONDENSE lv_stlal NO-GAPS.
+
+    lv_bmein = gs_alv-bmein.
+    CONDENSE lv_bmein NO-GAPS.
+
+    lv_stlnr = gs_alv-stlnr.
+    CONDENSE lv_stlnr NO-GAPS.
+
+    WRITE gs_alv-bmeng TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN
+      DECIMALS 3.
+    lv_bmeng = lv_temp.
+    CONDENSE lv_bmeng NO-GAPS.
+
+    WRITE gs_alv-qty_mt TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN
+      DECIMALS 3.
+    lv_qty_mt = lv_temp.
+    CONDENSE lv_qty_mt NO-GAPS.
+
+    lv_stlst = gs_alv-stlst.
+    CONDENSE lv_stlst NO-GAPS.
+
+    PERFORM format_date USING gs_alv-datuv CHANGING lv_datuv.
+
+    lv_loekz = gs_alv-loekz.
+    CONDENSE lv_loekz NO-GAPS.
+
+    CONCATENATE
+      lv_werks lv_mandt lv_stlty lv_stlal lv_bmein
+      lv_stlnr lv_bmeng lv_qty_mt lv_stlst lv_datuv
+      lv_loekz
+      INTO gv_line SEPARATED BY ','.
+    TRANSFER gv_line TO gv_filepath.
+
+  ENDLOOP.
+
+  CLOSE DATASET gv_filepath.
+
+  MESSAGE |File generated successfully: { gv_filepath }| TYPE 'S'.
+
+ENDFORM.
+
+
+FORM format_date USING    iv_date TYPE d
+                 CHANGING ev_str  TYPE string.
+  CLEAR ev_str.
+  IF iv_date IS NOT INITIAL AND iv_date <> '00000000'.
+    CONCATENATE iv_date+6(2) '.' iv_date+4(2) '.' iv_date+0(4) INTO ev_str.
+  ENDIF.
+ENDFORM.
+
+
+FORM display_alv.
+
+  DATA: lv_msg TYPE REF TO cx_salv_msg,
+        lv_nf  TYPE REF TO cx_salv_not_found.
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = go_alv
+        CHANGING  t_table      = gt_alv ).
+
+      go_funcs = go_alv->get_functions( ).
+      go_funcs->set_all( abap_true ).
+
+      go_display = go_alv->get_display_settings( ).
+      go_display->set_list_header(
+        'BOM Produced Report - ALV Output' ).
+      go_display->set_striped_pattern( abap_true ).
+
+      go_layout = go_alv->get_layout( ).
+      gs_lkey-report = sy-repid.
+      go_layout->set_key( gs_lkey ).
+      go_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+      go_columns = go_alv->get_columns( ).
+      go_columns->set_optimize( abap_true ).
+
+      TRY.
+          go_column = go_columns->get_column( 'WERKS' ).
+          go_column->set_short_text( 'Plant' ).
+          go_column->set_medium_text( 'Plant' ).
+          go_column->set_long_text( 'Plant' ).
+
+          go_column = go_columns->get_column( 'MATNR' ).
+          go_column->set_short_text( 'Material' ).
+          go_column->set_medium_text( 'Material' ).
+          go_column->set_long_text( 'Material' ).
+
+          go_column = go_columns->get_column( 'MAKTX' ).
+          go_column->set_short_text( 'Mat Desc' ).
+          go_column->set_medium_text( 'Material Desc' ).
+          go_column->set_long_text( 'Material Description' ).
+
+          go_column = go_columns->get_column( 'STLTY' ).
+          go_column->set_short_text( 'BOM Cat' ).
+          go_column->set_medium_text( 'BOM Category' ).
+          go_column->set_long_text( 'BOM Category' ).
+
+          go_column = go_columns->get_column( 'STLNR' ).
+          go_column->set_short_text( 'BOM' ).
+          go_column->set_medium_text( 'BOM' ).
+          go_column->set_long_text( 'BOM' ).
+
+          go_column = go_columns->get_column( 'STLAL' ).
+          go_column->set_short_text( 'BOM Alt' ).
+          go_column->set_medium_text( 'BOM Alternative' ).
+          go_column->set_long_text( 'BOM Alternative' ).
+
+          go_column = go_columns->get_column( 'BMEIN' ).
+          go_column->set_short_text( 'Hdr Unit' ).
+          go_column->set_medium_text( 'BOM Hdr Unit' ).
+          go_column->set_long_text( 'BOM Header Unit' ).
+
+          go_column = go_columns->get_column( 'BMENG' ).
+          go_column->set_short_text( 'Hdr Qty' ).
+          go_column->set_medium_text( 'BOM Hdr Qty' ).
+          go_column->set_long_text( 'BOM Header Quantity' ).
+
+          go_column = go_columns->get_column( 'QTY_MT' ).
+          go_column->set_short_text( 'Qty in MT' ).
+          go_column->set_medium_text( 'Qty in MT' ).
+          go_column->set_long_text( 'BOM Header Quantity in MT' ).
+
+          go_column = go_columns->get_column( 'STLST' ).
+          go_column->set_short_text( 'Status' ).
+          go_column->set_medium_text( 'BOM Status' ).
+          go_column->set_long_text( 'BOM Status' ).
+
+          go_column = go_columns->get_column( 'DATUV' ).
+          go_column->set_short_text( 'ValidFrom' ).
+          go_column->set_medium_text( 'Valid From' ).
+          go_column->set_long_text( 'Valid From' ).
+
+          go_column = go_columns->get_column( 'LOEKZ' ).
+          go_column->set_short_text( 'Del Flag' ).
+          go_column->set_medium_text( 'Deletion Flag' ).
+          go_column->set_long_text( 'Deletion Flag' ).
+
+        CATCH cx_salv_not_found INTO lv_nf.
+      ENDTRY.
+
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO lv_msg.
+      MESSAGE lv_msg TYPE 'E'.
+  ENDTRY.
+
+ENDFORM.
