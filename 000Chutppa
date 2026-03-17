@@ -1,0 +1,142 @@
+***BOC--UJWAL--17.03.2026--PO Open Order + Plant Uniqueness
+TYPES: BEGIN OF ty_bstkd_so,
+         vbeln TYPE vbeln,
+       END OF ty_bstkd_so.
+
+DATA: gt_po_vbkd  TYPE TABLE OF ty_bstkd_so,
+      gs_po_vbkd  TYPE ty_bstkd_so,
+      gt_open_so  TYPE TABLE OF ty_bstkd_so,
+      gs_open_so  TYPE ty_bstkd_so,
+      lv_inv_chk  TYPE vbeln,
+      lv_po_werks TYPE werks_d,
+      lv_open_cnt TYPE i.
+***EOC--UJWAL--17.03.2026--PO Open Order + Plant Uniqueness
+
+
+
+
+***BOC--UJWAL--17.03.2026--PO Open Order + Plant Uniqueness Check
+            CLEAR: gv_planned_gi, sale_ord, lv_delivery,
+                   gt_po_vbkd, gt_open_so, lv_open_cnt.
+
+            " Step 1: Get all SOs from VBKD with blank POSNR (header level)
+            SELECT vbeln
+              FROM vbkd
+              INTO TABLE gt_po_vbkd
+              WHERE bstkd = vbkd-bstkd
+              AND   posnr = '000000'.
+
+            IF gt_po_vbkd IS INITIAL.
+              MESSAGE 'Purchase Order does not exist' TYPE 'I'.
+              CLEAR: wa_ysdssop-sales_order, sale_ord, gv_planned_gi.
+            ELSE.
+              " Step 2: Filter - keep only OPEN orders (no invoice)
+              "          and matching plant
+              CLEAR gt_open_so.
+              LOOP AT gt_po_vbkd INTO gs_po_vbkd.
+                CLEAR lv_inv_chk.
+                SELECT SINGLE vbeln FROM vbfa
+                  INTO lv_inv_chk
+                  WHERE vbelv = gs_po_vbkd-vbeln
+                  AND   vbtyp_n = 'M'.
+                IF sy-subrc <> 0.
+                  CLEAR lv_po_werks.
+                  SELECT SINGLE werks FROM vbap
+                    INTO lv_po_werks
+                    WHERE vbeln = gs_po_vbkd-vbeln
+                    AND   abgru = ''.
+                  IF sy-subrc = 0 AND lv_po_werks = likp-werks.
+                    gs_open_so-vbeln = gs_po_vbkd-vbeln.
+                    APPEND gs_open_so TO gt_open_so.
+                  ENDIF.
+                ENDIF.
+              ENDLOOP.
+
+              " Step 3: Check uniqueness
+              DESCRIBE TABLE gt_open_so LINES lv_open_cnt.
+              IF lv_open_cnt > 1.
+                MESSAGE 'Multiple PO exists' TYPE 'I'.
+                CLEAR: wa_ysdssop-sales_order, sale_ord, gv_planned_gi.
+              ELSEIF lv_open_cnt = 1.
+                READ TABLE gt_open_so INTO gs_open_so INDEX 1.
+                wa_ysdssop-sales_order = gs_open_so-vbeln.
+                sale_ord = gs_open_so-vbeln.
+
+                SELECT SINGLE wadat
+                  FROM vbep INTO gv_planned_gi
+                  WHERE vbeln = gs_open_so-vbeln.
+
+                SELECT SINGLE vbeln
+                  FROM vbfa INTO lv_delivery
+                  WHERE vbelv = gs_open_so-vbeln
+                  AND vbtyp_n = 'J'.
+              ELSE.
+                MESSAGE 'No open order found for this PO and Plant' TYPE 'I'.
+                CLEAR: wa_ysdssop-sales_order, sale_ord, gv_planned_gi.
+              ENDIF.
+            ENDIF.
+***EOC--UJWAL--17.03.2026--PO Open Order + Plant Uniqueness Check
+
+
+
+
+
+
+***BOC--UJWAL--17.03.2026--PO Open Order + Plant Uniqueness Check
+          CLEAR: gv_planned_gi, sale_ord, lv_del,
+                 gt_po_vbkd, gt_open_so, lv_open_cnt.
+
+          SELECT vbeln
+            FROM vbkd
+            INTO TABLE gt_po_vbkd
+            WHERE bstkd = vbkd-bstkd
+            AND   posnr = '000000'.
+
+          IF gt_po_vbkd IS INITIAL.
+            MESSAGE 'Purchase Order does not exist' TYPE 'I'.
+            CLEAR: sale_ord, gv_planned_gi.
+          ELSE.
+            CLEAR gt_open_so.
+            LOOP AT gt_po_vbkd INTO gs_po_vbkd.
+              CLEAR lv_inv_chk.
+              SELECT SINGLE vbeln FROM vbfa
+                INTO lv_inv_chk
+                WHERE vbelv = gs_po_vbkd-vbeln
+                AND   vbtyp_n = 'M'.
+              IF sy-subrc <> 0.
+                CLEAR lv_po_werks.
+                SELECT SINGLE werks FROM vbap
+                  INTO lv_po_werks
+                  WHERE vbeln = gs_po_vbkd-vbeln
+                  AND   abgru = ''.
+                IF sy-subrc = 0 AND lv_po_werks = likp-werks.
+                  gs_open_so-vbeln = gs_po_vbkd-vbeln.
+                  APPEND gs_open_so TO gt_open_so.
+                ENDIF.
+              ENDIF.
+            ENDLOOP.
+
+            DESCRIBE TABLE gt_open_so LINES lv_open_cnt.
+            IF lv_open_cnt > 1.
+              MESSAGE 'Multiple PO exists' TYPE 'I'.
+              CLEAR: sale_ord, gv_planned_gi.
+            ELSEIF lv_open_cnt = 1.
+              READ TABLE gt_open_so INTO gs_open_so INDEX 1.
+              sale_ord = gs_open_so-vbeln.
+
+              SELECT SINGLE wadat
+                FROM vbep INTO gv_planned_gi
+                WHERE vbeln = gs_open_so-vbeln.
+
+              SELECT SINGLE vbeln
+                FROM vbfa INTO lv_del
+                WHERE vbelv = gs_open_so-vbeln
+                AND vbtyp_n = 'J'.
+            ELSE.
+              MESSAGE 'No open order found for this PO and Plant' TYPE 'I'.
+              CLEAR: sale_ord, gv_planned_gi.
+            ENDIF.
+          ENDIF.
+***EOC--UJWAL--17.03.2026--PO Open Order + Plant Uniqueness Check
+
+
