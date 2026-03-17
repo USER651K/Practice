@@ -1,0 +1,498 @@
+*&---------------------------------------------------------------------*
+*& Report ZPP_BOM_HDR
+*&---------------------------------------------------------------------*
+*& TCode : ZO9_BOM_HDR
+*& Title : BOM Produced Report
+*&---------------------------------------------------------------------*
+REPORT zpp_bom_hdr.
+
+TABLES: mara, t001w.
+
+*----------------------------------------------------------------------*
+* Types
+*----------------------------------------------------------------------*
+TYPES: BEGIN OF ty_mast,
+         mandt TYPE mandt,
+         matnr TYPE matnr,
+         werks TYPE werks_d,
+         stlan TYPE stlan,
+         stlnr TYPE stnum,
+         stlal TYPE staln,
+       END OF ty_mast,
+
+       BEGIN OF ty_stko,
+         stlty TYPE stlty,
+         stlnr TYPE stnum,
+         stlal TYPE staln,
+         datuv TYPE datuv,
+         loekz TYPE loekz,
+         bmein TYPE meins,
+         bmeng TYPE bmeng,
+         stlst TYPE stlst,
+       END OF ty_stko,
+
+       BEGIN OF ty_makt,
+         matnr TYPE matnr,
+         maktx TYPE maktx,
+       END OF ty_makt,
+
+       BEGIN OF ty_t006,
+         msehi TYPE msehi,
+         dimid TYPE dimid,
+         zaehl TYPE dzaehl,
+         nennr TYPE nennr,
+       END OF ty_t006,
+
+       BEGIN OF ty_output,
+         werks  TYPE werks_d,
+         matnr  TYPE matnr,
+         maktx  TYPE maktx,
+         stlty  TYPE stlty,
+         stlnr  TYPE stnum,
+         stlal  TYPE staln,
+         bmein  TYPE meins,
+         bmeng  TYPE bmeng,
+         qty_mt TYPE p LENGTH 13 DECIMALS 3,
+         stlst  TYPE stlst,
+         datuv  TYPE datuv,
+         loekz  TYPE loekz,
+       END OF ty_output.
+
+*----------------------------------------------------------------------*
+* Data
+*----------------------------------------------------------------------*
+DATA: gt_mast   TYPE STANDARD TABLE OF ty_mast,
+      gt_stko   TYPE SORTED TABLE OF ty_stko
+                     WITH NON-UNIQUE KEY stlnr stlal,
+      gt_makt   TYPE SORTED TABLE OF ty_makt
+                     WITH NON-UNIQUE KEY matnr,
+      gt_t006   TYPE SORTED TABLE OF ty_t006
+                     WITH NON-UNIQUE KEY msehi,
+      gt_output TYPE STANDARD TABLE OF ty_output.
+
+DATA: gt_fieldcat TYPE slis_t_fieldcat_alv,
+      gs_fieldcat TYPE slis_fieldcat_alv,
+      gs_layout   TYPE slis_layout_alv,
+      gt_sort     TYPE slis_t_sortinfo_alv,
+      gs_sort     TYPE slis_sortinfo_alv,
+      gv_repid    TYPE sy-repid.
+
+*----------------------------------------------------------------------*
+* Selection Screen
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  SELECT-OPTIONS: s_matnr FOR mara-matnr,
+                  s_werks FOR t001w-werks.
+  PARAMETERS:     p_file  AS CHECKBOX DEFAULT space.
+SELECTION-SCREEN END OF BLOCK b1.
+
+*----------------------------------------------------------------------*
+INITIALIZATION.
+  gv_repid = sy-repid.
+
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN.
+  PERFORM validate_selection.
+
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+  PERFORM fetch_data.
+  PERFORM process_data.
+
+*----------------------------------------------------------------------*
+END-OF-SELECTION.
+  IF gt_output IS INITIAL.
+    MESSAGE s003(zpp) DISPLAY LIKE 'E'.
+    RETURN.
+  ENDIF.
+
+  IF p_file = abap_true.
+    PERFORM generate_csv.
+  ENDIF.
+
+  PERFORM display_alv.
+
+*&---------------------------------------------------------------------*
+*& Form VALIDATE_SELECTION
+*&---------------------------------------------------------------------*
+FORM validate_selection.
+
+  DATA: lv_matnr TYPE matnr,
+        lv_mtart TYPE mtart,
+        lv_werks TYPE werks_d.
+
+  IF s_matnr[] IS NOT INITIAL.
+    LOOP AT s_matnr WHERE sign   = 'I'
+                      AND option = 'EQ'.
+
+      CALL FUNCTION 'CONVERSION_EXIT_MATN1_INPUT'
+        EXPORTING
+          input  = s_matnr-low
+        IMPORTING
+          output = s_matnr-low
+        EXCEPTIONS
+          OTHERS = 1.
+
+      SELECT SINGLE matnr mtart
+        INTO (lv_matnr, lv_mtart)
+        FROM mara
+        WHERE matnr = s_matnr-low.
+
+      IF sy-subrc <> 0.
+        MESSAGE e001(zpp) WITH s_matnr-low.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+  IF s_werks[] IS NOT INITIAL.
+    LOOP AT s_werks WHERE sign   = 'I'
+                      AND option = 'EQ'.
+
+      SELECT SINGLE werks
+        INTO lv_werks
+        FROM t001w
+        WHERE werks = s_werks-low.
+
+      IF sy-subrc <> 0.
+        MESSAGE e002(zpp) WITH s_werks-low.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form FETCH_DATA
+*&---------------------------------------------------------------------*
+FORM fetch_data.
+
+  DATA: lt_bmein TYPE STANDARD TABLE OF meins.
+
+  SELECT mandt matnr werks stlan stlnr stlal
+    INTO TABLE gt_mast
+    FROM mast
+    WHERE matnr IN s_matnr
+      AND werks IN s_werks.
+
+  IF gt_mast IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  SELECT matnr maktx
+    INTO TABLE gt_makt
+    FROM makt
+    FOR ALL ENTRIES IN gt_mast
+    WHERE matnr = gt_mast-matnr
+      AND spras = 'E'.
+
+  SELECT stlty stlnr stlal datuv loekz bmein bmeng stlst
+    INTO TABLE gt_stko
+    FROM stko
+    FOR ALL ENTRIES IN gt_mast
+    WHERE stlnr = gt_mast-stlnr
+      AND stlal = gt_mast-stlal.
+
+  LOOP AT gt_stko ASSIGNING FIELD-SYMBOL(<fs_stko>).
+    APPEND <fs_stko>-bmein TO lt_bmein.
+  ENDLOOP.
+  APPEND 'MT' TO lt_bmein.
+  SORT lt_bmein.
+  DELETE ADJACENT DUPLICATES FROM lt_bmein.
+
+  IF lt_bmein IS NOT INITIAL.
+    SELECT msehi dimid zaehl nennr
+      INTO TABLE gt_t006
+      FROM t006
+      FOR ALL ENTRIES IN lt_bmein
+      WHERE msehi = lt_bmein-table_line.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form PROCESS_DATA
+*&---------------------------------------------------------------------*
+FORM process_data.
+
+  DATA: ls_output   TYPE ty_output,
+        ls_makt     TYPE ty_makt,
+        ls_t006_uom TYPE ty_t006,
+        ls_t006_mt  TYPE ty_t006,
+        lv_qty_kg   TYPE f,
+        lv_qty_mt   TYPE f.
+
+  READ TABLE gt_t006 INTO ls_t006_mt
+    WITH KEY msehi = 'MT'.
+
+  LOOP AT gt_mast ASSIGNING FIELD-SYMBOL(<fs_mast>).
+
+    LOOP AT gt_stko ASSIGNING FIELD-SYMBOL(<fs_stko>)
+         WHERE stlnr = <fs_mast>-stlnr
+           AND stlal = <fs_mast>-stlal.
+
+      CLEAR ls_output.
+
+      READ TABLE gt_makt INTO ls_makt
+        WITH KEY matnr = <fs_mast>-matnr.
+
+      ls_output-werks = <fs_mast>-werks.
+      ls_output-matnr = <fs_mast>-matnr.
+      ls_output-maktx = ls_makt-maktx.
+      ls_output-stlty = <fs_stko>-stlty.
+      ls_output-stlnr = <fs_mast>-stlnr.
+      ls_output-stlal = <fs_mast>-stlal.
+      ls_output-bmein = <fs_stko>-bmein.
+      ls_output-bmeng = <fs_stko>-bmeng.
+      ls_output-stlst = <fs_stko>-stlst.
+      ls_output-datuv = <fs_stko>-datuv.
+      ls_output-loekz = <fs_stko>-loekz.
+
+      CLEAR: lv_qty_kg, lv_qty_mt, ls_output-qty_mt.
+
+      READ TABLE gt_t006 INTO ls_t006_uom
+        WITH KEY msehi = <fs_stko>-bmein.
+
+      IF sy-subrc = 0 AND ls_t006_uom-dimid = 'MASS'.
+
+        CASE <fs_stko>-bmein.
+
+          WHEN 'MT'.
+            ls_output-qty_mt = <fs_stko>-bmeng.
+
+          WHEN 'KG'.
+            IF ls_t006_mt-zaehl <> 0.
+              lv_qty_mt = <fs_stko>-bmeng *
+                          ( ls_t006_mt-nennr / ls_t006_mt-zaehl ).
+              ls_output-qty_mt = lv_qty_mt.
+            ENDIF.
+
+          WHEN 'LB'.
+            IF ls_t006_uom-nennr <> 0 AND ls_t006_mt-zaehl <> 0.
+              lv_qty_kg = <fs_stko>-bmeng *
+                          ( ls_t006_uom-zaehl / ls_t006_uom-nennr ).
+              lv_qty_mt = lv_qty_kg *
+                          ( ls_t006_mt-nennr / ls_t006_mt-zaehl ).
+              ls_output-qty_mt = lv_qty_mt.
+            ENDIF.
+
+          WHEN OTHERS.
+            IF ls_t006_uom-nennr <> 0 AND ls_t006_mt-zaehl <> 0.
+              lv_qty_kg = <fs_stko>-bmeng *
+                          ( ls_t006_uom-zaehl / ls_t006_uom-nennr ).
+              lv_qty_mt = lv_qty_kg *
+                          ( ls_t006_mt-nennr / ls_t006_mt-zaehl ).
+              ls_output-qty_mt = lv_qty_mt.
+            ENDIF.
+
+        ENDCASE.
+
+      ELSE.
+        CLEAR ls_output-qty_mt.
+      ENDIF.
+
+      APPEND ls_output TO gt_output.
+
+    ENDLOOP.
+  ENDLOOP.
+
+  SORT gt_output BY werks matnr stlnr.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form GENERATE_CSV
+*&---------------------------------------------------------------------*
+FORM generate_csv.
+
+  DATA: lv_filepath TYPE string,
+        lv_line     TYPE string,
+        lv_date(8)  TYPE c,
+        lv_time(6)  TYPE c,
+        lv_bmeng    TYPE string,
+        lv_qty_mt   TYPE string,
+        lv_datuv    TYPE string.
+
+  lv_date = sy-datum.
+  lv_time = sy-uzeit.
+
+  CONCATENATE '/mnt/edifiles/In_STKO_' lv_date '_' lv_time '.csv'
+    INTO lv_filepath.
+
+  OPEN DATASET lv_filepath FOR OUTPUT IN TEXT MODE
+       ENCODING DEFAULT.
+
+  IF sy-subrc <> 0.
+    MESSAGE |Error opening file: { lv_filepath }| TYPE 'S' DISPLAY LIKE 'E'.
+    RETURN.
+  ENDIF.
+
+  CONCATENATE
+    'Site'
+    'SourceID'
+    'BOMCategory'
+    'AlternativeBOM'
+    'BOMProducedUOM'
+    'BillofMaterial'
+    'Quantity'
+    'QuantityinMT'
+    'BOMStatus'
+    'ValidFrom'
+    'DeletionFlag'
+    INTO lv_line SEPARATED BY ','.
+  TRANSFER lv_line TO lv_filepath.
+
+  LOOP AT gt_output ASSIGNING FIELD-SYMBOL(<fs_out>).
+
+    CLEAR lv_line.
+
+    lv_bmeng  = <fs_out>-bmeng.
+    CONDENSE lv_bmeng NO-GAPS.
+
+    lv_qty_mt = <fs_out>-qty_mt.
+    CONDENSE lv_qty_mt NO-GAPS.
+
+    lv_datuv = <fs_out>-datuv.
+    CONDENSE lv_datuv NO-GAPS.
+
+    CONCATENATE
+      <fs_out>-werks
+      sy-mandt
+      <fs_out>-stlty
+      <fs_out>-stlal
+      <fs_out>-bmein
+      <fs_out>-stlnr
+      lv_bmeng
+      lv_qty_mt
+      <fs_out>-stlst
+      lv_datuv
+      <fs_out>-loekz
+      INTO lv_line SEPARATED BY ','.
+
+    TRANSFER lv_line TO lv_filepath.
+
+  ENDLOOP.
+
+  CLOSE DATASET lv_filepath.
+
+  MESSAGE |CSV file generated: { lv_filepath }| TYPE 'S'.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form DISPLAY_ALV
+*&---------------------------------------------------------------------*
+FORM display_alv.
+
+  PERFORM build_fieldcat.
+  PERFORM build_sort.
+  PERFORM build_layout.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = gv_repid
+      is_layout          = gs_layout
+      it_fieldcat        = gt_fieldcat
+      it_sort            = gt_sort
+      i_save             = 'A'
+    TABLES
+      t_outtab           = gt_output
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+      WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form BUILD_FIELDCAT
+*&---------------------------------------------------------------------*
+FORM build_fieldcat.
+
+  REFRESH gt_fieldcat.
+
+  PERFORM add_field USING:
+     1  'WERKS'  'Plant'                       'Plant'             'Plnt'  4,
+     2  'MATNR'  'Material'                    'Material'          'Mat.'  18,
+     3  'MAKTX'  'Material Description'        'Material Desc.'    'Desc'  40,
+     4  'STLTY'  'BOM Category'                'BOM Cat.'          'BCat'  4,
+     5  'STLNR'  'BOM'                         'BOM'               'BOM'   8,
+     6  'STLAL'  'BOM Alternative'             'BOM Alt.'          'BAlt'  2,
+     7  'BMEIN'  'BOM Header Unit'             'BOM Hdr Unit'      'Unit'  5,
+     8  'BMENG'  'BOM Header Quantity'         'BOM Hdr Qty'       'Qty'   17,
+     9  'QTY_MT' 'BOM Header Quantity in MT'   'Qty in MT'         'QMT'   20,
+    10  'STLST'  'BOM Status'                  'BOM Status'        'Stat'  5,
+    11  'DATUV'  'Valid From'                   'Valid From'        'VFrm'  10,
+    12  'LOEKZ'  'Deletion Flag'               'Del. Flag'         'Del'   4.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form ADD_FIELD
+*&---------------------------------------------------------------------*
+FORM add_field USING pv_pos     TYPE i
+                     pv_fname   TYPE slis_fieldname
+                     pv_long    TYPE scrtext_l
+                     pv_medium  TYPE scrtext_m
+                     pv_short   TYPE scrtext_s
+                     pv_outlen  TYPE i.
+
+  CLEAR gs_fieldcat.
+  gs_fieldcat-col_pos   = pv_pos.
+  gs_fieldcat-fieldname = pv_fname.
+  gs_fieldcat-seltext_l = pv_long.
+  gs_fieldcat-seltext_m = pv_medium.
+  gs_fieldcat-seltext_s = pv_short.
+  gs_fieldcat-outputlen = pv_outlen.
+
+  CASE pv_fname.
+    WHEN 'BMENG' OR 'QTY_MT'.
+      gs_fieldcat-datatype = 'QUAN'.
+    WHEN 'DATUV'.
+      gs_fieldcat-datatype = 'DATS'.
+  ENDCASE.
+
+  APPEND gs_fieldcat TO gt_fieldcat.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form BUILD_SORT
+*&---------------------------------------------------------------------*
+FORM build_sort.
+
+  REFRESH gt_sort.
+
+  CLEAR gs_sort.
+  gs_sort-spos      = 1.
+  gs_sort-fieldname = 'WERKS'.
+  gs_sort-up        = abap_true.
+  APPEND gs_sort TO gt_sort.
+
+  CLEAR gs_sort.
+  gs_sort-spos      = 2.
+  gs_sort-fieldname = 'MATNR'.
+  gs_sort-up        = abap_true.
+  APPEND gs_sort TO gt_sort.
+
+  CLEAR gs_sort.
+  gs_sort-spos      = 3.
+  gs_sort-fieldname = 'STLNR'.
+  gs_sort-up        = abap_true.
+  APPEND gs_sort TO gt_sort.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form BUILD_LAYOUT
+*&---------------------------------------------------------------------*
+FORM build_layout.
+
+  CLEAR gs_layout.
+  gs_layout-colwidth_optimize = abap_true.
+  gs_layout-zebra             = abap_true.
+
+ENDFORM.
