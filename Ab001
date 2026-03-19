@@ -1,0 +1,48 @@
+netpr TYPE ekpo-netpr,          "Net Price
+       END OF ty_ekpo.
+
+To: 
+netpr TYPE ekpo-netpr,          "Net Price
+         bprme TYPE ekpo-bprme,          "Order Price Unit
+       END OF ty_ekpo.
+
+ty_output:
+
+bpmng      TYPE mseg-bpmng,       "GRN Quantity (Order Price Unit)
+         bprme      TYPE mseg-bprme,       "Unit of Measure (Order Price Unit)
+         ebeln      TYPE mseg-ebeln,       "PO Number
+         ebelp      TYPE mseg-ebelp,       "PO Item
+         netpr      TYPE ekpo-netpr,       "Net Price per Unit
+         po_bprme   TYPE ekpo-bprme,       "PO Order Price Unit
+         waers      TYPE ekko-waers,       "Currency
+
+
+
+
+SELECT mblnr mjahr zeile bwart matnr werks lifnr
+         menge meins ebeln ebelp budat_mkpf AS budat
+to:
+
+SELECT mblnr mjahr zeile bwart matnr werks lifnr
+         bpmng bprme ebeln ebelp budat_mkpf AS budat
+
+
+SELECT ebeln
+         ebelp
+         netpr
+    FROM ekpo
+    INTO TABLE gt_ekpo
+    WHERE ebeln IN lr_ebeln.
+
+to:
+
+
+SELECT ebeln
+         ebelp
+         netpr
+         bprme
+    FROM ekpo
+    INTO TABLE gt_ekpo
+    WHERE ebeln IN lr_ebeln.
+
+
