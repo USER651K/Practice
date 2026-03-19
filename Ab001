@@ -1,3 +1,11 @@
+menge TYPE mseg-menge,          "Quantity
+         meins TYPE mseg-meins,          "Base Unit of Measure
+to:
+
+bpmng TYPE mseg-bpmng,          "Quantity in Order Price Unit
+         bprme TYPE mseg-bprme,          "Order Price Unit
+
+
 netpr TYPE ekpo-netpr,          "Net Price
        END OF ty_ekpo.
 
@@ -46,3 +54,61 @@ SELECT ebeln
     WHERE ebeln IN lr_ebeln.
 
 
+gs_output-total_amt = gs_output-netpr * gs_output-menge.
+to:
+gs_output-total_amt = gs_output-netpr * gs_output-bpmng.
+
+gs_output-total_amt = gs_output-netpr * gs_output-wkurs * gs_output-menge.
+to:
+gs_output-total_amt = gs_output-netpr * gs_output-wkurs * gs_output-bpmng.
+
+gs_output-total_amt = ( gs_output-netpr / abs( gs_output-wkurs ) ) * gs_output-menge.
+
+to
+gs_output-total_amt = ( gs_output-netpr / abs( gs_output-wkurs ) ) * gs_output-bpmng.
+
+
+go_column = go_columns->get_column( 'MENGE' ).
+          go_column->set_short_text( 'Quantity' ).
+          go_column->set_medium_text( 'GRN Quantity' ).
+          go_column->set_long_text( 'GRN Quantity' ).
+
+          go_column = go_columns->get_column( 'MEINS' ).
+          go_column->set_short_text( 'UOM' ).
+          go_column->set_medium_text( 'UOM' ).
+          go_column->set_long_text( 'Unit of Measure' ).
+
+to:
+
+go_column = go_columns->get_column( 'BPMNG' ).
+          go_column->set_short_text( 'Quantity' ).
+          go_column->set_medium_text( 'GRN Quantity' ).
+          go_column->set_long_text( 'GRN Quantity (Order Price Unit)' ).
+
+          go_column = go_columns->get_column( 'BPRME' ).
+          go_column->set_short_text( 'UOM' ).
+          go_column->set_medium_text( 'Price Unit' ).
+          go_column->set_long_text( 'Order Price Unit' ).
+
+
+go_column = go_columns->get_column( 'NETPR' ).
+          go_column->set_short_text( 'Net Price' ).
+          go_column->set_medium_text( 'Net Price' ).
+          go_column->set_long_text( 'Net Price per Unit' ).
+
+          go_column = go_columns->get_column( 'WAERS' ).
+
+
+to:
+
+go_column = go_columns->get_column( 'NETPR' ).
+          go_column->set_short_text( 'Net Price' ).
+          go_column->set_medium_text( 'Net Price' ).
+          go_column->set_long_text( 'Net Price per Unit' ).
+
+          go_column = go_columns->get_column( 'PO_BPRME' ).
+          go_column->set_short_text( 'PO PrUnit' ).
+          go_column->set_medium_text( 'PO Price Unit' ).
+          go_column->set_long_text( 'PO Order Price Unit' ).
+
+          go_column = go_columns->get_column( 'WAERS' ).
