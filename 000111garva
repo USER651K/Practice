@@ -244,3 +244,95 @@ FORM zbefore_save.
   ENDLOOP.
 
 ENDFORM.
+
+
+
+
+
+
+
+FORM zbefore_save.
+
+  FIELD-SYMBOLS: <fs>  TYPE any,
+                 <fv>  TYPE any.
+
+  DATA: lv_plant TYPE marc-werks,
+        lv_matnr TYPE marc-matnr,
+        lv_matkl TYPE mara-matkl,
+        lv_extwg TYPE mara-extwg,
+        lv_meins TYPE mara-meins,
+        lv_kosch TYPE mara-kosch,
+        lv_zp2p  TYPE mara-zp2pdeqs,
+        lv_maktx TYPE makt-maktx.
+
+  LOOP AT total ASSIGNING <fs>.
+
+*-- Read plant & material from the row
+    ASSIGN COMPONENT 'PLANT_CODE' OF STRUCTURE <fs> TO FIELD-SYMBOL(<pl>).
+    CHECK sy-subrc = 0 AND <pl> IS NOT INITIAL.
+
+    ASSIGN COMPONENT 'MATERIAL_CODE' OF STRUCTURE <fs> TO FIELD-SYMBOL(<mt>).
+    CHECK sy-subrc = 0 AND <mt> IS NOT INITIAL.
+
+    lv_plant = <pl>.
+    lv_matnr = <mt>.
+
+*-- Validate MARC
+    SELECT SINGLE matnr FROM marc
+      INTO @DATA(lv_check)
+      WHERE matnr = @lv_matnr
+        AND werks = @lv_plant.
+    IF sy-subrc <> 0.
+      MESSAGE e398(00) WITH 'Material' lv_matnr
+                             'not in plant' lv_plant.
+    ENDIF.
+
+*-- Fetch from MARA
+    SELECT SINGLE matkl extwg meins kosch zp2pdeqs
+      FROM mara
+      INTO (lv_matkl, lv_extwg, lv_meins, lv_kosch, lv_zp2p)
+      WHERE matnr = lv_matnr.
+
+    IF sy-subrc = 0.
+      ASSIGN COMPONENT 'VARIETY' OF STRUCTURE <fs> TO <fv>.
+      IF sy-subrc = 0. <fv> = lv_matkl. ENDIF.
+
+      ASSIGN COMPONENT 'MAIN_VARIETY' OF STRUCTURE <fs> TO <fv>.
+      IF sy-subrc = 0. <fv> = lv_extwg. ENDIF.
+
+      ASSIGN COMPONENT 'UOM' OF STRUCTURE <fs> TO <fv>.
+      IF sy-subrc = 0. <fv> = lv_meins. ENDIF.
+
+      ASSIGN COMPONENT 'CATEGORY' OF STRUCTURE <fs> TO <fv>.
+      IF sy-subrc = 0. <fv> = lv_kosch. ENDIF.
+
+      ASSIGN COMPONENT 'COMMON_MATERIAL' OF STRUCTURE <fs> TO <fv>.
+      IF sy-subrc = 0. <fv> = lv_zp2p. ENDIF.
+    ENDIF.
+
+*-- Fetch description from MAKT
+    SELECT SINGLE maktx FROM makt
+      INTO lv_maktx
+      WHERE matnr = lv_matnr
+        AND spras = sy-langu.
+    IF sy-subrc = 0.
+      ASSIGN COMPONENT 'MATERIAL_DESCRIPTION' OF STRUCTURE <fs> TO <fv>.
+      IF sy-subrc = 0. <fv> = lv_maktx. ENDIF.
+    ENDIF.
+
+*-- Audit fields
+    ASSIGN COMPONENT 'CREATED_BY' OF STRUCTURE <fs> TO <fv>.
+    IF sy-subrc = 0 AND <fv> IS INITIAL. <fv> = sy-uname. ENDIF.
+
+    ASSIGN COMPONENT 'CREATED_ON' OF STRUCTURE <fs> TO <fv>.
+    IF sy-subrc = 0 AND <fv> IS INITIAL. <fv> = sy-datum. ENDIF.
+
+    ASSIGN COMPONENT 'CHANGED_BY' OF STRUCTURE <fs> TO <fv>.
+    IF sy-subrc = 0. <fv> = sy-uname. ENDIF.
+
+    ASSIGN COMPONENT 'CHANGED_ON' OF STRUCTURE <fs> TO <fv>.
+    IF sy-subrc = 0. <fv> = sy-datum. ENDIF.
+
+  ENDLOOP.
+
+ENDFORM.
