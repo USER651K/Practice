@@ -1,0 +1,120 @@
+*&---------------------------------------------------------------------*
+*& Form ZCREATED_ENTRY  (Event 05 - New Entry)
+*&---------------------------------------------------------------------*
+FORM zcreated_entry.
+
+  IF zuk_dashboard-created_on IS INITIAL.
+    zuk_dashboard-created_on = sy-datum.
+  ENDIF.
+
+  IF zuk_dashboard-created_by IS INITIAL.
+    zuk_dashboard-created_by = sy-uname.
+  ENDIF.
+
+  zuk_dashboard-changed_on = sy-datum.
+  zuk_dashboard-changed_by = sy-uname.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form ZBEFORE_SAVE  (Event 01 - Before Save)
+*&---------------------------------------------------------------------*
+FORM zbefore_save.
+
+  DATA: ls_total LIKE LINE OF total.
+
+  LOOP AT total INTO ls_total.
+
+    CHECK ls_total-plant_code    IS NOT INITIAL
+      AND ls_total-material_code IS NOT INITIAL.
+
+*-- Validate material extended in plant (MARC)
+    SELECT SINGLE matnr FROM marc
+      INTO @DATA(lv_matnr)
+      WHERE matnr = ls_total-material_code
+        AND werks = ls_total-plant_code.
+
+    IF sy-subrc <> 0.
+      MESSAGE e398(00) WITH 'Material' ls_total-material_code
+                             'not extended in plant' ls_total-plant_code.
+    ENDIF.
+
+*-- Auto-fetch from MARA
+    SELECT SINGLE matkl extwg meins kosch zp2pdeqs
+      FROM mara
+      INTO ( ls_total-variety,
+             ls_total-main_variety,
+             ls_total-uom,
+             ls_total-category,
+             ls_total-common_material )
+      WHERE matnr = ls_total-material_code.
+
+*-- Auto-fetch description from MAKT
+    SELECT SINGLE maktx FROM makt
+      INTO ls_total-material_descrip
+      WHERE matnr = ls_total-material_code
+        AND spras = sy-langu.
+
+*-- Audit trail
+    IF ls_total-created_by IS INITIAL.
+      ls_total-created_by = sy-uname.
+      ls_total-created_on = sy-datum.
+    ENDIF.
+
+    ls_total-changed_by = sy-uname.
+    ls_total-changed_on = sy-datum.
+
+    MODIFY total FROM ls_total.
+
+  ENDLOOP.
+
+ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form ZDISPLAY_ENTRY  (Event 19 - Field Attributes)
+*&---------------------------------------------------------------------*
+FORM zdisplay_entry.
+
+  LOOP AT x_namtab.
+
+    CASE x_namtab-viewfield.
+*-- Auto-fetched fields → read-only
+      WHEN 'MATERIAL_DESCRIP'.
+        x_namtab-readonly = 'R'.
+      WHEN 'CATEGORY'.
+        x_namtab-readonly = 'R'.
+      WHEN 'VARIETY'.
+        x_namtab-readonly = 'R'.
+      WHEN 'MAIN_VARIETY'.
+        x_namtab-readonly = 'R'.
+      WHEN 'COMMON_MATERIAL'.
+        x_namtab-readonly = 'R'.
+      WHEN 'UOM'.
+        x_namtab-readonly = 'R'.
+*-- Audit fields → read-only
+      WHEN 'CREATED_BY'.
+        x_namtab-readonly = 'R'.
+      WHEN 'CREATED_ON'.
+        x_namtab-readonly = 'R'.
+      WHEN 'CHANGED_BY'.
+        x_namtab-readonly = 'R'.
+      WHEN 'CHANGED_ON'.
+        x_namtab-readonly = 'R'.
+    ENDCASE.
+
+    MODIFY x_namtab.
+
+  ENDLOOP.
+
+ENDFORM.
