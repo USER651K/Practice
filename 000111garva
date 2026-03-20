@@ -1,3 +1,93 @@
+
+FORM zbefore_save.
+
+  FIELD-SYMBOLS: <fs>      TYPE any,
+                 <ls_dash> TYPE zuk_dashboard.
+
+  DATA: lv_plant TYPE marc-werks,
+        lv_matnr TYPE marc-matnr,
+        lv_matkl TYPE mara-matkl,
+        lv_extwg TYPE mara-extwg,
+        lv_meins TYPE mara-meins,
+        lv_kosch TYPE mara-kosch,
+        lv_zp2p  TYPE mara-zp2pdeqs,
+        lv_maktx TYPE makt-maktx.
+
+  LOOP AT total ASSIGNING <fs>.
+
+*-- Cast flat line to table structure
+    ASSIGN <fs> TO <ls_dash> CASTING TYPE zuk_dashboard.
+    CHECK sy-subrc = 0.
+
+    CHECK <ls_dash>-plant_code    IS NOT INITIAL
+      AND <ls_dash>-material_code IS NOT INITIAL.
+
+*-- Validate MARC
+    lv_plant = <ls_dash>-plant_code.
+    lv_matnr = <ls_dash>-material_code.
+
+    SELECT SINGLE matnr FROM marc
+      INTO @DATA(lv_check)
+      WHERE matnr = @lv_matnr
+        AND werks = @lv_plant.
+    IF sy-subrc <> 0.
+      MESSAGE e398(00) WITH 'Material' lv_matnr
+                             'not in plant' lv_plant.
+    ENDIF.
+
+*-- Fetch from MARA
+    SELECT SINGLE matkl extwg meins kosch zp2pdeqs
+      FROM mara
+      INTO (lv_matkl, lv_extwg, lv_meins, lv_kosch, lv_zp2p)
+      WHERE matnr = lv_matnr.
+    IF sy-subrc = 0.
+      <ls_dash>-variety          = lv_matkl.
+      <ls_dash>-main_variety     = lv_extwg.
+      <ls_dash>-uom              = lv_meins.
+      <ls_dash>-category         = lv_kosch.
+      <ls_dash>-common_material  = lv_zp2p.
+    ENDIF.
+
+*-- Fetch description from MAKT
+    SELECT SINGLE maktx FROM makt
+      INTO lv_maktx
+      WHERE matnr = lv_matnr
+        AND spras = sy-langu.
+    IF sy-subrc = 0.
+      <ls_dash>-material_description = lv_maktx.
+    ENDIF.
+
+*-- Audit fields
+    IF <ls_dash>-created_by IS INITIAL.
+      <ls_dash>-created_by = sy-uname.
+      <ls_dash>-created_on = sy-datum.
+    ENDIF.
+    <ls_dash>-changed_by = sy-uname.
+    <ls_dash>-changed_on = sy-datum.
+
+  ENDLOOP.
+
+ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 *&---------------------------------------------------------------------*
 *& Form ZCREATED_ENTRY  (Event 05 - New Entry)
 *&---------------------------------------------------------------------*
