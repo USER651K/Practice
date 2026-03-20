@@ -177,3 +177,70 @@ FORM zbefore_save.
   ENDLOOP.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+FORM zbefore_save.
+
+  DATA: ls_dash TYPE zuk_dashboard.
+
+  LOOP AT total ASSIGNING FIELD-SYMBOL(<fs>).
+
+    MOVE-CORRESPONDING <fs> TO ls_dash.
+
+    CHECK ls_dash-plant_code    IS NOT INITIAL
+      AND ls_dash-material_code IS NOT INITIAL.
+
+*-- Validate material extended in plant
+    SELECT SINGLE matnr FROM marc
+      INTO @DATA(lv_matnr)
+      WHERE matnr = @ls_dash-material_code
+        AND werks = @ls_dash-plant_code.
+
+    IF sy-subrc <> 0.
+      MESSAGE e398(00) WITH 'Material' ls_dash-material_code
+                             'not extended in plant' ls_dash-plant_code.
+    ENDIF.
+
+*-- Auto-fetch from MARA
+    SELECT SINGLE matkl extwg meins kosch zp2pdeqs
+      FROM mara
+      INTO ( ls_dash-variety,
+             ls_dash-main_variety,
+             ls_dash-uom,
+             ls_dash-category,
+             ls_dash-common_material )
+      WHERE matnr = ls_dash-material_code.
+
+*-- Auto-fetch description from MAKT
+    SELECT SINGLE maktx FROM makt
+      INTO ls_dash-material_description
+      WHERE matnr = ls_dash-material_code
+        AND spras = sy-langu.
+
+*-- Audit trail
+    IF ls_dash-created_by IS INITIAL.
+      ls_dash-created_by = sy-uname.
+      ls_dash-created_on = sy-datum.
+    ENDIF.
+    ls_dash-changed_by = sy-uname.
+    ls_dash-changed_on = sy-datum.
+
+*-- Write back to total
+    MOVE-CORRESPONDING ls_dash TO <fs>.
+
+  ENDLOOP.
+
+ENDFORM.
