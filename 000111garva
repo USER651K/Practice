@@ -454,3 +454,53 @@ IF sy-subrc = 0.
       <ls_dash>-category         = lv_kosch.
       <ls_dash>-common_material  = lv_zp2p.
     ENDIF.
+
+
+
+
+
+
+
+
+
+
+*-- Variety: code + description
+      DATA: lv_wgbez TYPE t023t-wgbez.
+      SELECT SINGLE wgbez FROM t023t
+        INTO lv_wgbez
+        WHERE spras = sy-langu
+          AND matkl = lv_matkl.
+      IF sy-subrc = 0.
+        CONCATENATE lv_matkl '-' lv_wgbez INTO <ls_dash>-variety SEPARATED BY space.
+      ELSE.
+        <ls_dash>-variety = lv_matkl.
+      ENDIF.
+
+*-- Main Variety: code + description
+      DATA: lv_ewbez TYPE twewt-ewbez.
+      SELECT SINGLE ewbez FROM twewt
+        INTO lv_ewbez
+        WHERE spras = sy-langu
+          AND extwg = lv_extwg.
+      IF sy-subrc = 0.
+        CONCATENATE lv_extwg '-' lv_ewbez INTO <ls_dash>-main_variety SEPARATED BY space.
+      ELSE.
+        <ls_dash>-main_variety = lv_extwg.
+      ENDIF.
+```
+
+**Warning:** VARIETY is CHAR(9) and MAIN_VARIETY is CHAR(18) — these are too short for code + description. The text will get truncated. You should increase the field lengths in SE11 for ZUK_DASHBOARD (e.g., VARIETY to CHAR(40), MAIN_VARIETY to CHAR(40)), then activate and regenerate the TMG.
+
+---
+
+**Issue 2: Auto-populate fields immediately when user enters plant + material (not just on save)**
+
+This requires adding a **PAI module** on the TMG screen. Here's how:
+
+**Step 1:** Find your TMG screen number. Go to SM30 → ZUK_DASHBOARD → Utilities → Show Screen Number. Note the dynpro number (e.g., 0001).
+
+**Step 2:** Go to SE80 → Function Group → your TMG function group (find it via SE11 → ZUK_DASHBOARD → Utilities → Table Maintenance Generator). Open the screen (dynpro).
+
+**Step 3:** In the **PAI flow logic**, add this line just before the existing MODULE statements:
+```
+MODULE zfetch_fields ON REQUEST.
