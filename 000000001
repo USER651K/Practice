@@ -99,3 +99,46 @@ CLEAR: gs_alv-qty_base, gs_alv-qty_mt, ls_t006_cmp, ls_t006_bas.
 *       DIMID <> MASS: qty_base = MENGE, qty_mt = blank
         gs_alv-qty_base = gs_stpo-menge.
       ENDIF.
+
+
+
+
+
+
+
+
+CLEAR: lv_out_base, lv_out_mt.
+
+*       Convert STPO-MEINS → MARA-MEINS (Component Qty in Base UOM)
+        CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+          EXPORTING
+            i_matnr              = gs_stpo-idnrk
+            i_in_me              = gs_stpo-meins
+            i_out_me             = gs_alv-base_uom
+            i_menge              = gs_stpo-menge
+          IMPORTING
+            e_menge              = lv_out_base
+          EXCEPTIONS
+            error_in_application = 1
+            error                = 2
+            OTHERS               = 3.
+        IF sy-subrc = 0.
+          gs_alv-qty_base = lv_out_base.
+        ENDIF.
+
+*       Convert STPO-MEINS → MT (Component Qty in MT)
+        CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+          EXPORTING
+            i_matnr              = gs_stpo-idnrk
+            i_in_me              = gs_stpo-meins
+            i_out_me             = 'MT'
+            i_menge              = gs_stpo-menge
+          IMPORTING
+            e_menge              = lv_out_mt
+          EXCEPTIONS
+            error_in_application = 1
+            error                = 2
+            OTHERS               = 3.
+        IF sy-subrc = 0.
+          gs_alv-qty_mt = lv_out_mt.
+        ENDIF.
