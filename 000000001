@@ -1,0 +1,41 @@
+CASE gs_stpo-meins.
+
+          WHEN 'MT'.
+            gs_alv-qty_base = gs_stpo-menge.
+            gs_alv-qty_mt   = gs_stpo-menge.
+
+          WHEN 'KG'.
+            IF gs_alv-qty_base IS INITIAL.
+              gs_alv-qty_base = gs_stpo-menge.
+            ENDIF.
+            IF ls_t006_mt-zaehl <> 0.
+              lv_qty_mt = gs_stpo-menge * ls_t006_mt-nennr
+                          / ls_t006_mt-zaehl.
+              gs_alv-qty_mt = lv_qty_mt.
+            ENDIF.
+
+          WHEN 'LB'.
+            IF ls_t006_cmp-nennr <> 0.
+              lv_qty_kg = gs_stpo-menge * ls_t006_cmp-zaehl
+                          / ls_t006_cmp-nennr.
+              gs_alv-qty_base = lv_qty_kg.
+            ENDIF.
+            IF ls_t006_cmp-nennr <> 0 AND ls_t006_mt-zaehl <> 0.
+              lv_qty_mt = lv_qty_kg * ls_t006_mt-nennr
+                          / ls_t006_mt-zaehl.
+              gs_alv-qty_mt = lv_qty_mt.
+            ENDIF.
+
+          WHEN OTHERS.
+            IF ls_t006_cmp-nennr <> 0.
+              lv_qty_kg = gs_stpo-menge * ls_t006_cmp-zaehl
+                          / ls_t006_cmp-nennr.
+              gs_alv-qty_base = lv_qty_kg.
+            ENDIF.
+            IF ls_t006_cmp-nennr <> 0 AND ls_t006_mt-zaehl <> 0.
+              lv_qty_mt = lv_qty_kg * ls_t006_mt-nennr
+                          / ls_t006_mt-zaehl.
+              gs_alv-qty_mt = lv_qty_mt.
+            ENDIF.
+
+        ENDCASE.
