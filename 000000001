@@ -39,3 +39,63 @@ CASE gs_stpo-meins.
             ENDIF.
 
         ENDCASE.
+
+
+
+
+
+
+
+
+
+
+CLEAR: gs_alv-qty_base, gs_alv-qty_mt, ls_t006_cmp, ls_t006_bas.
+
+      READ TABLE gt_t006 INTO ls_t006_cmp
+           WITH KEY msehi = gs_stpo-meins
+           BINARY SEARCH.
+
+      READ TABLE gt_t006 INTO ls_t006_bas
+           WITH KEY msehi = gs_alv-base_uom
+           BINARY SEARCH.
+
+      IF ls_t006_cmp-dimid = 'MASS' AND ls_t006_bas-dimid = 'MASS'.
+
+*       Convert STPO-MEINS → MARA-MEINS (Component Qty in Base UOM)
+        CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+          EXPORTING
+            i_matnr              = gs_stpo-idnrk
+            i_in_me              = gs_stpo-meins
+            i_out_me             = gs_alv-base_uom
+            i_menge              = gs_stpo-menge
+          IMPORTING
+            e_menge              = gs_alv-qty_base
+          EXCEPTIONS
+            error_in_application = 1
+            error                = 2
+            OTHERS               = 3.
+        IF sy-subrc <> 0.
+          CLEAR gs_alv-qty_base.
+        ENDIF.
+
+*       Convert STPO-MEINS → MT (Component Qty in MT)
+        CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+          EXPORTING
+            i_matnr              = gs_stpo-idnrk
+            i_in_me              = gs_stpo-meins
+            i_out_me             = 'MT'
+            i_menge              = gs_stpo-menge
+          IMPORTING
+            e_menge              = gs_alv-qty_mt
+          EXCEPTIONS
+            error_in_application = 1
+            error                = 2
+            OTHERS               = 3.
+        IF sy-subrc <> 0.
+          CLEAR gs_alv-qty_mt.
+        ENDIF.
+
+      ELSE.
+*       DIMID <> MASS: qty_base = MENGE, qty_mt = blank
+        gs_alv-qty_base = gs_stpo-menge.
+      ENDIF.
