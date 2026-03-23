@@ -426,3 +426,31 @@ FORM zbefore_save.
   ENDLOOP.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+IF sy-subrc = 0.
+*-- Variety: get description from T023T (text table)
+      SELECT SINGLE wgbez FROM t023t
+        INTO <ls_dash>-variety
+        WHERE spras = sy-langu
+          AND matkl = lv_matkl.
+
+*-- Main Variety: get description from TWEWT (text table)
+      SELECT SINGLE ewbez FROM twewt
+        INTO <ls_dash>-main_variety
+        WHERE spras = sy-langu
+          AND extwg = lv_extwg.
+
+      <ls_dash>-uom              = lv_meins.
+      <ls_dash>-category         = lv_kosch.
+      <ls_dash>-common_material  = lv_zp2p.
+    ENDIF.
