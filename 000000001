@@ -142,3 +142,22 @@ CLEAR: lv_out_base, lv_out_mt.
         IF sy-subrc = 0.
           gs_alv-qty_mt = lv_out_mt.
         ENDIF.
+
+
+
+
+
+
+***BOC--UJWAL--23.03.2026--Old single-SO validation replaced by new PO logic
+        IF vbkd-bstkd IS NOT INITIAL.
+          CLEAR: ls_vbkd,lv_message.
+          SELECT SINGLE * FROM vbkd INTO ls_vbkd
+            WHERE bstkd = vbkd-bstkd
+            AND   posnr = '000000'.
+          IF sy-subrc NE 0.
+            CONCATENATE 'Purchase Order' vbkd-bstkd 'does not exist'
+                         INTO lv_message SEPARATED BY space.
+            MESSAGE lv_message TYPE 'E'.
+          ENDIF.
+        ENDIF.
+***EOC--UJWAL--23.03.2026--Old single-SO validation replaced by new PO logic
