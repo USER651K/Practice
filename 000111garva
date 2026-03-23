@@ -504,3 +504,72 @@ This requires adding a **PAI module** on the TMG screen. Here's how:
 **Step 3:** In the **PAI flow logic**, add this line just before the existing MODULE statements:
 ```
 MODULE zfetch_fields ON REQUEST.
+
+
+
+
+
+
+
+
+MODULE zfetch_fields INPUT.
+
+  DATA: lv_matkl TYPE mara-matkl,
+        lv_extwg TYPE mara-extwg,
+        lv_meins TYPE mara-meins,
+        lv_kosch TYPE mara-kosch,
+        lv_zp2p  TYPE mara-zp2pdeqs,
+        lv_maktx TYPE makt-maktx,
+        lv_wgbez TYPE t023t-wgbez,
+        lv_ewbez TYPE twewt-ewbez.
+
+  CHECK zuk_dashboard-plant_code    IS NOT INITIAL
+    AND zuk_dashboard-material_code IS NOT INITIAL.
+
+*-- Validate MARC
+  SELECT SINGLE matnr FROM marc
+    INTO @DATA(lv_check)
+    WHERE matnr = @zuk_dashboard-material_code
+      AND werks = @zuk_dashboard-plant_code.
+  CHECK sy-subrc = 0.
+
+*-- Fetch from MARA
+  SELECT SINGLE matkl extwg meins kosch zp2pdeqs
+    FROM mara
+    INTO (lv_matkl, lv_extwg, lv_meins, lv_kosch, lv_zp2p)
+    WHERE matnr = zuk_dashboard-material_code.
+  IF sy-subrc = 0.
+*-- Variety
+    SELECT SINGLE wgbez FROM t023t
+      INTO lv_wgbez
+      WHERE spras = sy-langu
+        AND matkl = lv_matkl.
+    IF sy-subrc = 0.
+      CONCATENATE lv_matkl '-' lv_wgbez INTO zuk_dashboard-variety SEPARATED BY space.
+    ELSE.
+      zuk_dashboard-variety = lv_matkl.
+    ENDIF.
+
+*-- Main Variety
+    SELECT SINGLE ewbez FROM twewt
+      INTO lv_ewbez
+      WHERE spras = sy-langu
+        AND extwg = lv_extwg.
+    IF sy-subrc = 0.
+      CONCATENATE lv_extwg '-' lv_ewbez INTO zuk_dashboard-main_variety SEPARATED BY space.
+    ELSE.
+      zuk_dashboard-main_variety = lv_extwg.
+    ENDIF.
+
+    zuk_dashboard-uom              = lv_meins.
+    zuk_dashboard-category         = lv_kosch.
+    zuk_dashboard-common_material  = lv_zp2p.
+  ENDIF.
+
+*-- Material description
+  SELECT SINGLE maktx FROM makt
+    INTO zuk_dashboard-material_description
+    WHERE matnr = zuk_dashboard-material_code
+      AND spras = sy-langu.
+
+ENDMODULE.
