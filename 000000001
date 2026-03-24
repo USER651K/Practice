@@ -161,3 +161,43 @@ CLEAR: lv_out_base, lv_out_mt.
           ENDIF.
         ENDIF.
 ***EOC--UJWAL--23.03.2026--Old single-SO validation replaced by new PO logic
+
+
+
+
+
+
+
+
+
+
+
+
+
+CLEAR: gs_alv-qty_mt, lv_out_menge.
+
+    IF gs_stko-bmein = 'MT'.
+      gs_alv-qty_mt = gs_stko-bmeng.
+    ELSE.
+      READ TABLE gt_t006 INTO ls_t006_uom
+           WITH KEY msehi = gs_stko-bmein
+           BINARY SEARCH.
+
+      IF sy-subrc = 0 AND ls_t006_uom-dimid = 'MASS'.
+        CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+          EXPORTING
+            i_matnr  = gs_mast-matnr
+            i_in_me  = gs_stko-bmein
+            i_out_me = 'MT'
+            i_menge  = gs_stko-bmeng
+          IMPORTING
+            e_menge  = lv_out_menge
+          EXCEPTIONS
+            error_in_application = 1
+            error                = 2
+            OTHERS               = 3.
+        IF sy-subrc = 0.
+          gs_alv-qty_mt = lv_out_menge.
+        ENDIF.
+      ENDIF.
+    ENDIF.
