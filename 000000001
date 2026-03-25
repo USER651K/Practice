@@ -201,3 +201,852 @@ CLEAR: gs_alv-qty_mt, lv_out_menge.
         ENDIF.
       ENDIF.
     ENDIF.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+REPORT zo9_rtg.
+
+TABLES: mara, t001w.
+
+TYPES: BEGIN OF ty_mkal,
+         matnr TYPE mkal-matnr,
+         werks TYPE mkal-werks,
+         verid TYPE mkal-verid,
+         plnty TYPE mkal-plnty,
+         plnnr TYPE mkal-plnnr,
+         alnal TYPE mkal-alnal,
+       END OF ty_mkal,
+
+       BEGIN OF ty_plko,
+         plnty    TYPE plko-plnty,
+         plnnr    TYPE plko-plnnr,
+         plnal    TYPE plko-plnal,
+         datuv    TYPE plko-datuv,
+         verwe    TYPE plko-verwe,
+         statu    TYPE plko-statu,
+         plnme    TYPE plko-plnme,
+         losvn    TYPE plko-losvn,
+         vagrp    TYPE plko-vagrp,
+         valid_to TYPE plko-valid_to,
+       END OF ty_plko,
+
+       BEGIN OF ty_plas,
+         plnty TYPE plas-plnty,
+         plnnr TYPE plas-plnnr,
+         plnal TYPE plas-plnal,
+         plnkn TYPE plas-plnkn,
+       END OF ty_plas,
+
+       BEGIN OF ty_plpo,
+         plnty TYPE plpo-plnty,
+         plnnr TYPE plpo-plnnr,
+         plnkn TYPE plpo-plnkn,
+         vornr TYPE plpo-vornr,
+         bmsch TYPE plpo-bmsch,
+         meinh TYPE plpo-meinh,
+         arbid TYPE plpo-arbid,
+         lar01 TYPE plpo-lar01,
+         vgw01 TYPE plpo-vgw01,
+         vge01 TYPE plpo-vge01,
+         lar02 TYPE plpo-lar02,
+         vgw02 TYPE plpo-vgw02,
+         vge02 TYPE plpo-vge02,
+         lar03 TYPE plpo-lar03,
+         vgw03 TYPE plpo-vgw03,
+         vge03 TYPE plpo-vge03,
+         lar04 TYPE plpo-lar04,
+         vgw04 TYPE plpo-vgw04,
+         vge04 TYPE plpo-vge04,
+         lar05 TYPE plpo-lar05,
+         vgw05 TYPE plpo-vgw05,
+         vge05 TYPE plpo-vge05,
+         lar06 TYPE plpo-lar06,
+         vgw06 TYPE plpo-vgw06,
+         vge06 TYPE plpo-vge06,
+       END OF ty_plpo,
+
+       BEGIN OF ty_crhd,
+         objid TYPE crhd-objid,
+         arbpl TYPE crhd-arbpl,
+       END OF ty_crhd,
+
+       BEGIN OF ty_crtx,
+         objid TYPE crtx-objid,
+         ktext TYPE crtx-ktext,
+       END OF ty_crtx,
+
+       BEGIN OF ty_makt,
+         matnr TYPE makt-matnr,
+         maktx TYPE makt-maktx,
+       END OF ty_makt,
+
+       BEGIN OF ty_alv,
+         werks    TYPE mkal-werks,
+         matnr    TYPE mkal-matnr,
+         maktx    TYPE makt-maktx,
+         verid    TYPE mkal-verid,
+         plnnr    TYPE mkal-plnnr,
+         alnal    TYPE mkal-alnal,
+         statu    TYPE plko-statu,
+         verwe    TYPE plko-verwe,
+         vagrp    TYPE plko-vagrp,
+         plnme    TYPE plko-plnme,
+         losvn    TYPE plko-losvn,
+         datuv    TYPE plko-datuv,
+         valid_to TYPE plko-valid_to,
+         vornr    TYPE plpo-vornr,
+         bmsch    TYPE plpo-bmsch,
+         arbpl    TYPE crhd-arbpl,
+         ktext    TYPE crtx-ktext,
+         lar01    TYPE plpo-lar01,
+         vgw01    TYPE plpo-vgw01,
+         vge01    TYPE plpo-vge01,
+         lar02    TYPE plpo-lar02,
+         vgw02    TYPE plpo-vgw02,
+         vge02    TYPE plpo-vge02,
+         lar03    TYPE plpo-lar03,
+         vgw03    TYPE plpo-vgw03,
+         vge03    TYPE plpo-vge03,
+         lar04    TYPE plpo-lar04,
+         vgw04    TYPE plpo-vgw04,
+         vge04    TYPE plpo-vge04,
+         lar05    TYPE plpo-lar05,
+         vgw05    TYPE plpo-vgw05,
+         vge05    TYPE plpo-vge05,
+         lar06    TYPE plpo-lar06,
+         vgw06    TYPE plpo-vgw06,
+         vge06    TYPE plpo-vge06,
+         plnty    TYPE mkal-plnty,
+         plnkn    TYPE plas-plnkn,
+         bmsch_mt TYPE menge_d,
+       END OF ty_alv.
+
+DATA: gt_mkal TYPE STANDARD TABLE OF ty_mkal,
+      gt_plko TYPE STANDARD TABLE OF ty_plko,
+      gt_plas TYPE STANDARD TABLE OF ty_plas,
+      gt_plpo TYPE STANDARD TABLE OF ty_plpo,
+      gt_crhd TYPE STANDARD TABLE OF ty_crhd,
+      gt_crtx TYPE STANDARD TABLE OF ty_crtx,
+      gt_makt TYPE STANDARD TABLE OF ty_makt,
+      gt_alv  TYPE STANDARD TABLE OF ty_alv,
+      gs_mkal TYPE ty_mkal,
+      gs_plko TYPE ty_plko,
+      gs_plas TYPE ty_plas,
+      gs_plpo TYPE ty_plpo,
+      gs_crhd TYPE ty_crhd,
+      gs_crtx TYPE ty_crtx,
+      gs_makt TYPE ty_makt,
+      gs_alv  TYPE ty_alv.
+
+DATA: gv_line    TYPE string,
+      gv_records TYPE i.
+
+DATA: gv_mtart     TYPE mara-mtart,
+      gv_matnr_ext TYPE matnr.
+
+DATA: gv_filepath  TYPE string,
+      gv_timestamp TYPE timestamp,
+      lv_ts        TYPE string.
+
+DATA: go_alv     TYPE REF TO cl_salv_table,
+      go_funcs   TYPE REF TO cl_salv_functions_list,
+      go_columns TYPE REF TO cl_salv_columns_table,
+      go_column  TYPE REF TO cl_salv_column,
+      go_display TYPE REF TO cl_salv_display_settings,
+      go_layout  TYPE REF TO cl_salv_layout,
+      gs_lkey    TYPE salv_s_layout_key.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  SELECT-OPTIONS: s_matnr FOR mara-matnr MATCHCODE OBJECT mat1,
+                  s_werks FOR t001w-werks.
+SELECTION-SCREEN END OF BLOCK b1.
+
+INITIALIZATION.
+  GET PARAMETER ID 'MAT' FIELD s_matnr-low.
+  GET PARAMETER ID 'WRK' FIELD s_werks-low.
+
+AT SELECTION-SCREEN.
+
+  IF s_matnr-low IS NOT INITIAL AND s_matnr-high IS INITIAL.
+    SELECT SINGLE matnr mtart
+      FROM mara
+      INTO (mara-matnr, gv_mtart)
+     WHERE matnr = s_matnr-low.
+    IF sy-subrc <> 0.
+      CALL FUNCTION 'CONVERSION_EXIT_MATN1_OUTPUT'
+        EXPORTING input  = s_matnr-low
+        IMPORTING output = gv_matnr_ext.
+      MESSAGE |The material { gv_matnr_ext } does not exist or is not activated| TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+  IF s_werks-low IS NOT INITIAL AND s_werks-high IS INITIAL.
+    SELECT SINGLE werks
+      FROM t001w
+      INTO t001w-werks
+     WHERE werks = s_werks-low.
+    IF sy-subrc <> 0.
+      MESSAGE |Plant { s_werks-low } does not exist| TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+START-OF-SELECTION.
+
+  PERFORM extract_data.
+
+  IF gt_alv IS NOT INITIAL.
+    PERFORM write_to_server.
+    PERFORM display_alv.
+  ELSE.
+    MESSAGE 'No Data Found' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+
+FORM extract_data.
+
+  DATA: lv_bmsch_mt TYPE menge_d,
+        lv_arbid    TYPE plpo-arbid,
+        lv_plko_ok  TYPE abap_bool,
+        lv_makt_ok  TYPE abap_bool.
+
+  SELECT matnr werks verid plnty plnnr alnal
+    FROM mkal
+    INTO TABLE gt_mkal
+   WHERE matnr IN s_matnr
+     AND werks IN s_werks.
+
+  IF gt_mkal IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  SORT gt_mkal BY plnty plnnr alnal.
+
+  SELECT plnty plnnr plnal datuv verwe statu plnme losvn vagrp valid_to
+    FROM plko
+    INTO TABLE gt_plko
+     FOR ALL ENTRIES IN gt_mkal
+   WHERE plnty = gt_mkal-plnty
+     AND plnnr = gt_mkal-plnnr
+     AND plnal = gt_mkal-alnal.
+
+  IF gt_plko IS NOT INITIAL.
+    SORT gt_plko BY plnty plnnr plnal.
+  ENDIF.
+
+  SELECT plnty plnnr plnal plnkn
+    FROM plas
+    INTO TABLE gt_plas
+     FOR ALL ENTRIES IN gt_mkal
+   WHERE plnty = gt_mkal-plnty
+     AND plnnr = gt_mkal-plnnr
+     AND plnal = gt_mkal-alnal.
+
+  IF gt_plas IS NOT INITIAL.
+    SORT gt_plas BY plnty plnnr plnal plnkn.
+    DELETE ADJACENT DUPLICATES FROM gt_plas COMPARING plnty plnnr plnal plnkn.
+  ENDIF.
+
+  IF gt_plas IS NOT INITIAL.
+    SELECT plnty plnnr plnkn vornr bmsch meinh arbid
+           lar01 vgw01 vge01
+           lar02 vgw02 vge02
+           lar03 vgw03 vge03
+           lar04 vgw04 vge04
+           lar05 vgw05 vge05
+           lar06 vgw06 vge06
+      FROM plpo
+      INTO TABLE gt_plpo
+       FOR ALL ENTRIES IN gt_plas
+     WHERE plnty = gt_plas-plnty
+       AND plnnr = gt_plas-plnnr
+       AND plnkn = gt_plas-plnkn.
+
+    IF gt_plpo IS NOT INITIAL.
+      SORT gt_plpo BY plnty plnnr plnkn.
+    ENDIF.
+  ENDIF.
+
+  IF gt_plpo IS NOT INITIAL.
+    SELECT objid arbpl
+      FROM crhd
+      INTO TABLE gt_crhd
+       FOR ALL ENTRIES IN gt_plpo
+     WHERE objid = gt_plpo-arbid.
+
+    IF gt_crhd IS NOT INITIAL.
+      SORT gt_crhd BY objid.
+    ENDIF.
+
+    SELECT objid ktext
+      FROM crtx
+      INTO TABLE gt_crtx
+       FOR ALL ENTRIES IN gt_plpo
+     WHERE objid = gt_plpo-arbid
+       AND spras = sy-langu.
+
+    IF gt_crtx IS NOT INITIAL.
+      SORT gt_crtx BY objid.
+    ENDIF.
+  ENDIF.
+
+  SELECT matnr maktx
+    FROM makt
+    INTO TABLE gt_makt
+     FOR ALL ENTRIES IN gt_mkal
+   WHERE matnr = gt_mkal-matnr
+     AND spras = 'EN'.
+
+  IF gt_makt IS NOT INITIAL.
+    SORT gt_makt BY matnr.
+  ENDIF.
+
+  LOOP AT gt_mkal INTO gs_mkal.
+
+    CLEAR: gs_plko, lv_plko_ok.
+    READ TABLE gt_plko INTO gs_plko
+         WITH KEY plnty = gs_mkal-plnty
+                  plnnr = gs_mkal-plnnr
+                  plnal = gs_mkal-alnal
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_plko_ok = abap_true.
+    ENDIF.
+
+    CLEAR: gs_makt, lv_makt_ok.
+    READ TABLE gt_makt INTO gs_makt
+         WITH KEY matnr = gs_mkal-matnr
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_makt_ok = abap_true.
+    ENDIF.
+
+    LOOP AT gt_plas INTO gs_plas
+      WHERE plnty = gs_mkal-plnty
+        AND plnnr = gs_mkal-plnnr
+        AND plnal = gs_mkal-alnal.
+
+      READ TABLE gt_plpo INTO gs_plpo
+           WITH KEY plnty = gs_plas-plnty
+                    plnnr = gs_plas-plnnr
+                    plnkn = gs_plas-plnkn
+           BINARY SEARCH.
+
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+
+      CLEAR gs_alv.
+
+      gs_alv-werks = gs_mkal-werks.
+      gs_alv-matnr = gs_mkal-matnr.
+      gs_alv-verid = gs_mkal-verid.
+      gs_alv-plnnr = gs_mkal-plnnr.
+      gs_alv-alnal = gs_mkal-alnal.
+      gs_alv-plnty = gs_mkal-plnty.
+      gs_alv-plnkn = gs_plas-plnkn.
+
+      IF lv_makt_ok = abap_true.
+        gs_alv-maktx = gs_makt-maktx.
+      ENDIF.
+
+      IF lv_plko_ok = abap_true.
+        gs_alv-statu    = gs_plko-statu.
+        gs_alv-verwe    = gs_plko-verwe.
+        gs_alv-vagrp    = gs_plko-vagrp.
+        gs_alv-plnme    = gs_plko-plnme.
+        gs_alv-losvn    = gs_plko-losvn.
+        gs_alv-datuv    = gs_plko-datuv.
+        gs_alv-valid_to = gs_plko-valid_to.
+      ENDIF.
+
+      gs_alv-vornr = gs_plpo-vornr.
+      gs_alv-bmsch = gs_plpo-bmsch.
+      gs_alv-lar01 = gs_plpo-lar01.
+      gs_alv-vgw01 = gs_plpo-vgw01.
+      gs_alv-vge01 = gs_plpo-vge01.
+      gs_alv-lar02 = gs_plpo-lar02.
+      gs_alv-vgw02 = gs_plpo-vgw02.
+      gs_alv-vge02 = gs_plpo-vge02.
+      gs_alv-lar03 = gs_plpo-lar03.
+      gs_alv-vgw03 = gs_plpo-vgw03.
+      gs_alv-vge03 = gs_plpo-vge03.
+      gs_alv-lar04 = gs_plpo-lar04.
+      gs_alv-vgw04 = gs_plpo-vgw04.
+      gs_alv-vge04 = gs_plpo-vge04.
+      gs_alv-lar05 = gs_plpo-lar05.
+      gs_alv-vgw05 = gs_plpo-vgw05.
+      gs_alv-vge05 = gs_plpo-vge05.
+      gs_alv-lar06 = gs_plpo-lar06.
+      gs_alv-vgw06 = gs_plpo-vgw06.
+      gs_alv-vge06 = gs_plpo-vge06.
+
+      lv_arbid = gs_plpo-arbid.
+      IF lv_arbid IS NOT INITIAL.
+        READ TABLE gt_crhd INTO gs_crhd
+             WITH KEY objid = lv_arbid
+             BINARY SEARCH.
+        IF sy-subrc = 0.
+          gs_alv-arbpl = gs_crhd-arbpl.
+        ENDIF.
+
+        READ TABLE gt_crtx INTO gs_crtx
+             WITH KEY objid = lv_arbid
+             BINARY SEARCH.
+        IF sy-subrc = 0.
+          gs_alv-ktext = gs_crtx-ktext.
+        ENDIF.
+      ENDIF.
+
+      IF gs_plpo-bmsch IS NOT INITIAL AND gs_plpo-meinh IS NOT INITIAL.
+        CLEAR lv_bmsch_mt.
+        CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+          EXPORTING
+            i_matnr  = gs_mkal-matnr
+            i_in_me  = gs_plpo-meinh
+            i_out_me = 'MT'
+            i_menge  = gs_plpo-bmsch
+          IMPORTING
+            e_menge  = lv_bmsch_mt
+          EXCEPTIONS
+            error_in_application = 1
+            error                = 2
+            OTHERS               = 3.
+        IF sy-subrc = 0.
+          gs_alv-bmsch_mt = lv_bmsch_mt.
+        ENDIF.
+      ENDIF.
+
+      APPEND gs_alv TO gt_alv.
+
+    ENDLOOP.
+
+  ENDLOOP.
+
+  gv_records = lines( gt_alv ).
+  SORT gt_alv BY werks matnr plnnr plnkn vornr.
+
+ENDFORM.
+
+
+FORM write_to_server.
+
+  DATA: lv_plnnr    TYPE string,
+        lv_plnty    TYPE string,
+        lv_datuv    TYPE string,
+        lv_valid_to TYPE string,
+        lv_bmsch    TYPE string,
+        lv_bmsch_mt TYPE string,
+        lv_statu    TYPE string,
+        lv_verwe    TYPE string,
+        lv_verid    TYPE string,
+        lv_alnal    TYPE string,
+        lv_matnr    TYPE string,
+        lv_werks    TYPE string,
+        lv_arbpl    TYPE string,
+        lv_ktext    TYPE string,
+        lv_vagrp    TYPE string,
+        lv_plnme    TYPE string,
+        lv_losvn    TYPE string,
+        lv_lar01    TYPE string,
+        lv_vge01    TYPE string,
+        lv_vgw01    TYPE string,
+        lv_lar02    TYPE string,
+        lv_vge02    TYPE string,
+        lv_vgw02    TYPE string,
+        lv_lar03    TYPE string,
+        lv_vge03    TYPE string,
+        lv_vgw03    TYPE string,
+        lv_lar04    TYPE string,
+        lv_vge04    TYPE string,
+        lv_vgw04    TYPE string,
+        lv_lar05    TYPE string,
+        lv_vge05    TYPE string,
+        lv_vgw05    TYPE string,
+        lv_lar06    TYPE string,
+        lv_vge06    TYPE string,
+        lv_vgw06    TYPE string,
+        lv_temp     TYPE c LENGTH 24.
+
+  gv_filepath = '/mnt/edifiles/In_Routing.csv'.
+
+  GET TIME STAMP FIELD gv_timestamp.
+  lv_ts = gv_timestamp.
+  CONDENSE lv_ts NO-GAPS.
+  REPLACE '.csv' IN gv_filepath WITH |_{ lv_ts(8) }_{ lv_ts+8(6) }.csv|.
+
+  OPEN DATASET gv_filepath FOR OUTPUT IN TEXT MODE ENCODING DEFAULT.
+  IF sy-subrc NE 0.
+    MESSAGE 'Error opening file' TYPE 'E'.
+    RETURN.
+  ENDIF.
+
+  CONCATENATE
+    'RoutingID'
+    'TaskListType'
+    'LeadTime'
+    'RoutingStartDate'
+    'RoutingEndDate'
+    'BaseQuantity'
+    'BaseQuantityinMT'
+    'RoutingStatus'
+    'RoutingUsage'
+    'Version'
+    'GroupCounter'
+    'Item'
+    'Location'
+    'Resource'
+    'ResourceDescription'
+    'Priority'
+    'ActivityType1'
+    'Standard1'
+    'StandardValue1'
+    'ActivityType2'
+    'Standard2'
+    'StandardValue2'
+    'ActivityType3'
+    'Standard3'
+    'StandardValue3'
+    'ActivityType4'
+    'Standard4'
+    'StandardValue4'
+    'ActivityType5'
+    'Standard5'
+    'StandardValue5'
+    'ActivityType6'
+    'Standard6'
+    'StandardValue6'
+    'UOM'
+    'MinimumProductionBatchSize'
+    INTO gv_line SEPARATED BY ','.
+  TRANSFER gv_line TO gv_filepath.
+
+  LOOP AT gt_alv INTO gs_alv.
+
+    CLEAR gv_line.
+
+    lv_plnnr = gs_alv-plnnr. CONDENSE lv_plnnr NO-GAPS.
+    lv_plnty = gs_alv-plnty. CONDENSE lv_plnty NO-GAPS.
+
+    PERFORM format_date USING gs_alv-datuv    CHANGING lv_datuv.
+    PERFORM format_date USING gs_alv-valid_to CHANGING lv_valid_to.
+
+    WRITE gs_alv-bmsch TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_bmsch = lv_temp. CONDENSE lv_bmsch NO-GAPS.
+
+    WRITE gs_alv-bmsch_mt TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_bmsch_mt = lv_temp. CONDENSE lv_bmsch_mt NO-GAPS.
+
+    lv_statu = gs_alv-statu. CONDENSE lv_statu NO-GAPS.
+    lv_verwe = gs_alv-verwe. CONDENSE lv_verwe NO-GAPS.
+    lv_verid = gs_alv-verid. CONDENSE lv_verid NO-GAPS.
+    lv_alnal = gs_alv-alnal. CONDENSE lv_alnal NO-GAPS.
+    lv_matnr = gs_alv-matnr. CONDENSE lv_matnr NO-GAPS.
+    lv_werks = gs_alv-werks. CONDENSE lv_werks NO-GAPS.
+    lv_arbpl = gs_alv-arbpl. CONDENSE lv_arbpl NO-GAPS.
+    lv_ktext = gs_alv-ktext. CONDENSE lv_ktext NO-GAPS.
+    lv_vagrp = gs_alv-vagrp. CONDENSE lv_vagrp NO-GAPS.
+
+    lv_lar01 = gs_alv-lar01. CONDENSE lv_lar01 NO-GAPS.
+    lv_vge01 = gs_alv-vge01. CONDENSE lv_vge01 NO-GAPS.
+    WRITE gs_alv-vgw01 TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_vgw01 = lv_temp. CONDENSE lv_vgw01 NO-GAPS.
+
+    lv_lar02 = gs_alv-lar02. CONDENSE lv_lar02 NO-GAPS.
+    lv_vge02 = gs_alv-vge02. CONDENSE lv_vge02 NO-GAPS.
+    WRITE gs_alv-vgw02 TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_vgw02 = lv_temp. CONDENSE lv_vgw02 NO-GAPS.
+
+    lv_lar03 = gs_alv-lar03. CONDENSE lv_lar03 NO-GAPS.
+    lv_vge03 = gs_alv-vge03. CONDENSE lv_vge03 NO-GAPS.
+    WRITE gs_alv-vgw03 TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_vgw03 = lv_temp. CONDENSE lv_vgw03 NO-GAPS.
+
+    lv_lar04 = gs_alv-lar04. CONDENSE lv_lar04 NO-GAPS.
+    lv_vge04 = gs_alv-vge04. CONDENSE lv_vge04 NO-GAPS.
+    WRITE gs_alv-vgw04 TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_vgw04 = lv_temp. CONDENSE lv_vgw04 NO-GAPS.
+
+    lv_lar05 = gs_alv-lar05. CONDENSE lv_lar05 NO-GAPS.
+    lv_vge05 = gs_alv-vge05. CONDENSE lv_vge05 NO-GAPS.
+    WRITE gs_alv-vgw05 TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_vgw05 = lv_temp. CONDENSE lv_vgw05 NO-GAPS.
+
+    lv_lar06 = gs_alv-lar06. CONDENSE lv_lar06 NO-GAPS.
+    lv_vge06 = gs_alv-vge06. CONDENSE lv_vge06 NO-GAPS.
+    WRITE gs_alv-vgw06 TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_vgw06 = lv_temp. CONDENSE lv_vgw06 NO-GAPS.
+
+    lv_plnme = gs_alv-plnme. CONDENSE lv_plnme NO-GAPS.
+
+    WRITE gs_alv-losvn TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_losvn = lv_temp. CONDENSE lv_losvn NO-GAPS.
+
+    CONCATENATE
+      lv_plnnr lv_plnty '' lv_datuv lv_valid_to
+      lv_bmsch lv_bmsch_mt lv_statu lv_verwe lv_verid
+      lv_alnal lv_matnr lv_werks lv_arbpl lv_ktext
+      lv_vagrp
+      lv_lar01 lv_vge01 lv_vgw01
+      lv_lar02 lv_vge02 lv_vgw02
+      lv_lar03 lv_vge03 lv_vgw03
+      lv_lar04 lv_vge04 lv_vgw04
+      lv_lar05 lv_vge05 lv_vgw05
+      lv_lar06 lv_vge06 lv_vgw06
+      lv_plnme lv_losvn
+      INTO gv_line SEPARATED BY ','.
+    TRANSFER gv_line TO gv_filepath.
+
+  ENDLOOP.
+
+  CLOSE DATASET gv_filepath.
+
+  MESSAGE |File generated successfully: { gv_filepath }| TYPE 'S'.
+
+ENDFORM.
+
+
+FORM format_date USING    iv_date TYPE d
+                 CHANGING ev_str  TYPE string.
+  CLEAR ev_str.
+  IF iv_date IS NOT INITIAL AND iv_date <> '00000000'.
+    CONCATENATE iv_date+6(2) '.' iv_date+4(2) '.' iv_date+0(4) INTO ev_str.
+  ENDIF.
+ENDFORM.
+
+
+FORM display_alv.
+
+  DATA: lv_msg TYPE REF TO cx_salv_msg,
+        lv_nf  TYPE REF TO cx_salv_not_found.
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = go_alv
+        CHANGING  t_table      = gt_alv ).
+
+      go_funcs = go_alv->get_functions( ).
+      go_funcs->set_all( abap_true ).
+
+      go_display = go_alv->get_display_settings( ).
+      go_display->set_list_header( 'Routing Report - ALV Output' ).
+      go_display->set_striped_pattern( abap_true ).
+
+      go_layout = go_alv->get_layout( ).
+      gs_lkey-report = sy-repid.
+      go_layout->set_key( gs_lkey ).
+      go_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+      go_columns = go_alv->get_columns( ).
+      go_columns->set_optimize( abap_true ).
+
+      TRY.
+          go_column = go_columns->get_column( 'WERKS' ).
+          go_column->set_short_text( 'Plant' ).
+          go_column->set_medium_text( 'Plant' ).
+          go_column->set_long_text( 'Plant' ).
+
+          go_column = go_columns->get_column( 'MATNR' ).
+          go_column->set_short_text( 'Material' ).
+          go_column->set_medium_text( 'BOM Hdr Material' ).
+          go_column->set_long_text( 'BOM Header Material' ).
+
+          go_column = go_columns->get_column( 'MAKTX' ).
+          go_column->set_short_text( 'Mat Desc' ).
+          go_column->set_medium_text( 'Material Desc' ).
+          go_column->set_long_text( 'Header Material Description' ).
+
+          go_column = go_columns->get_column( 'VERID' ).
+          go_column->set_short_text( 'Prod Ver' ).
+          go_column->set_medium_text( 'Production Ver' ).
+          go_column->set_long_text( 'Production Version' ).
+
+          go_column = go_columns->get_column( 'PLNNR' ).
+          go_column->set_short_text( 'Rtg Group' ).
+          go_column->set_medium_text( 'Routing Group' ).
+          go_column->set_long_text( 'Routing Group' ).
+
+          go_column = go_columns->get_column( 'ALNAL' ).
+          go_column->set_short_text( 'Grp Ctr' ).
+          go_column->set_medium_text( 'Group Counter' ).
+          go_column->set_long_text( 'Group Counter' ).
+
+          go_column = go_columns->get_column( 'STATU' ).
+          go_column->set_short_text( 'Rtg Stat' ).
+          go_column->set_medium_text( 'Routing Status' ).
+          go_column->set_long_text( 'Routing Status' ).
+
+          go_column = go_columns->get_column( 'VERWE' ).
+          go_column->set_short_text( 'Rtg Usage' ).
+          go_column->set_medium_text( 'Routing Usage' ).
+          go_column->set_long_text( 'Routing Usage' ).
+
+          go_column = go_columns->get_column( 'VAGRP' ).
+          go_column->set_short_text( 'Priority' ).
+          go_column->set_medium_text( 'Routing Priority' ).
+          go_column->set_long_text( 'Routing Priority' ).
+
+          go_column = go_columns->get_column( 'PLNME' ).
+          go_column->set_short_text( 'Rtg Unit' ).
+          go_column->set_medium_text( 'Routing Unit' ).
+          go_column->set_long_text( 'Routing Unit' ).
+
+          go_column = go_columns->get_column( 'LOSVN' ).
+          go_column->set_short_text( 'Lot Size' ).
+          go_column->set_medium_text( 'Routing Lot Size' ).
+          go_column->set_long_text( 'Routing Lot Size' ).
+
+          go_column = go_columns->get_column( 'DATUV' ).
+          go_column->set_short_text( 'Start Dt' ).
+          go_column->set_medium_text( 'Rtg Start Date' ).
+          go_column->set_long_text( 'Routing Start Date' ).
+
+          go_column = go_columns->get_column( 'VALID_TO' ).
+          go_column->set_short_text( 'End Date' ).
+          go_column->set_medium_text( 'Rtg End Date' ).
+          go_column->set_long_text( 'Routing End Date' ).
+
+          go_column = go_columns->get_column( 'VORNR' ).
+          go_column->set_short_text( 'Oper No' ).
+          go_column->set_medium_text( 'Operation Number' ).
+          go_column->set_long_text( 'Operation Number' ).
+
+          go_column = go_columns->get_column( 'BMSCH' ).
+          go_column->set_short_text( 'Base Qty' ).
+          go_column->set_medium_text( 'Oper Base Qty' ).
+          go_column->set_long_text( 'Operation Base Quantity' ).
+
+          go_column = go_columns->get_column( 'ARBPL' ).
+          go_column->set_short_text( 'Work Ctr' ).
+          go_column->set_medium_text( 'Work Center' ).
+          go_column->set_long_text( 'Work Center' ).
+
+          go_column = go_columns->get_column( 'KTEXT' ).
+          go_column->set_short_text( 'WC Desc' ).
+          go_column->set_medium_text( 'Work Ctr Desc' ).
+          go_column->set_long_text( 'Work Center Description' ).
+
+          go_column = go_columns->get_column( 'LAR01' ).
+          go_column->set_short_text( 'ActTyp 1' ).
+          go_column->set_medium_text( 'Activity 1' ).
+          go_column->set_long_text( 'Activity 1' ).
+
+          go_column = go_columns->get_column( 'VGW01' ).
+          go_column->set_short_text( 'StdVal 1' ).
+          go_column->set_medium_text( 'Std Value 1' ).
+          go_column->set_long_text( 'Standard Value 1' ).
+
+          go_column = go_columns->get_column( 'VGE01' ).
+          go_column->set_short_text( 'Unit 1' ).
+          go_column->set_medium_text( 'Std Val 1 Unit' ).
+          go_column->set_long_text( 'Standard Value 1 Unit' ).
+
+          go_column = go_columns->get_column( 'LAR02' ).
+          go_column->set_short_text( 'ActTyp 2' ).
+          go_column->set_medium_text( 'Activity 2' ).
+          go_column->set_long_text( 'Activity 2' ).
+
+          go_column = go_columns->get_column( 'VGW02' ).
+          go_column->set_short_text( 'StdVal 2' ).
+          go_column->set_medium_text( 'Std Value 2' ).
+          go_column->set_long_text( 'Standard Value 2' ).
+
+          go_column = go_columns->get_column( 'VGE02' ).
+          go_column->set_short_text( 'Unit 2' ).
+          go_column->set_medium_text( 'Std Val 2 Unit' ).
+          go_column->set_long_text( 'Standard Value 2 Unit' ).
+
+          go_column = go_columns->get_column( 'LAR03' ).
+          go_column->set_short_text( 'ActTyp 3' ).
+          go_column->set_medium_text( 'Activity 3' ).
+          go_column->set_long_text( 'Activity 3' ).
+
+          go_column = go_columns->get_column( 'VGW03' ).
+          go_column->set_short_text( 'StdVal 3' ).
+          go_column->set_medium_text( 'Std Value 3' ).
+          go_column->set_long_text( 'Standard Value 3' ).
+
+          go_column = go_columns->get_column( 'VGE03' ).
+          go_column->set_short_text( 'Unit 3' ).
+          go_column->set_medium_text( 'Std Val 3 Unit' ).
+          go_column->set_long_text( 'Standard Value 3 Unit' ).
+
+          go_column = go_columns->get_column( 'LAR04' ).
+          go_column->set_short_text( 'ActTyp 4' ).
+          go_column->set_medium_text( 'Activity 4' ).
+          go_column->set_long_text( 'Activity 4' ).
+
+          go_column = go_columns->get_column( 'VGW04' ).
+          go_column->set_short_text( 'StdVal 4' ).
+          go_column->set_medium_text( 'Std Value 4' ).
+          go_column->set_long_text( 'Standard Value 4' ).
+
+          go_column = go_columns->get_column( 'VGE04' ).
+          go_column->set_short_text( 'Unit 4' ).
+          go_column->set_medium_text( 'Std Val 4 Unit' ).
+          go_column->set_long_text( 'Standard Value 4 Unit' ).
+
+          go_column = go_columns->get_column( 'LAR05' ).
+          go_column->set_short_text( 'ActTyp 5' ).
+          go_column->set_medium_text( 'Activity 5' ).
+          go_column->set_long_text( 'Activity 5' ).
+
+          go_column = go_columns->get_column( 'VGW05' ).
+          go_column->set_short_text( 'StdVal 5' ).
+          go_column->set_medium_text( 'Std Value 5' ).
+          go_column->set_long_text( 'Standard Value 5' ).
+
+          go_column = go_columns->get_column( 'VGE05' ).
+          go_column->set_short_text( 'Unit 5' ).
+          go_column->set_medium_text( 'Std Val 5 Unit' ).
+          go_column->set_long_text( 'Standard Value 5 Unit' ).
+
+          go_column = go_columns->get_column( 'LAR06' ).
+          go_column->set_short_text( 'ActTyp 6' ).
+          go_column->set_medium_text( 'Activity 6' ).
+          go_column->set_long_text( 'Activity 6' ).
+
+          go_column = go_columns->get_column( 'VGW06' ).
+          go_column->set_short_text( 'StdVal 6' ).
+          go_column->set_medium_text( 'Std Value 6' ).
+          go_column->set_long_text( 'Standard Value 6' ).
+
+          go_column = go_columns->get_column( 'VGE06' ).
+          go_column->set_short_text( 'Unit 6' ).
+          go_column->set_medium_text( 'Std Val 6 Unit' ).
+          go_column->set_long_text( 'Standard Value 6 Unit' ).
+
+          go_column = go_columns->get_column( 'PLNTY' ).
+          go_column->set_visible( abap_false ).
+
+          go_column = go_columns->get_column( 'PLNKN' ).
+          go_column->set_visible( abap_false ).
+
+          go_column = go_columns->get_column( 'BMSCH_MT' ).
+          go_column->set_visible( abap_false ).
+
+        CATCH cx_salv_not_found INTO lv_nf.
+      ENDTRY.
+
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO lv_msg.
+      MESSAGE lv_msg TYPE 'E'.
+  ENDTRY.
+
+ENDFORM.
