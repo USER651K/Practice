@@ -1,0 +1,1179 @@
+*&---------------------------------------------------------------------*
+*& Report ZO9_PROD_ORD
+*&---------------------------------------------------------------------*
+*& Production Order Report - o9 Outbound Interface
+*&---------------------------------------------------------------------*
+REPORT zo9_prod_ord.
+
+TABLES: mara, t001w, afko.
+
+*----------------------------------------------------------------------*
+* Type Declarations
+*----------------------------------------------------------------------*
+TYPES: BEGIN OF ty_afpo,
+         aufnr TYPE afpo-aufnr,
+         posnr TYPE afpo-posnr,
+         matnr TYPE afpo-matnr,
+         dwerk TYPE afpo-dwerk,
+         amein TYPE afpo-amein,
+         meins TYPE afpo-meins,
+         wemng TYPE afpo-wemng,
+         elikz TYPE afpo-elikz,
+         xloek TYPE afpo-xloek,
+         dauat TYPE afpo-dauat,
+         psamg TYPE afpo-psamg,
+       END OF ty_afpo,
+
+       BEGIN OF ty_afko,
+         aufnr TYPE afko-aufnr,
+         stlnr TYPE afko-stlnr,
+         aufpl TYPE afko-aufpl,
+         plnnr TYPE afko-plnnr,
+         plnal TYPE afko-plnal,
+         stlal TYPE afko-stlal,
+         gltri TYPE afko-gltri,
+         ftrmi TYPE afko-ftrmi,
+         gstri TYPE afko-gstri,
+         gltrs TYPE afko-gltrs,
+         gamng TYPE afko-gamng,
+         ftrms TYPE afko-ftrms,
+         gstrs TYPE afko-gstrs,
+         getri TYPE afko-getri,
+         rsnum TYPE afko-rsnum,
+       END OF ty_afko,
+
+       BEGIN OF ty_aufk,
+         aufnr TYPE aufk-aufnr,
+         objnr TYPE aufk-objnr,
+       END OF ty_aufk,
+
+       BEGIN OF ty_jest,
+         objnr TYPE jest-objnr,
+         stat  TYPE jest-stat,
+       END OF ty_jest,
+
+       BEGIN OF ty_tjo2t,
+         stat  TYPE tj02t-stat,
+         txt04 TYPE tj02t-txt04,
+       END OF ty_tjo2t,
+
+       BEGIN OF ty_resb,
+         rsnum TYPE resb-rsnum,
+         rspos TYPE resb-rspos,
+         matnr TYPE resb-matnr,
+         bdmng TYPE resb-bdmng,
+         enmng TYPE resb-enmng,
+         kzear TYPE resb-kzear,
+       END OF ty_resb,
+
+       BEGIN OF ty_makt,
+         matnr TYPE makt-matnr,
+         maktx TYPE makt-maktx,
+       END OF ty_makt,
+
+       BEGIN OF ty_status,
+         aufnr  TYPE aufnr,
+         status TYPE char200,
+       END OF ty_status,
+
+       BEGIN OF ty_matnr_list,
+         matnr TYPE matnr,
+       END OF ty_matnr_list,
+
+       BEGIN OF ty_alv,
+         werks      TYPE afpo-dwerk,           "1  Plant
+         matnr      TYPE afpo-matnr,           "2  Order Item Material
+         maktx      TYPE makt-maktx,           "3  Order Item Material Description
+         dauat      TYPE afpo-dauat,           "4  Order Type
+         aufnr      TYPE afpo-aufnr,           "5  Order
+         posnr      TYPE afpo-posnr,           "6  Order Item Number
+         stlnr      TYPE afko-stlnr,           "7  BOM ID
+         stlal      TYPE afko-stlal,           "8  Alternative BOM
+         aufpl      TYPE afko-aufpl,           "9  Routing ID
+         plnnr      TYPE afko-plnnr,           "10 Routing Group
+         plnal      TYPE afko-plnal,           "11 Routing Group Counter
+         gamng_base TYPE menge_d,              "12 Order Quantity in Base Unit
+         gamng      TYPE afko-gamng,           "13 Order Quantity in Order Unit
+         gamng_mt   TYPE menge_d,              "14 Order Quantity in MT
+         wemng      TYPE afpo-wemng,           "15 Order Delivered Qty in Order Unit
+         wemng_base TYPE menge_d,              "16 Delivered Quantity in Base Unit
+         wemng_mt   TYPE menge_d,              "17 Delivered Quantity in MT
+         psamg      TYPE afpo-psamg,           "18 Planned Scrap Qty in Order Unit
+         psamg_base TYPE menge_d,              "19 Planned Scrap Qty in Base Unit
+         amein      TYPE afpo-amein,           "20 Production Unit
+         meins      TYPE afpo-meins,           "21 Base Unit
+         rsnum      TYPE afko-rsnum,           "22 Reservation Number
+         rspos      TYPE resb-rspos,           "23 Reservation Item
+         comp_matnr TYPE resb-matnr,           "24 Component Material
+         comp_maktx TYPE makt-maktx,           "25 Component Material Description
+         bdmng      TYPE resb-bdmng,           "26 Component Requirement Quantity
+         enmng      TYPE resb-enmng,           "27 Component Withdrawn Quantity
+         kzear      TYPE resb-kzear,           "28 Component Final Issue Indicator
+         gltri      TYPE afko-gltri,           "29 Actual Finish Date
+         ftrmi      TYPE afko-ftrmi,           "30 Actual Release Date
+         gstri      TYPE afko-gstri,           "31 Actual Start Date
+         gltrs      TYPE afko-gltrs,           "32 Scheduled Finish Date
+         ftrms      TYPE afko-ftrms,           "33 Scheduled Release Date
+         gstrs      TYPE afko-gstrs,           "34 Scheduled Start Date
+         getri      TYPE afko-getri,           "35 Confirmed Finish Date
+         elikz      TYPE afpo-elikz,           "36 Delivery Completed Indicator
+         xloek      TYPE afpo-xloek,           "37 Deletion Flag
+         status     TYPE char200,              "38 Order Status
+       END OF ty_alv.
+
+*----------------------------------------------------------------------*
+* Global Data
+*----------------------------------------------------------------------*
+DATA: gt_afpo   TYPE STANDARD TABLE OF ty_afpo,
+      gt_afko   TYPE STANDARD TABLE OF ty_afko,
+      gt_aufk   TYPE STANDARD TABLE OF ty_aufk,
+      gt_jest   TYPE STANDARD TABLE OF ty_jest,
+      gt_tjo2t  TYPE STANDARD TABLE OF ty_tjo2t,
+      gt_resb   TYPE STANDARD TABLE OF ty_resb,
+      gt_makt   TYPE STANDARD TABLE OF ty_makt,
+      gt_status TYPE STANDARD TABLE OF ty_status,
+      gt_alv    TYPE STANDARD TABLE OF ty_alv,
+      gs_afpo   TYPE ty_afpo,
+      gs_afko   TYPE ty_afko,
+      gs_aufk   TYPE ty_aufk,
+      gs_jest   TYPE ty_jest,
+      gs_tjo2t  TYPE ty_tjo2t,
+      gs_resb   TYPE ty_resb,
+      gs_makt   TYPE ty_makt,
+      gs_status TYPE ty_status,
+      gs_alv    TYPE ty_alv.
+
+DATA: gv_line    TYPE string,
+      gv_records TYPE i.
+
+DATA: gv_mtart     TYPE mara-mtart,
+      gv_matnr_ext TYPE matnr.
+
+DATA: gv_filepath  TYPE string,
+      gv_timestamp TYPE timestamp,
+      lv_ts        TYPE string.
+
+DATA: go_alv     TYPE REF TO cl_salv_table,
+      go_funcs   TYPE REF TO cl_salv_functions_list,
+      go_columns TYPE REF TO cl_salv_columns_table,
+      go_column  TYPE REF TO cl_salv_column,
+      go_display TYPE REF TO cl_salv_display_settings,
+      go_layout  TYPE REF TO cl_salv_layout,
+      gs_lkey    TYPE salv_s_layout_key.
+
+*----------------------------------------------------------------------*
+* Selection Screen
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  SELECT-OPTIONS: s_matnr FOR mara-matnr MATCHCODE OBJECT mat1,
+                  s_werks FOR t001w-werks OBLIGATORY,
+                  s_gstrs FOR afko-gstrs.
+  PARAMETERS:     p_stat  TYPE char20.
+  PARAMETERS:     p_file  AS CHECKBOX DEFAULT 'X'.
+SELECTION-SCREEN END OF BLOCK b1.
+
+*----------------------------------------------------------------------*
+* INITIALIZATION
+*----------------------------------------------------------------------*
+INITIALIZATION.
+  GET PARAMETER ID 'MAT' FIELD s_matnr-low.
+  GET PARAMETER ID 'WRK' FIELD s_werks-low.
+
+  " Default Scheduled Start Date: Current Date +/- 180 days
+  s_gstrs-sign   = 'I'.
+  s_gstrs-option = 'BT'.
+  s_gstrs-low    = sy-datum - 180.
+  s_gstrs-high   = sy-datum + 180.
+  APPEND s_gstrs.
+
+*----------------------------------------------------------------------*
+* AT SELECTION-SCREEN
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN.
+
+  " Validate Material (single value)
+  IF s_matnr-low IS NOT INITIAL AND s_matnr-high IS INITIAL.
+    SELECT SINGLE matnr mtart
+      FROM mara
+      INTO (mara-matnr, gv_mtart)
+     WHERE matnr = s_matnr-low.
+    IF sy-subrc <> 0.
+      CALL FUNCTION 'CONVERSION_EXIT_MATN1_OUTPUT'
+        EXPORTING input  = s_matnr-low
+        IMPORTING output = gv_matnr_ext.
+      MESSAGE |The material { gv_matnr_ext } does not exist or is not activated| TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+  " Validate Plant (single value)
+  IF s_werks-low IS NOT INITIAL AND s_werks-high IS INITIAL.
+    SELECT SINGLE werks
+      FROM t001w
+      INTO t001w-werks
+     WHERE werks = s_werks-low.
+    IF sy-subrc <> 0.
+      MESSAGE |Plant { s_werks-low } does not exist| TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+*----------------------------------------------------------------------*
+* START-OF-SELECTION
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  PERFORM extract_data.
+
+  IF gt_alv IS NOT INITIAL.
+    IF p_file = abap_true.
+      PERFORM write_to_server.
+    ENDIF.
+    PERFORM display_alv.
+  ELSE.
+    MESSAGE 'No Data Found' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+
+*&---------------------------------------------------------------------*
+*& Form EXTRACT_DATA
+*&---------------------------------------------------------------------*
+FORM extract_data.
+
+  DATA: lv_gamng_base  TYPE menge_d,
+        lv_gamng_mt    TYPE menge_d,
+        lv_wemng_base  TYPE menge_d,
+        lv_wemng_mt    TYPE menge_d,
+        lv_psamg_base  TYPE menge_d,
+        lv_has_resb    TYPE abap_bool,
+        lv_makt_ok     TYPE abap_bool,
+        lv_resb_idx    TYPE sy-tabix,
+        ls_comp_makt   TYPE ty_makt,
+        lt_matnr_list  TYPE STANDARD TABLE OF ty_matnr_list,
+        ls_matnr_list  TYPE ty_matnr_list.
+
+  " BOC - Step 1: Select from AFPO by Material and Plant
+  SELECT aufnr posnr matnr dwerk amein meins wemng elikz xloek dauat psamg
+    FROM afpo
+    INTO TABLE gt_afpo
+   WHERE matnr IN s_matnr
+     AND dwerk IN s_werks.
+
+  IF gt_afpo IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  SORT gt_afpo BY aufnr posnr.
+
+  " BOC - Step 2: Select from AFKO by AUFNR and Scheduled Start Date filter
+  SELECT aufnr stlnr aufpl plnnr plnal stlal gltri ftrmi gstri
+         gltrs gamng ftrms gstrs getri rsnum
+    FROM afko
+    INTO TABLE gt_afko
+     FOR ALL ENTRIES IN gt_afpo
+   WHERE aufnr = gt_afpo-aufnr
+     AND gstrs IN s_gstrs.
+
+  IF gt_afko IS INITIAL.
+    CLEAR gt_afpo.
+    RETURN.
+  ENDIF.
+
+  SORT gt_afko BY aufnr.
+
+  " BOC - Step 3: Select from AUFK - Production Orders only (AUTYP = 10)
+  SELECT aufnr objnr
+    FROM aufk
+    INTO TABLE gt_aufk
+     FOR ALL ENTRIES IN gt_afko
+   WHERE aufnr = gt_afko-aufnr
+     AND autyp = '10'.
+
+  IF gt_aufk IS NOT INITIAL.
+    SORT gt_aufk BY aufnr.
+  ENDIF.
+
+  " BOC - Step 4: Select from JEST - Active statuses only (INACT = space)
+  IF gt_aufk IS NOT INITIAL.
+    SELECT objnr stat
+      FROM jest
+      INTO TABLE gt_jest
+       FOR ALL ENTRIES IN gt_aufk
+     WHERE objnr = gt_aufk-objnr
+       AND inact = space.
+
+    IF gt_jest IS NOT INITIAL.
+      SORT gt_jest BY objnr stat.
+    ENDIF.
+  ENDIF.
+
+  " BOC - Step 5: Select from TJ02T - Status texts in English
+  IF gt_jest IS NOT INITIAL.
+    SELECT stat txt04
+      FROM tj02t
+      INTO TABLE gt_tjo2t
+       FOR ALL ENTRIES IN gt_jest
+     WHERE stat  = gt_jest-stat
+       AND spras = 'EN'.
+
+    IF gt_tjo2t IS NOT INITIAL.
+      SORT gt_tjo2t BY stat.
+      DELETE ADJACENT DUPLICATES FROM gt_tjo2t COMPARING stat.
+    ENDIF.
+  ENDIF.
+
+  " BOC - Step 6: Build status strings per order
+  PERFORM build_status_strings.
+
+  " BOC - Step 7: Select from RESB - Reservation/Component data
+  SELECT rsnum rspos matnr bdmng enmng kzear
+    FROM resb
+    INTO TABLE gt_resb
+     FOR ALL ENTRIES IN gt_afko
+   WHERE rsnum = gt_afko-rsnum.
+
+  IF gt_resb IS NOT INITIAL.
+    SORT gt_resb BY rsnum rspos.
+  ENDIF.
+
+  " BOC - Step 8: Collect all Material Numbers for MAKT (Header + Component)
+  LOOP AT gt_afpo INTO gs_afpo.
+    ls_matnr_list-matnr = gs_afpo-matnr.
+    APPEND ls_matnr_list TO lt_matnr_list.
+  ENDLOOP.
+
+  IF gt_resb IS NOT INITIAL.
+    LOOP AT gt_resb INTO gs_resb.
+      ls_matnr_list-matnr = gs_resb-matnr.
+      APPEND ls_matnr_list TO lt_matnr_list.
+    ENDLOOP.
+  ENDIF.
+
+  SORT lt_matnr_list BY matnr.
+  DELETE ADJACENT DUPLICATES FROM lt_matnr_list COMPARING matnr.
+
+  IF lt_matnr_list IS NOT INITIAL.
+    SELECT matnr maktx
+      FROM makt
+      INTO TABLE gt_makt
+       FOR ALL ENTRIES IN lt_matnr_list
+     WHERE matnr = lt_matnr_list-matnr
+       AND spras = 'EN'.
+
+    IF gt_makt IS NOT INITIAL.
+      SORT gt_makt BY matnr.
+    ENDIF.
+  ENDIF.
+
+  " BOC - Step 9: Build ALV output table
+  LOOP AT gt_afpo INTO gs_afpo.
+
+    " Read AFKO header for this order (BINARY SEARCH)
+    CLEAR gs_afko.
+    READ TABLE gt_afko INTO gs_afko
+         WITH KEY aufnr = gs_afpo-aufnr
+         BINARY SEARCH.
+    IF sy-subrc <> 0.
+      CONTINUE.  " No matching AFKO (filtered by date)
+    ENDIF.
+
+    " Read status string for this order (BINARY SEARCH)
+    CLEAR gs_status.
+    READ TABLE gt_status INTO gs_status
+         WITH KEY aufnr = gs_afpo-aufnr
+         BINARY SEARCH.
+
+    " Apply status filter (if entered) - CP supports asterisk patterns
+    IF p_stat IS NOT INITIAL.
+      IF gs_status-status IS INITIAL
+        OR NOT gs_status-status CP p_stat.
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    " Read header material description (BINARY SEARCH)
+    CLEAR: gs_makt, lv_makt_ok.
+    READ TABLE gt_makt INTO gs_makt
+         WITH KEY matnr = gs_afpo-matnr
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_makt_ok = abap_true.
+    ENDIF.
+
+    " Calculate quantity conversions (once per order item)
+    CLEAR: lv_gamng_base, lv_gamng_mt,
+           lv_wemng_base, lv_wemng_mt,
+           lv_psamg_base.
+
+    " 12) Order Quantity in Base Unit: GAMNG from AMEIN -> MEINS
+    IF gs_afko-gamng IS NOT INITIAL AND gs_afpo-amein IS NOT INITIAL
+       AND gs_afpo-meins IS NOT INITIAL.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr  = gs_afpo-matnr
+          i_in_me  = gs_afpo-amein
+          i_out_me = gs_afpo-meins
+          i_menge  = gs_afko-gamng
+        IMPORTING
+          e_menge  = lv_gamng_base
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc <> 0.
+        CLEAR lv_gamng_base.
+      ENDIF.
+    ENDIF.
+
+    " 14) Order Quantity in MT: GAMNG from AMEIN -> MT
+    IF gs_afko-gamng IS NOT INITIAL AND gs_afpo-amein IS NOT INITIAL.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr  = gs_afpo-matnr
+          i_in_me  = gs_afpo-amein
+          i_out_me = 'MT'
+          i_menge  = gs_afko-gamng
+        IMPORTING
+          e_menge  = lv_gamng_mt
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc <> 0.
+        CLEAR lv_gamng_mt.
+      ENDIF.
+    ENDIF.
+
+    " 16) Delivered Quantity in Base Unit: WEMNG from AMEIN -> MEINS
+    IF gs_afpo-wemng IS NOT INITIAL AND gs_afpo-amein IS NOT INITIAL
+       AND gs_afpo-meins IS NOT INITIAL.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr  = gs_afpo-matnr
+          i_in_me  = gs_afpo-amein
+          i_out_me = gs_afpo-meins
+          i_menge  = gs_afpo-wemng
+        IMPORTING
+          e_menge  = lv_wemng_base
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc <> 0.
+        CLEAR lv_wemng_base.
+      ENDIF.
+    ENDIF.
+
+    " 17) Delivered Quantity in MT: WEMNG from AMEIN -> MT
+    IF gs_afpo-wemng IS NOT INITIAL AND gs_afpo-amein IS NOT INITIAL.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr  = gs_afpo-matnr
+          i_in_me  = gs_afpo-amein
+          i_out_me = 'MT'
+          i_menge  = gs_afpo-wemng
+        IMPORTING
+          e_menge  = lv_wemng_mt
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc <> 0.
+        CLEAR lv_wemng_mt.
+      ENDIF.
+    ENDIF.
+
+    " 19) Planned Scrap Qty in Base Unit: PSAMG from AMEIN -> MEINS
+    IF gs_afpo-psamg IS NOT INITIAL AND gs_afpo-amein IS NOT INITIAL
+       AND gs_afpo-meins IS NOT INITIAL.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr  = gs_afpo-matnr
+          i_in_me  = gs_afpo-amein
+          i_out_me = gs_afpo-meins
+          i_menge  = gs_afpo-psamg
+        IMPORTING
+          e_menge  = lv_psamg_base
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc <> 0.
+        CLEAR lv_psamg_base.
+      ENDIF.
+    ENDIF.
+
+    " Loop through RESB components using indexed BINARY SEARCH
+    lv_has_resb = abap_false.
+
+    READ TABLE gt_resb TRANSPORTING NO FIELDS
+         WITH KEY rsnum = gs_afko-rsnum
+         BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      lv_resb_idx = sy-tabix.
+
+      LOOP AT gt_resb INTO gs_resb FROM lv_resb_idx.
+        IF gs_resb-rsnum <> gs_afko-rsnum.
+          EXIT.  " Key break - no more components for this order
+        ENDIF.
+
+        lv_has_resb = abap_true.
+        CLEAR gs_alv.
+
+        " Fill header fields from AFPO
+        gs_alv-werks = gs_afpo-dwerk.
+        gs_alv-matnr = gs_afpo-matnr.
+        gs_alv-dauat = gs_afpo-dauat.
+        gs_alv-aufnr = gs_afpo-aufnr.
+        gs_alv-posnr = gs_afpo-posnr.
+        gs_alv-amein = gs_afpo-amein.
+        gs_alv-meins = gs_afpo-meins.
+        gs_alv-wemng = gs_afpo-wemng.
+        gs_alv-elikz = gs_afpo-elikz.
+        gs_alv-xloek = gs_afpo-xloek.
+        gs_alv-psamg = gs_afpo-psamg.
+
+        " Fill header material description
+        IF lv_makt_ok = abap_true.
+          gs_alv-maktx = gs_makt-maktx.
+        ENDIF.
+
+        " Fill fields from AFKO
+        gs_alv-stlnr = gs_afko-stlnr.
+        gs_alv-stlal = gs_afko-stlal.
+        gs_alv-aufpl = gs_afko-aufpl.
+        gs_alv-plnnr = gs_afko-plnnr.
+        gs_alv-plnal = gs_afko-plnal.
+        gs_alv-gamng = gs_afko-gamng.
+        gs_alv-rsnum = gs_afko-rsnum.
+        gs_alv-gltri = gs_afko-gltri.
+        gs_alv-ftrmi = gs_afko-ftrmi.
+        gs_alv-gstri = gs_afko-gstri.
+        gs_alv-gltrs = gs_afko-gltrs.
+        gs_alv-ftrms = gs_afko-ftrms.
+        gs_alv-gstrs = gs_afko-gstrs.
+        gs_alv-getri = gs_afko-getri.
+
+        " Fill calculated quantities
+        gs_alv-gamng_base = lv_gamng_base.
+        gs_alv-gamng_mt   = lv_gamng_mt.
+        gs_alv-wemng_base = lv_wemng_base.
+        gs_alv-wemng_mt   = lv_wemng_mt.
+        gs_alv-psamg_base = lv_psamg_base.
+
+        " Fill status string
+        gs_alv-status = gs_status-status.
+
+        " Fill RESB component fields
+        gs_alv-rspos      = gs_resb-rspos.
+        gs_alv-comp_matnr = gs_resb-matnr.
+        gs_alv-bdmng      = gs_resb-bdmng.
+        gs_alv-enmng      = gs_resb-enmng.
+        gs_alv-kzear      = gs_resb-kzear.
+
+        " Component material description (BINARY SEARCH)
+        CLEAR ls_comp_makt.
+        READ TABLE gt_makt INTO ls_comp_makt
+             WITH KEY matnr = gs_resb-matnr
+             BINARY SEARCH.
+        IF sy-subrc = 0.
+          gs_alv-comp_maktx = ls_comp_makt-maktx.
+        ENDIF.
+
+        APPEND gs_alv TO gt_alv.
+
+      ENDLOOP.
+    ENDIF.
+
+    " If no RESB entries, still output one row for the order
+    IF lv_has_resb = abap_false.
+
+      CLEAR gs_alv.
+
+      gs_alv-werks = gs_afpo-dwerk.
+      gs_alv-matnr = gs_afpo-matnr.
+      gs_alv-dauat = gs_afpo-dauat.
+      gs_alv-aufnr = gs_afpo-aufnr.
+      gs_alv-posnr = gs_afpo-posnr.
+      gs_alv-amein = gs_afpo-amein.
+      gs_alv-meins = gs_afpo-meins.
+      gs_alv-wemng = gs_afpo-wemng.
+      gs_alv-elikz = gs_afpo-elikz.
+      gs_alv-xloek = gs_afpo-xloek.
+      gs_alv-psamg = gs_afpo-psamg.
+
+      IF lv_makt_ok = abap_true.
+        gs_alv-maktx = gs_makt-maktx.
+      ENDIF.
+
+      gs_alv-stlnr = gs_afko-stlnr.
+      gs_alv-stlal = gs_afko-stlal.
+      gs_alv-aufpl = gs_afko-aufpl.
+      gs_alv-plnnr = gs_afko-plnnr.
+      gs_alv-plnal = gs_afko-plnal.
+      gs_alv-gamng = gs_afko-gamng.
+      gs_alv-rsnum = gs_afko-rsnum.
+      gs_alv-gltri = gs_afko-gltri.
+      gs_alv-ftrmi = gs_afko-ftrmi.
+      gs_alv-gstri = gs_afko-gstri.
+      gs_alv-gltrs = gs_afko-gltrs.
+      gs_alv-ftrms = gs_afko-ftrms.
+      gs_alv-gstrs = gs_afko-gstrs.
+      gs_alv-getri = gs_afko-getri.
+
+      gs_alv-gamng_base = lv_gamng_base.
+      gs_alv-gamng_mt   = lv_gamng_mt.
+      gs_alv-wemng_base = lv_wemng_base.
+      gs_alv-wemng_mt   = lv_wemng_mt.
+      gs_alv-psamg_base = lv_psamg_base.
+
+      gs_alv-status = gs_status-status.
+
+      APPEND gs_alv TO gt_alv.
+
+    ENDIF.
+
+  ENDLOOP.
+
+  gv_records = lines( gt_alv ).
+
+  " Sort: WERKS, AFKO-MATNR, DAUAT, AUFNR, RSNUM, RSPOS
+  SORT gt_alv BY werks matnr dauat aufnr rsnum rspos.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form BUILD_STATUS_STRINGS
+*&---------------------------------------------------------------------*
+FORM build_status_strings.
+
+  DATA: ls_status  TYPE ty_status,
+        lv_jest_ix TYPE sy-tabix.
+
+  LOOP AT gt_aufk INTO gs_aufk.
+    CLEAR ls_status.
+    ls_status-aufnr = gs_aufk-aufnr.
+
+    " Find first JEST entry for this OBJNR using BINARY SEARCH
+    READ TABLE gt_jest TRANSPORTING NO FIELDS
+         WITH KEY objnr = gs_aufk-objnr
+         BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      lv_jest_ix = sy-tabix.
+
+      LOOP AT gt_jest INTO gs_jest FROM lv_jest_ix.
+        IF gs_jest-objnr <> gs_aufk-objnr.
+          EXIT.  " Key break - no more statuses for this order
+        ENDIF.
+
+        READ TABLE gt_tjo2t INTO gs_tjo2t
+             WITH KEY stat = gs_jest-stat
+             BINARY SEARCH.
+        IF sy-subrc = 0.
+          IF ls_status-status IS INITIAL.
+            ls_status-status = gs_tjo2t-txt04.
+          ELSE.
+            CONCATENATE ls_status-status gs_tjo2t-txt04
+              INTO ls_status-status SEPARATED BY space.
+          ENDIF.
+        ENDIF.
+
+      ENDLOOP.
+    ENDIF.
+
+    APPEND ls_status TO gt_status.
+  ENDLOOP.
+
+  SORT gt_status BY aufnr.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form WRITE_TO_SERVER
+*&---------------------------------------------------------------------*
+FORM write_to_server.
+
+  DATA: lv_matnr      TYPE string,
+        lv_stlnr      TYPE string,
+        lv_aufpl      TYPE string,
+        lv_aufnr      TYPE string,
+        lv_plnnr      TYPE string,
+        lv_werks      TYPE string,
+        lv_plnal      TYPE string,
+        lv_posnr      TYPE string,
+        lv_stlal      TYPE string,
+        lv_amein      TYPE string,
+        lv_meins      TYPE string,
+        lv_gltri      TYPE string,
+        lv_ftrmi      TYPE string,
+        lv_gstri      TYPE string,
+        lv_wemng      TYPE string,
+        lv_wemng_base TYPE string,
+        lv_wemng_mt   TYPE string,
+        lv_gltrs      TYPE string,
+        lv_gamng_base TYPE string,
+        lv_gamng_mt   TYPE string,
+        lv_gamng      TYPE string,
+        lv_ftrms      TYPE string,
+        lv_gstrs      TYPE string,
+        lv_status     TYPE string,
+        lv_psamg      TYPE string,
+        lv_psamg_base TYPE string,
+        lv_elikz      TYPE string,
+        lv_xloek      TYPE string,
+        lv_dauat      TYPE string,
+        lv_getri      TYPE string,
+        lv_enmng      TYPE string,
+        lv_kzear      TYPE string,
+        lv_temp       TYPE c LENGTH 24.
+
+  " Build file path with timestamp
+  gv_filepath = '/mnt/edifiles/In_ProductionOrders.csv'.
+
+  GET TIME STAMP FIELD gv_timestamp.
+  lv_ts = gv_timestamp.
+  CONDENSE lv_ts NO-GAPS.
+  REPLACE '.csv' IN gv_filepath WITH |_{ lv_ts(8) }_{ lv_ts+8(6) }.csv|.
+
+  OPEN DATASET gv_filepath FOR OUTPUT IN TEXT MODE ENCODING DEFAULT.
+  IF sy-subrc NE 0.
+    MESSAGE 'Error opening file' TYPE 'E'.
+    RETURN.
+  ENDIF.
+
+  " Write CSV Header (32 fields, pipe-delimited per spec)
+  CONCATENATE
+    'Item'                                 "1  AFPO-MATNR
+    'BOMID'                                "2  AFKO-STLNR
+    'RoutingID'                            "3  AFKO-AUFPL
+    'ProHeaderID'                          "4  AFPO-AUFNR
+    'Group'                                "5  AFKO-PLNNR
+    'Location'                             "6  AFPO-DWERK
+    'GroupCounter'                          "7  AFKO-PLNAL
+    'OrderItemNumber'                      "8  AFPO-POSNR
+    'AlternativeBOM'                       "9  AFKO-STLAL
+    'ProductionUOM'                        "10 AFPO-AMEIN
+    'BaseUOM'                              "11 AFPO-MEINS
+    'PrODetailActualFinishDate'            "12 AFKO-GLTRI
+    'PrODetailActualReleaseDate'           "13 AFKO-FTRMI
+    'PrODetailActualStartDate'             "14 AFKO-GSTRI
+    'PrODetailDeliveredQuantity'           "15 AFPO-WEMNG
+    'PrODetailDeliveredQuantityinBaseUOM'  "16 Calculated
+    'PrODetailDeliveredQuantityinMT'       "17 Calculated
+    'PrODetailFinishDate'                  "18 AFKO-GLTRS
+    'PrODetailQuantityinBaseUOM'           "19 Calculated
+    'PrODetailQuantityinMT'                "20 Calculated
+    'PrODetailQuantity'                    "21 AFKO-GAMNG
+    'PrODetailReleaseDate'                 "22 AFKO-FTRMS
+    'PrODetailStartDate'                   "23 AFKO-GSTRS
+    'PrODetailStatus'                      "24 TJO2T-TXTO4
+    'ScrapQuantity'                        "25 AFPO-PSAMG
+    'ScrapQuantityinBaseUOM'               "26 Calculated
+    'DeliveryCompleted'                    "27 AFPO-ELIKZ
+    'DeletionFlag'                         "28 XLOEK
+    'OrderType'                            "29 AFPO-DAUAT
+    'ConfirmOrderFinishDate'               "30 AFKO-GETRI
+    'ComponentWithdrawnQuantity'            "31 RESB-ENMNG
+    'ComponentFinalIssueIndicator'         "32 RESB-KZEAR
+    INTO gv_line SEPARATED BY '|'.
+  TRANSFER gv_line TO gv_filepath.
+
+  " Write data rows
+  LOOP AT gt_alv INTO gs_alv.
+
+    CLEAR gv_line.
+
+    " 1) Item - AFPO-MATNR
+    lv_matnr = gs_alv-matnr. CONDENSE lv_matnr NO-GAPS.
+    " 2) BOMID - AFKO-STLNR
+    lv_stlnr = gs_alv-stlnr. CONDENSE lv_stlnr NO-GAPS.
+    " 3) RoutingID - AFKO-AUFPL
+    lv_aufpl = gs_alv-aufpl. CONDENSE lv_aufpl NO-GAPS.
+    " 4) ProHeaderID - AFPO-AUFNR
+    lv_aufnr = gs_alv-aufnr. CONDENSE lv_aufnr NO-GAPS.
+    " 5) Group - AFKO-PLNNR
+    lv_plnnr = gs_alv-plnnr. CONDENSE lv_plnnr NO-GAPS.
+    " 6) Location - AFPO-DWERK
+    lv_werks = gs_alv-werks. CONDENSE lv_werks NO-GAPS.
+    " 7) GroupCounter - AFKO-PLNAL
+    lv_plnal = gs_alv-plnal. CONDENSE lv_plnal NO-GAPS.
+    " 8) OrderItemNumber - AFPO-POSNR
+    lv_posnr = gs_alv-posnr. CONDENSE lv_posnr NO-GAPS.
+    " 9) AlternativeBOM - AFKO-STLAL
+    lv_stlal = gs_alv-stlal. CONDENSE lv_stlal NO-GAPS.
+    " 10) ProductionUOM - AFPO-AMEIN
+    lv_amein = gs_alv-amein. CONDENSE lv_amein NO-GAPS.
+    " 11) BaseUOM - AFPO-MEINS
+    lv_meins = gs_alv-meins. CONDENSE lv_meins NO-GAPS.
+
+    " 12) PrODetailActualFinishDate - AFKO-GLTRI
+    PERFORM format_date USING gs_alv-gltri    CHANGING lv_gltri.
+    " 13) PrODetailActualReleaseDate - AFKO-FTRMI
+    PERFORM format_date USING gs_alv-ftrmi    CHANGING lv_ftrmi.
+    " 14) PrODetailActualStartDate - AFKO-GSTRI
+    PERFORM format_date USING gs_alv-gstri    CHANGING lv_gstri.
+
+    " 15) PrODetailDeliveredQuantity - AFPO-WEMNG
+    WRITE gs_alv-wemng TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_wemng = lv_temp. CONDENSE lv_wemng NO-GAPS.
+    " 16) PrODetailDeliveredQuantityinBaseUOM - Calculated
+    WRITE gs_alv-wemng_base TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_wemng_base = lv_temp. CONDENSE lv_wemng_base NO-GAPS.
+    " 17) PrODetailDeliveredQuantityinMT - Calculated
+    WRITE gs_alv-wemng_mt TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_wemng_mt = lv_temp. CONDENSE lv_wemng_mt NO-GAPS.
+
+    " 18) PrODetailFinishDate - AFKO-GLTRS
+    PERFORM format_date USING gs_alv-gltrs    CHANGING lv_gltrs.
+
+    " 19) PrODetailQuantityinBaseUOM - Calculated
+    WRITE gs_alv-gamng_base TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_gamng_base = lv_temp. CONDENSE lv_gamng_base NO-GAPS.
+    " 20) PrODetailQuantityinMT - Calculated
+    WRITE gs_alv-gamng_mt TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_gamng_mt = lv_temp. CONDENSE lv_gamng_mt NO-GAPS.
+    " 21) PrODetailQuantity - AFKO-GAMNG
+    WRITE gs_alv-gamng TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_gamng = lv_temp. CONDENSE lv_gamng NO-GAPS.
+
+    " 22) PrODetailReleaseDate - AFKO-FTRMS
+    PERFORM format_date USING gs_alv-ftrms    CHANGING lv_ftrms.
+    " 23) PrODetailStartDate - AFKO-GSTRS
+    PERFORM format_date USING gs_alv-gstrs    CHANGING lv_gstrs.
+
+    " 24) PrODetailStatus - Concatenated TJO2T-TXTO4
+    lv_status = gs_alv-status. CONDENSE lv_status.
+
+    " 25) ScrapQuantity - AFPO-PSAMG
+    WRITE gs_alv-psamg TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_psamg = lv_temp. CONDENSE lv_psamg NO-GAPS.
+    " 26) ScrapQuantityinBaseUOM - Calculated
+    WRITE gs_alv-psamg_base TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_psamg_base = lv_temp. CONDENSE lv_psamg_base NO-GAPS.
+
+    " 27) DeliveryCompleted - AFPO-ELIKZ
+    lv_elikz = gs_alv-elikz. CONDENSE lv_elikz NO-GAPS.
+    " 28) DeletionFlag - XLOEK
+    lv_xloek = gs_alv-xloek. CONDENSE lv_xloek NO-GAPS.
+    " 29) OrderType - AFPO-DAUAT
+    lv_dauat = gs_alv-dauat. CONDENSE lv_dauat NO-GAPS.
+
+    " 30) ConfirmOrderFinishDate - AFKO-GETRI
+    PERFORM format_date USING gs_alv-getri    CHANGING lv_getri.
+
+    " 31) ComponentWithdrawnQuantity - RESB-ENMNG
+    WRITE gs_alv-enmng TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_enmng = lv_temp. CONDENSE lv_enmng NO-GAPS.
+    " 32) ComponentFinalIssueIndicator - RESB-KZEAR
+    lv_kzear = gs_alv-kzear. CONDENSE lv_kzear NO-GAPS.
+
+    CONCATENATE
+      lv_matnr lv_stlnr lv_aufpl lv_aufnr lv_plnnr lv_werks
+      lv_plnal lv_posnr lv_stlal lv_amein lv_meins
+      lv_gltri lv_ftrmi lv_gstri
+      lv_wemng lv_wemng_base lv_wemng_mt
+      lv_gltrs
+      lv_gamng_base lv_gamng_mt lv_gamng
+      lv_ftrms lv_gstrs
+      lv_status
+      lv_psamg lv_psamg_base
+      lv_elikz lv_xloek lv_dauat
+      lv_getri
+      lv_enmng lv_kzear
+      INTO gv_line SEPARATED BY '|'.
+    TRANSFER gv_line TO gv_filepath.
+
+  ENDLOOP.
+
+  CLOSE DATASET gv_filepath.
+
+  MESSAGE |File generated successfully: { gv_filepath }| TYPE 'S'.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form FORMAT_DATE
+*&---------------------------------------------------------------------*
+FORM format_date USING    iv_date TYPE d
+                 CHANGING ev_str  TYPE string.
+  CLEAR ev_str.
+  IF iv_date IS NOT INITIAL AND iv_date <> '00000000'.
+    CONCATENATE iv_date+6(2) '.' iv_date+4(2) '.' iv_date+0(4) INTO ev_str.
+  ENDIF.
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form DISPLAY_ALV
+*&---------------------------------------------------------------------*
+FORM display_alv.
+
+  DATA: lv_msg TYPE REF TO cx_salv_msg,
+        lv_nf  TYPE REF TO cx_salv_not_found.
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = go_alv
+        CHANGING  t_table      = gt_alv ).
+
+      " Enable all standard ALV functions (filter, sort, totals, subtotals, export, layout)
+      go_funcs = go_alv->get_functions( ).
+      go_funcs->set_all( abap_true ).
+
+      " Display settings
+      go_display = go_alv->get_display_settings( ).
+      go_display->set_list_header( 'Production Order Report - ALV Output' ).
+      go_display->set_striped_pattern( abap_true ).
+
+      " Layout save
+      go_layout = go_alv->get_layout( ).
+      gs_lkey-report = sy-repid.
+      go_layout->set_key( gs_lkey ).
+      go_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+      " Column optimization
+      go_columns = go_alv->get_columns( ).
+      go_columns->set_optimize( abap_true ).
+
+      TRY.
+          " 1) Plant
+          go_column = go_columns->get_column( 'WERKS' ).
+          go_column->set_short_text( 'Plant' ).
+          go_column->set_medium_text( 'Plant' ).
+          go_column->set_long_text( 'Plant' ).
+
+          " 2) Order Item Material
+          go_column = go_columns->get_column( 'MATNR' ).
+          go_column->set_short_text( 'Material' ).
+          go_column->set_medium_text( 'Order Item Material' ).
+          go_column->set_long_text( 'Order Item Material' ).
+
+          " 3) Order Item Material Description
+          go_column = go_columns->get_column( 'MAKTX' ).
+          go_column->set_short_text( 'Mat Desc' ).
+          go_column->set_medium_text( 'Item Mat Desc' ).
+          go_column->set_long_text( 'Order Item Material Description' ).
+
+          " 4) Order Type
+          go_column = go_columns->get_column( 'DAUAT' ).
+          go_column->set_short_text( 'Ord Type' ).
+          go_column->set_medium_text( 'Order Type' ).
+          go_column->set_long_text( 'Order Type' ).
+
+          " 5) Order
+          go_column = go_columns->get_column( 'AUFNR' ).
+          go_column->set_short_text( 'Order' ).
+          go_column->set_medium_text( 'Order' ).
+          go_column->set_long_text( 'Production Order' ).
+
+          " 6) Order Item Number
+          go_column = go_columns->get_column( 'POSNR' ).
+          go_column->set_short_text( 'Item No' ).
+          go_column->set_medium_text( 'Order Item No' ).
+          go_column->set_long_text( 'Order Item Number' ).
+
+          " 7) BOM ID
+          go_column = go_columns->get_column( 'STLNR' ).
+          go_column->set_short_text( 'BOM ID' ).
+          go_column->set_medium_text( 'BOM ID' ).
+          go_column->set_long_text( 'BOM ID' ).
+
+          " 8) Alternative BOM
+          go_column = go_columns->get_column( 'STLAL' ).
+          go_column->set_short_text( 'Alt BOM' ).
+          go_column->set_medium_text( 'Alternative BOM' ).
+          go_column->set_long_text( 'Alternative BOM' ).
+
+          " 9) Routing ID
+          go_column = go_columns->get_column( 'AUFPL' ).
+          go_column->set_short_text( 'Rtg ID' ).
+          go_column->set_medium_text( 'Routing ID' ).
+          go_column->set_long_text( 'Routing ID' ).
+
+          " 10) Routing Group
+          go_column = go_columns->get_column( 'PLNNR' ).
+          go_column->set_short_text( 'Rtg Grp' ).
+          go_column->set_medium_text( 'Routing Group' ).
+          go_column->set_long_text( 'Routing Group' ).
+
+          " 11) Routing Group Counter
+          go_column = go_columns->get_column( 'PLNAL' ).
+          go_column->set_short_text( 'Grp Ctr' ).
+          go_column->set_medium_text( 'Rtg Grp Counter' ).
+          go_column->set_long_text( 'Routing Group Counter' ).
+
+          " 12) Order Quantity in Base Unit
+          go_column = go_columns->get_column( 'GAMNG_BASE' ).
+          go_column->set_short_text( 'Ord BsQt' ).
+          go_column->set_medium_text( 'Ord Qty Base Unt' ).
+          go_column->set_long_text( 'Order Quantity in Base Unit' ).
+
+          " 13) Order Quantity in Order Unit
+          go_column = go_columns->get_column( 'GAMNG' ).
+          go_column->set_short_text( 'Ord Qty' ).
+          go_column->set_medium_text( 'Ord Qty Ord Unit' ).
+          go_column->set_long_text( 'Order Quantity in Order Unit' ).
+
+          " 14) Order Quantity in MT
+          go_column = go_columns->get_column( 'GAMNG_MT' ).
+          go_column->set_short_text( 'Ord QtMT' ).
+          go_column->set_medium_text( 'Ord Qty in MT' ).
+          go_column->set_long_text( 'Order Quantity in MT' ).
+
+          " 15) Order Delivered Qty in Order Unit
+          go_column = go_columns->get_column( 'WEMNG' ).
+          go_column->set_short_text( 'Del Qty' ).
+          go_column->set_medium_text( 'Dlvrd Qty Ord Unt' ).
+          go_column->set_long_text( 'Order Delivered Qty in Order Unit' ).
+
+          " 16) Delivered Quantity in Base Unit
+          go_column = go_columns->get_column( 'WEMNG_BASE' ).
+          go_column->set_short_text( 'Del BsQt' ).
+          go_column->set_medium_text( 'Dlvrd Qty Base Unt' ).
+          go_column->set_long_text( 'Delivered Quantity in Base Unit' ).
+
+          " 17) Delivered Quantity in MT
+          go_column = go_columns->get_column( 'WEMNG_MT' ).
+          go_column->set_short_text( 'Del QtMT' ).
+          go_column->set_medium_text( 'Dlvrd Qty in MT' ).
+          go_column->set_long_text( 'Delivered Quantity in MT' ).
+
+          " 18) Planned Scrap Qty in Order Unit
+          go_column = go_columns->get_column( 'PSAMG' ).
+          go_column->set_short_text( 'Scrp Qty' ).
+          go_column->set_medium_text( 'Scrap Qty Ord Unt' ).
+          go_column->set_long_text( 'Planned Scrap Qty in Order Unit' ).
+
+          " 19) Planned Scrap Qty in Base Unit
+          go_column = go_columns->get_column( 'PSAMG_BASE' ).
+          go_column->set_short_text( 'Scrp BsQ' ).
+          go_column->set_medium_text( 'Scrap Qty Base Unt' ).
+          go_column->set_long_text( 'Planned Scrap Qty in Base Unit' ).
+
+          " 20) Production Unit
+          go_column = go_columns->get_column( 'AMEIN' ).
+          go_column->set_short_text( 'Prod Unt' ).
+          go_column->set_medium_text( 'Production Unit' ).
+          go_column->set_long_text( 'Production Unit' ).
+
+          " 21) Base Unit
+          go_column = go_columns->get_column( 'MEINS' ).
+          go_column->set_short_text( 'Base Unt' ).
+          go_column->set_medium_text( 'Base Unit' ).
+          go_column->set_long_text( 'Base Unit' ).
+
+          " 22) Reservation Number
+          go_column = go_columns->get_column( 'RSNUM' ).
+          go_column->set_short_text( 'Res Num' ).
+          go_column->set_medium_text( 'Reservation No' ).
+          go_column->set_long_text( 'Reservation Number' ).
+
+          " 23) Reservation Item
+          go_column = go_columns->get_column( 'RSPOS' ).
+          go_column->set_short_text( 'Res Item' ).
+          go_column->set_medium_text( 'Reservation Item' ).
+          go_column->set_long_text( 'Reservation Item' ).
+
+          " 24) Component Material
+          go_column = go_columns->get_column( 'COMP_MATNR' ).
+          go_column->set_short_text( 'Comp Mat' ).
+          go_column->set_medium_text( 'Component Material' ).
+          go_column->set_long_text( 'Component Material' ).
+
+          " 25) Component Material Description
+          go_column = go_columns->get_column( 'COMP_MAKTX' ).
+          go_column->set_short_text( 'Comp Desc' ).
+          go_column->set_medium_text( 'Comp Mat Desc' ).
+          go_column->set_long_text( 'Component Material Description' ).
+
+          " 26) Component Requirement Quantity
+          go_column = go_columns->get_column( 'BDMNG' ).
+          go_column->set_short_text( 'Comp Req' ).
+          go_column->set_medium_text( 'Comp Req Qty' ).
+          go_column->set_long_text( 'Component Requirement Quantity' ).
+
+          " 27) Component Withdrawn Quantity
+          go_column = go_columns->get_column( 'ENMNG' ).
+          go_column->set_short_text( 'Comp Wdr' ).
+          go_column->set_medium_text( 'Comp Withdrawn Qty' ).
+          go_column->set_long_text( 'Component Withdrawn Quantity' ).
+
+          " 28) Component Final Issue Indicator
+          go_column = go_columns->get_column( 'KZEAR' ).
+          go_column->set_short_text( 'Fin Iss' ).
+          go_column->set_medium_text( 'Final Issue Ind' ).
+          go_column->set_long_text( 'Component Final Issue Indicator' ).
+
+          " 29) Actual Finish Date
+          go_column = go_columns->get_column( 'GLTRI' ).
+          go_column->set_short_text( 'Act Fin' ).
+          go_column->set_medium_text( 'Actual Finish Dt' ).
+          go_column->set_long_text( 'Actual Finish Date' ).
+
+          " 30) Actual Release Date
+          go_column = go_columns->get_column( 'FTRMI' ).
+          go_column->set_short_text( 'Act Rel' ).
+          go_column->set_medium_text( 'Actual Release Dt' ).
+          go_column->set_long_text( 'Actual Release Date' ).
+
+          " 31) Actual Start Date
+          go_column = go_columns->get_column( 'GSTRI' ).
+          go_column->set_short_text( 'Act Start' ).
+          go_column->set_medium_text( 'Actual Start Dt' ).
+          go_column->set_long_text( 'Actual Start Date' ).
+
+          " 32) Scheduled Finish Date
+          go_column = go_columns->get_column( 'GLTRS' ).
+          go_column->set_short_text( 'Sch Fin' ).
+          go_column->set_medium_text( 'Sched Finish Dt' ).
+          go_column->set_long_text( 'Scheduled Finish Date' ).
+
+          " 33) Scheduled Release Date
+          go_column = go_columns->get_column( 'FTRMS' ).
+          go_column->set_short_text( 'Sch Rel' ).
+          go_column->set_medium_text( 'Sched Release Dt' ).
+          go_column->set_long_text( 'Scheduled Release Date' ).
+
+          " 34) Scheduled Start Date
+          go_column = go_columns->get_column( 'GSTRS' ).
+          go_column->set_short_text( 'Sch Start' ).
+          go_column->set_medium_text( 'Sched Start Dt' ).
+          go_column->set_long_text( 'Scheduled Start Date' ).
+
+          " 35) Confirmed Finish Date
+          go_column = go_columns->get_column( 'GETRI' ).
+          go_column->set_short_text( 'Cnf Fin' ).
+          go_column->set_medium_text( 'Confirm Finish Dt' ).
+          go_column->set_long_text( 'Confirmed Finish Date' ).
+
+          " 36) Delivery Completed Indicator
+          go_column = go_columns->get_column( 'ELIKZ' ).
+          go_column->set_short_text( 'Del Comp' ).
+          go_column->set_medium_text( 'Delivery Completed' ).
+          go_column->set_long_text( 'Delivery Completed Indicator' ).
+
+          " 37) Deletion Flag
+          go_column = go_columns->get_column( 'XLOEK' ).
+          go_column->set_short_text( 'Del Flag' ).
+          go_column->set_medium_text( 'Deletion Flag' ).
+          go_column->set_long_text( 'Deletion Flag' ).
+
+          " 38) Order Status
+          go_column = go_columns->get_column( 'STATUS' ).
+          go_column->set_short_text( 'Ord Stat' ).
+          go_column->set_medium_text( 'Order Status' ).
+          go_column->set_long_text( 'Order Status' ).
+
+        CATCH cx_salv_not_found INTO lv_nf.
+      ENDTRY.
+
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO lv_msg.
+      MESSAGE lv_msg TYPE 'E'.
+  ENDTRY.
+
+ENDFORM.
