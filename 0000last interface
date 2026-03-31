@@ -1,0 +1,1039 @@
+*&---------------------------------------------------------------------*
+*& Report ZO9_PROD_ORD
+*&---------------------------------------------------------------------*
+REPORT zo9_prod_ord.
+
+TABLES: mara, t001w, afko.
+
+TYPES: BEGIN OF ty_afpo,
+         aufnr TYPE afpo-aufnr,
+         posnr TYPE afpo-posnr,
+         matnr TYPE afpo-matnr,
+         dwerk TYPE afpo-dwerk,
+         amein TYPE afpo-amein,
+         meins TYPE afpo-meins,
+         wemng TYPE afpo-wemng,
+         elikz TYPE afpo-elikz,
+         xloek TYPE afpo-xloek,
+         dauat TYPE afpo-dauat,
+         psamg TYPE afpo-psamg,
+       END OF ty_afpo,
+
+       BEGIN OF ty_afko,
+         aufnr TYPE afko-aufnr,
+         stlnr TYPE afko-stlnr,
+         aufpl TYPE afko-aufpl,
+         plnnr TYPE afko-plnnr,
+         plnal TYPE afko-plnal,
+         stlal TYPE afko-stlal,
+         gltri TYPE afko-gltri,
+         ftrmi TYPE afko-ftrmi,
+         gstri TYPE afko-gstri,
+         gltrs TYPE afko-gltrs,
+         gamng TYPE afko-gamng,
+         ftrms TYPE afko-ftrms,
+         gstrs TYPE afko-gstrs,
+         getri TYPE afko-getri,
+         rsnum TYPE afko-rsnum,
+       END OF ty_afko,
+
+       BEGIN OF ty_aufk,
+         aufnr TYPE aufk-aufnr,
+         objnr TYPE aufk-objnr,
+       END OF ty_aufk,
+
+       BEGIN OF ty_jest,
+         objnr TYPE jest-objnr,
+         stat  TYPE jest-stat,
+       END OF ty_jest,
+
+       BEGIN OF ty_tj02t,
+         istat TYPE tj02t-istat,
+         txt04 TYPE tj02t-txt04,
+       END OF ty_tj02t,
+
+       BEGIN OF ty_resb,
+         rsnum TYPE resb-rsnum,
+         rspos TYPE resb-rspos,
+         matnr TYPE resb-matnr,
+         bdmng TYPE resb-bdmng,
+         enmng TYPE resb-enmng,
+         kzear TYPE resb-kzear,
+       END OF ty_resb,
+
+       BEGIN OF ty_makt,
+         matnr TYPE makt-matnr,
+         maktx TYPE makt-maktx,
+       END OF ty_makt,
+
+       BEGIN OF ty_status,
+         aufnr  TYPE aufnr,
+         status TYPE char200,
+       END OF ty_status,
+
+       BEGIN OF ty_matnr_list,
+         matnr TYPE matnr,
+       END OF ty_matnr_list,
+
+       BEGIN OF ty_alv,
+         werks      TYPE afpo-dwerk,
+         matnr      TYPE afpo-matnr,
+         maktx      TYPE makt-maktx,
+         dauat      TYPE afpo-dauat,
+         aufnr      TYPE afpo-aufnr,
+         posnr      TYPE afpo-posnr,
+         stlnr      TYPE afko-stlnr,
+         stlal      TYPE afko-stlal,
+         aufpl      TYPE afko-aufpl,
+         plnnr      TYPE afko-plnnr,
+         plnal      TYPE afko-plnal,
+         gamng_base TYPE menge_d,
+         gamng      TYPE afko-gamng,
+         gamng_mt   TYPE menge_d,
+         wemng      TYPE afpo-wemng,
+         wemng_base TYPE menge_d,
+         wemng_mt   TYPE menge_d,
+         psamg      TYPE afpo-psamg,
+         psamg_base TYPE menge_d,
+         amein      TYPE afpo-amein,
+         meins      TYPE afpo-meins,
+         rsnum      TYPE afko-rsnum,
+         rspos      TYPE resb-rspos,
+         comp_matnr TYPE resb-matnr,
+         comp_maktx TYPE makt-maktx,
+         bdmng      TYPE resb-bdmng,
+         enmng      TYPE resb-enmng,
+         kzear      TYPE resb-kzear,
+         gltri      TYPE afko-gltri,
+         ftrmi      TYPE afko-ftrmi,
+         gstri      TYPE afko-gstri,
+         gltrs      TYPE afko-gltrs,
+         ftrms      TYPE afko-ftrms,
+         gstrs      TYPE afko-gstrs,
+         getri      TYPE afko-getri,
+         elikz      TYPE afpo-elikz,
+         xloek      TYPE afpo-xloek,
+         status     TYPE char200,
+       END OF ty_alv.
+
+DATA: gt_afpo   TYPE STANDARD TABLE OF ty_afpo,
+      gt_afko   TYPE STANDARD TABLE OF ty_afko,
+      gt_aufk   TYPE STANDARD TABLE OF ty_aufk,
+      gt_jest   TYPE STANDARD TABLE OF ty_jest,
+      gt_tj02t  TYPE STANDARD TABLE OF ty_tj02t,
+      gt_resb   TYPE STANDARD TABLE OF ty_resb,
+      gt_makt   TYPE STANDARD TABLE OF ty_makt,
+      gt_status TYPE STANDARD TABLE OF ty_status,
+      gt_alv    TYPE STANDARD TABLE OF ty_alv,
+      gs_afpo   TYPE ty_afpo,
+      gs_afko   TYPE ty_afko,
+      gs_aufk   TYPE ty_aufk,
+      gs_jest   TYPE ty_jest,
+      gs_tj02t  TYPE ty_tj02t,
+      gs_resb   TYPE ty_resb,
+      gs_makt   TYPE ty_makt,
+      gs_status TYPE ty_status,
+      gs_alv    TYPE ty_alv.
+
+DATA: gv_line    TYPE string,
+      gv_records TYPE i.
+
+DATA: gv_mtart     TYPE mara-mtart,
+      gv_matnr_ext TYPE matnr.
+
+DATA: gv_filepath  TYPE string,
+      gv_timestamp TYPE timestamp,
+      lv_ts        TYPE string.
+
+DATA: go_alv     TYPE REF TO cl_salv_table,
+      go_funcs   TYPE REF TO cl_salv_functions_list,
+      go_columns TYPE REF TO cl_salv_columns_table,
+      go_column  TYPE REF TO cl_salv_column,
+      go_display TYPE REF TO cl_salv_display_settings,
+      go_layout  TYPE REF TO cl_salv_layout,
+      gs_lkey    TYPE salv_s_layout_key.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+  SELECT-OPTIONS: s_matnr FOR mara-matnr MATCHCODE OBJECT mat1,
+                  s_werks FOR t001w-werks OBLIGATORY,
+                  s_gstrs FOR afko-gstrs.
+  PARAMETERS:     p_stat  TYPE char20.
+  PARAMETERS:     p_file  AS CHECKBOX DEFAULT 'X'.
+SELECTION-SCREEN END OF BLOCK b1.
+
+INITIALIZATION.
+  GET PARAMETER ID 'MAT' FIELD s_matnr-low.
+  GET PARAMETER ID 'WRK' FIELD s_werks-low.
+
+  s_gstrs-sign   = 'I'.
+  s_gstrs-option = 'BT'.
+  s_gstrs-low    = sy-datum - 180.
+  s_gstrs-high   = sy-datum + 180.
+  APPEND s_gstrs.
+
+AT SELECTION-SCREEN.
+
+  IF s_matnr-low IS NOT INITIAL AND s_matnr-high IS INITIAL.
+    SELECT SINGLE matnr mtart
+      FROM mara
+      INTO (mara-matnr, gv_mtart)
+     WHERE matnr = s_matnr-low.
+    IF sy-subrc <> 0.
+      CALL FUNCTION 'CONVERSION_EXIT_MATN1_OUTPUT'
+        EXPORTING input  = s_matnr-low
+        IMPORTING output = gv_matnr_ext.
+      MESSAGE |The material { gv_matnr_ext } does not exist or is not activated| TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+  IF s_werks-low IS NOT INITIAL AND s_werks-high IS INITIAL.
+    SELECT SINGLE werks
+      FROM t001w
+      INTO t001w-werks
+     WHERE werks = s_werks-low.
+    IF sy-subrc <> 0.
+      MESSAGE |Plant { s_werks-low } does not exist| TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+START-OF-SELECTION.
+
+  PERFORM extract_data.
+
+  IF gt_alv IS NOT INITIAL.
+    IF p_file = abap_true.
+      PERFORM write_to_server.
+    ENDIF.
+    PERFORM display_alv.
+  ELSE.
+    MESSAGE 'No Data Found' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+
+FORM extract_data.
+
+  DATA: lv_gamng_base  TYPE menge_d,
+        lv_gamng_mt    TYPE menge_d,
+        lv_wemng_base  TYPE menge_d,
+        lv_wemng_mt    TYPE menge_d,
+        lv_psamg_base  TYPE menge_d,
+        lv_has_resb    TYPE abap_bool,
+        lv_makt_ok     TYPE abap_bool,
+        lv_resb_idx    TYPE sy-tabix,
+        ls_comp_makt   TYPE ty_makt,
+        lt_matnr_list  TYPE STANDARD TABLE OF ty_matnr_list,
+        ls_matnr_list  TYPE ty_matnr_list.
+
+  SELECT aufnr posnr matnr dwerk amein meins wemng elikz xloek dauat psamg
+    FROM afpo
+    INTO TABLE gt_afpo
+   WHERE matnr IN s_matnr
+     AND dwerk IN s_werks.
+
+  IF gt_afpo IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  SORT gt_afpo BY aufnr posnr.
+
+  SELECT aufnr stlnr aufpl plnnr plnal stlal gltri ftrmi gstri
+         gltrs gamng ftrms gstrs getri rsnum
+    FROM afko
+    INTO TABLE gt_afko
+     FOR ALL ENTRIES IN gt_afpo
+   WHERE aufnr = gt_afpo-aufnr
+     AND gstrs IN s_gstrs.
+
+  IF gt_afko IS INITIAL.
+    CLEAR gt_afpo.
+    RETURN.
+  ENDIF.
+
+  SORT gt_afko BY aufnr.
+
+  SELECT aufnr objnr
+    FROM aufk
+    INTO TABLE gt_aufk
+     FOR ALL ENTRIES IN gt_afko
+   WHERE aufnr = gt_afko-aufnr
+     AND autyp = '10'.
+
+  IF gt_aufk IS NOT INITIAL.
+    SORT gt_aufk BY aufnr.
+  ENDIF.
+
+  IF gt_aufk IS NOT INITIAL.
+    SELECT objnr stat
+      FROM jest
+      INTO TABLE gt_jest
+       FOR ALL ENTRIES IN gt_aufk
+     WHERE objnr = gt_aufk-objnr
+       AND inact = space.
+
+    IF gt_jest IS NOT INITIAL.
+      SORT gt_jest BY objnr stat.
+    ENDIF.
+  ENDIF.
+
+  IF gt_jest IS NOT INITIAL.
+    SELECT istat txt04
+      FROM tj02t
+      INTO TABLE gt_tj02t
+       FOR ALL ENTRIES IN gt_jest
+     WHERE istat = gt_jest-stat
+       AND spras = 'EN'.
+
+    IF gt_tj02t IS NOT INITIAL.
+      SORT gt_tj02t BY istat.
+      DELETE ADJACENT DUPLICATES FROM gt_tj02t COMPARING istat.
+    ENDIF.
+  ENDIF.
+
+  PERFORM build_status_strings.
+
+  SELECT rsnum rspos matnr bdmng enmng kzear
+    FROM resb
+    INTO TABLE gt_resb
+     FOR ALL ENTRIES IN gt_afko
+   WHERE rsnum = gt_afko-rsnum.
+
+  IF gt_resb IS NOT INITIAL.
+    SORT gt_resb BY rsnum rspos.
+  ENDIF.
+
+  LOOP AT gt_afpo INTO gs_afpo.
+    ls_matnr_list-matnr = gs_afpo-matnr.
+    APPEND ls_matnr_list TO lt_matnr_list.
+  ENDLOOP.
+
+  IF gt_resb IS NOT INITIAL.
+    LOOP AT gt_resb INTO gs_resb.
+      ls_matnr_list-matnr = gs_resb-matnr.
+      APPEND ls_matnr_list TO lt_matnr_list.
+    ENDLOOP.
+  ENDIF.
+
+  SORT lt_matnr_list BY matnr.
+  DELETE ADJACENT DUPLICATES FROM lt_matnr_list COMPARING matnr.
+
+  IF lt_matnr_list IS NOT INITIAL.
+    SELECT matnr maktx
+      FROM makt
+      INTO TABLE gt_makt
+       FOR ALL ENTRIES IN lt_matnr_list
+     WHERE matnr = lt_matnr_list-matnr
+       AND spras = 'EN'.
+
+    IF gt_makt IS NOT INITIAL.
+      SORT gt_makt BY matnr.
+    ENDIF.
+  ENDIF.
+
+  LOOP AT gt_afpo INTO gs_afpo.
+
+    CLEAR gs_afko.
+    READ TABLE gt_afko INTO gs_afko
+         WITH KEY aufnr = gs_afpo-aufnr
+         BINARY SEARCH.
+    IF sy-subrc <> 0.
+      CONTINUE.
+    ENDIF.
+
+    CLEAR gs_status.
+    READ TABLE gt_status INTO gs_status
+         WITH KEY aufnr = gs_afpo-aufnr
+         BINARY SEARCH.
+
+    IF p_stat IS NOT INITIAL.
+      IF gs_status-status IS INITIAL
+        OR NOT gs_status-status CP p_stat.
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    CLEAR: gs_makt, lv_makt_ok.
+    READ TABLE gt_makt INTO gs_makt
+         WITH KEY matnr = gs_afpo-matnr
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_makt_ok = abap_true.
+    ENDIF.
+
+    CLEAR: lv_gamng_base, lv_gamng_mt,
+           lv_wemng_base, lv_wemng_mt,
+           lv_psamg_base.
+
+    IF gs_afko-gamng IS NOT INITIAL AND gs_afpo-amein IS NOT INITIAL
+       AND gs_afpo-meins IS NOT INITIAL.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr  = gs_afpo-matnr
+          i_in_me  = gs_afpo-amein
+          i_out_me = gs_afpo-meins
+          i_menge  = gs_afko-gamng
+        IMPORTING
+          e_menge  = lv_gamng_base
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc <> 0.
+        CLEAR lv_gamng_base.
+      ENDIF.
+    ENDIF.
+
+    IF gs_afko-gamng IS NOT INITIAL AND gs_afpo-amein IS NOT INITIAL.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr  = gs_afpo-matnr
+          i_in_me  = gs_afpo-amein
+          i_out_me = 'MT'
+          i_menge  = gs_afko-gamng
+        IMPORTING
+          e_menge  = lv_gamng_mt
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc <> 0.
+        CLEAR lv_gamng_mt.
+      ENDIF.
+    ENDIF.
+
+    IF gs_afpo-wemng IS NOT INITIAL AND gs_afpo-amein IS NOT INITIAL
+       AND gs_afpo-meins IS NOT INITIAL.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr  = gs_afpo-matnr
+          i_in_me  = gs_afpo-amein
+          i_out_me = gs_afpo-meins
+          i_menge  = gs_afpo-wemng
+        IMPORTING
+          e_menge  = lv_wemng_base
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc <> 0.
+        CLEAR lv_wemng_base.
+      ENDIF.
+    ENDIF.
+
+    IF gs_afpo-wemng IS NOT INITIAL AND gs_afpo-amein IS NOT INITIAL.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr  = gs_afpo-matnr
+          i_in_me  = gs_afpo-amein
+          i_out_me = 'MT'
+          i_menge  = gs_afpo-wemng
+        IMPORTING
+          e_menge  = lv_wemng_mt
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc <> 0.
+        CLEAR lv_wemng_mt.
+      ENDIF.
+    ENDIF.
+
+    IF gs_afpo-psamg IS NOT INITIAL AND gs_afpo-amein IS NOT INITIAL
+       AND gs_afpo-meins IS NOT INITIAL.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr  = gs_afpo-matnr
+          i_in_me  = gs_afpo-amein
+          i_out_me = gs_afpo-meins
+          i_menge  = gs_afpo-psamg
+        IMPORTING
+          e_menge  = lv_psamg_base
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc <> 0.
+        CLEAR lv_psamg_base.
+      ENDIF.
+    ENDIF.
+
+    lv_has_resb = abap_false.
+
+    READ TABLE gt_resb TRANSPORTING NO FIELDS
+         WITH KEY rsnum = gs_afko-rsnum
+         BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      lv_resb_idx = sy-tabix.
+
+      LOOP AT gt_resb INTO gs_resb FROM lv_resb_idx.
+        IF gs_resb-rsnum <> gs_afko-rsnum.
+          EXIT.
+        ENDIF.
+
+        lv_has_resb = abap_true.
+        CLEAR gs_alv.
+
+        gs_alv-werks = gs_afpo-dwerk.
+        gs_alv-matnr = gs_afpo-matnr.
+        gs_alv-dauat = gs_afpo-dauat.
+        gs_alv-aufnr = gs_afpo-aufnr.
+        gs_alv-posnr = gs_afpo-posnr.
+        gs_alv-amein = gs_afpo-amein.
+        gs_alv-meins = gs_afpo-meins.
+        gs_alv-wemng = gs_afpo-wemng.
+        gs_alv-elikz = gs_afpo-elikz.
+        gs_alv-xloek = gs_afpo-xloek.
+        gs_alv-psamg = gs_afpo-psamg.
+
+        IF lv_makt_ok = abap_true.
+          gs_alv-maktx = gs_makt-maktx.
+        ENDIF.
+
+        gs_alv-stlnr = gs_afko-stlnr.
+        gs_alv-stlal = gs_afko-stlal.
+        gs_alv-aufpl = gs_afko-aufpl.
+        gs_alv-plnnr = gs_afko-plnnr.
+        gs_alv-plnal = gs_afko-plnal.
+        gs_alv-gamng = gs_afko-gamng.
+        gs_alv-rsnum = gs_afko-rsnum.
+        gs_alv-gltri = gs_afko-gltri.
+        gs_alv-ftrmi = gs_afko-ftrmi.
+        gs_alv-gstri = gs_afko-gstri.
+        gs_alv-gltrs = gs_afko-gltrs.
+        gs_alv-ftrms = gs_afko-ftrms.
+        gs_alv-gstrs = gs_afko-gstrs.
+        gs_alv-getri = gs_afko-getri.
+
+        gs_alv-gamng_base = lv_gamng_base.
+        gs_alv-gamng_mt   = lv_gamng_mt.
+        gs_alv-wemng_base = lv_wemng_base.
+        gs_alv-wemng_mt   = lv_wemng_mt.
+        gs_alv-psamg_base = lv_psamg_base.
+
+        gs_alv-status = gs_status-status.
+
+        gs_alv-rspos      = gs_resb-rspos.
+        gs_alv-comp_matnr = gs_resb-matnr.
+        gs_alv-bdmng      = gs_resb-bdmng.
+        gs_alv-enmng      = gs_resb-enmng.
+        gs_alv-kzear      = gs_resb-kzear.
+
+        CLEAR ls_comp_makt.
+        READ TABLE gt_makt INTO ls_comp_makt
+             WITH KEY matnr = gs_resb-matnr
+             BINARY SEARCH.
+        IF sy-subrc = 0.
+          gs_alv-comp_maktx = ls_comp_makt-maktx.
+        ENDIF.
+
+        APPEND gs_alv TO gt_alv.
+
+      ENDLOOP.
+    ENDIF.
+
+    IF lv_has_resb = abap_false.
+
+      CLEAR gs_alv.
+
+      gs_alv-werks = gs_afpo-dwerk.
+      gs_alv-matnr = gs_afpo-matnr.
+      gs_alv-dauat = gs_afpo-dauat.
+      gs_alv-aufnr = gs_afpo-aufnr.
+      gs_alv-posnr = gs_afpo-posnr.
+      gs_alv-amein = gs_afpo-amein.
+      gs_alv-meins = gs_afpo-meins.
+      gs_alv-wemng = gs_afpo-wemng.
+      gs_alv-elikz = gs_afpo-elikz.
+      gs_alv-xloek = gs_afpo-xloek.
+      gs_alv-psamg = gs_afpo-psamg.
+
+      IF lv_makt_ok = abap_true.
+        gs_alv-maktx = gs_makt-maktx.
+      ENDIF.
+
+      gs_alv-stlnr = gs_afko-stlnr.
+      gs_alv-stlal = gs_afko-stlal.
+      gs_alv-aufpl = gs_afko-aufpl.
+      gs_alv-plnnr = gs_afko-plnnr.
+      gs_alv-plnal = gs_afko-plnal.
+      gs_alv-gamng = gs_afko-gamng.
+      gs_alv-rsnum = gs_afko-rsnum.
+      gs_alv-gltri = gs_afko-gltri.
+      gs_alv-ftrmi = gs_afko-ftrmi.
+      gs_alv-gstri = gs_afko-gstri.
+      gs_alv-gltrs = gs_afko-gltrs.
+      gs_alv-ftrms = gs_afko-ftrms.
+      gs_alv-gstrs = gs_afko-gstrs.
+      gs_alv-getri = gs_afko-getri.
+
+      gs_alv-gamng_base = lv_gamng_base.
+      gs_alv-gamng_mt   = lv_gamng_mt.
+      gs_alv-wemng_base = lv_wemng_base.
+      gs_alv-wemng_mt   = lv_wemng_mt.
+      gs_alv-psamg_base = lv_psamg_base.
+
+      gs_alv-status = gs_status-status.
+
+      APPEND gs_alv TO gt_alv.
+
+    ENDIF.
+
+  ENDLOOP.
+
+  gv_records = lines( gt_alv ).
+  SORT gt_alv BY werks matnr dauat aufnr rsnum rspos.
+
+ENDFORM.
+
+
+FORM build_status_strings.
+
+  DATA: ls_status  TYPE ty_status,
+        lv_jest_ix TYPE sy-tabix.
+
+  LOOP AT gt_aufk INTO gs_aufk.
+    CLEAR ls_status.
+    ls_status-aufnr = gs_aufk-aufnr.
+
+    READ TABLE gt_jest TRANSPORTING NO FIELDS
+         WITH KEY objnr = gs_aufk-objnr
+         BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      lv_jest_ix = sy-tabix.
+
+      LOOP AT gt_jest INTO gs_jest FROM lv_jest_ix.
+        IF gs_jest-objnr <> gs_aufk-objnr.
+          EXIT.
+        ENDIF.
+
+        READ TABLE gt_tj02t INTO gs_tj02t
+             WITH KEY istat = gs_jest-stat
+             BINARY SEARCH.
+        IF sy-subrc = 0.
+          IF ls_status-status IS INITIAL.
+            ls_status-status = gs_tj02t-txt04.
+          ELSE.
+            CONCATENATE ls_status-status gs_tj02t-txt04
+              INTO ls_status-status SEPARATED BY space.
+          ENDIF.
+        ENDIF.
+
+      ENDLOOP.
+    ENDIF.
+
+    APPEND ls_status TO gt_status.
+  ENDLOOP.
+
+  SORT gt_status BY aufnr.
+
+ENDFORM.
+
+
+FORM write_to_server.
+
+  DATA: lv_matnr      TYPE string,
+        lv_stlnr      TYPE string,
+        lv_aufpl      TYPE string,
+        lv_aufnr      TYPE string,
+        lv_plnnr      TYPE string,
+        lv_werks      TYPE string,
+        lv_plnal      TYPE string,
+        lv_posnr      TYPE string,
+        lv_stlal      TYPE string,
+        lv_amein      TYPE string,
+        lv_meins      TYPE string,
+        lv_gltri      TYPE string,
+        lv_ftrmi      TYPE string,
+        lv_gstri      TYPE string,
+        lv_wemng      TYPE string,
+        lv_wemng_base TYPE string,
+        lv_wemng_mt   TYPE string,
+        lv_gltrs      TYPE string,
+        lv_gamng_base TYPE string,
+        lv_gamng_mt   TYPE string,
+        lv_gamng      TYPE string,
+        lv_ftrms      TYPE string,
+        lv_gstrs      TYPE string,
+        lv_status     TYPE string,
+        lv_psamg      TYPE string,
+        lv_psamg_base TYPE string,
+        lv_elikz      TYPE string,
+        lv_xloek      TYPE string,
+        lv_dauat      TYPE string,
+        lv_getri      TYPE string,
+        lv_enmng      TYPE string,
+        lv_kzear      TYPE string,
+        lv_temp       TYPE c LENGTH 24.
+
+  gv_filepath = '/mnt/edifiles/In_ProductionOrders.csv'.
+
+  GET TIME STAMP FIELD gv_timestamp.
+  lv_ts = gv_timestamp.
+  CONDENSE lv_ts NO-GAPS.
+  REPLACE '.csv' IN gv_filepath WITH |_{ lv_ts(8) }_{ lv_ts+8(6) }.csv|.
+
+  OPEN DATASET gv_filepath FOR OUTPUT IN TEXT MODE ENCODING DEFAULT.
+  IF sy-subrc NE 0.
+    MESSAGE 'Error opening file' TYPE 'E'.
+    RETURN.
+  ENDIF.
+
+  CONCATENATE
+    'Item'
+    'BOMID'
+    'RoutingID'
+    'ProHeaderID'
+    'Group'
+    'Location'
+    'GroupCounter'
+    'OrderItemNumber'
+    'AlternativeBOM'
+    'ProductionUOM'
+    'BaseUOM'
+    'PrODetailActualFinishDate'
+    'PrODetailActualReleaseDate'
+    'PrODetailActualStartDate'
+    'PrODetailDeliveredQuantity'
+    'PrODetailDeliveredQuantityinBaseUOM'
+    'PrODetailDeliveredQuantityinMT'
+    'PrODetailFinishDate'
+    'PrODetailQuantityinBaseUOM'
+    'PrODetailQuantityinMT'
+    'PrODetailQuantity'
+    'PrODetailReleaseDate'
+    'PrODetailStartDate'
+    'PrODetailStatus'
+    'ScrapQuantity'
+    'ScrapQuantityinBaseUOM'
+    'DeliveryCompleted'
+    'DeletionFlag'
+    'OrderType'
+    'ConfirmOrderFinishDate'
+    'ComponentWithdrawnQuantity'
+    'ComponentFinalIssueIndicator'
+    INTO gv_line SEPARATED BY '|'.
+  TRANSFER gv_line TO gv_filepath.
+
+  LOOP AT gt_alv INTO gs_alv.
+
+    CLEAR gv_line.
+
+    lv_matnr = gs_alv-matnr. CONDENSE lv_matnr NO-GAPS.
+    lv_stlnr = gs_alv-stlnr. CONDENSE lv_stlnr NO-GAPS.
+    lv_aufpl = gs_alv-aufpl. CONDENSE lv_aufpl NO-GAPS.
+    lv_aufnr = gs_alv-aufnr. CONDENSE lv_aufnr NO-GAPS.
+    lv_plnnr = gs_alv-plnnr. CONDENSE lv_plnnr NO-GAPS.
+    lv_werks = gs_alv-werks. CONDENSE lv_werks NO-GAPS.
+    lv_plnal = gs_alv-plnal. CONDENSE lv_plnal NO-GAPS.
+    lv_posnr = gs_alv-posnr. CONDENSE lv_posnr NO-GAPS.
+    lv_stlal = gs_alv-stlal. CONDENSE lv_stlal NO-GAPS.
+    lv_amein = gs_alv-amein. CONDENSE lv_amein NO-GAPS.
+    lv_meins = gs_alv-meins. CONDENSE lv_meins NO-GAPS.
+
+    PERFORM format_date USING gs_alv-gltri    CHANGING lv_gltri.
+    PERFORM format_date USING gs_alv-ftrmi    CHANGING lv_ftrmi.
+    PERFORM format_date USING gs_alv-gstri    CHANGING lv_gstri.
+
+    WRITE gs_alv-wemng TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_wemng = lv_temp. CONDENSE lv_wemng NO-GAPS.
+
+    WRITE gs_alv-wemng_base TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_wemng_base = lv_temp. CONDENSE lv_wemng_base NO-GAPS.
+
+    WRITE gs_alv-wemng_mt TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_wemng_mt = lv_temp. CONDENSE lv_wemng_mt NO-GAPS.
+
+    PERFORM format_date USING gs_alv-gltrs    CHANGING lv_gltrs.
+
+    WRITE gs_alv-gamng_base TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_gamng_base = lv_temp. CONDENSE lv_gamng_base NO-GAPS.
+
+    WRITE gs_alv-gamng_mt TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_gamng_mt = lv_temp. CONDENSE lv_gamng_mt NO-GAPS.
+
+    WRITE gs_alv-gamng TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_gamng = lv_temp. CONDENSE lv_gamng NO-GAPS.
+
+    PERFORM format_date USING gs_alv-ftrms    CHANGING lv_ftrms.
+    PERFORM format_date USING gs_alv-gstrs    CHANGING lv_gstrs.
+
+    lv_status = gs_alv-status. CONDENSE lv_status.
+
+    WRITE gs_alv-psamg TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_psamg = lv_temp. CONDENSE lv_psamg NO-GAPS.
+
+    WRITE gs_alv-psamg_base TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_psamg_base = lv_temp. CONDENSE lv_psamg_base NO-GAPS.
+
+    lv_elikz = gs_alv-elikz. CONDENSE lv_elikz NO-GAPS.
+    lv_xloek = gs_alv-xloek. CONDENSE lv_xloek NO-GAPS.
+    lv_dauat = gs_alv-dauat. CONDENSE lv_dauat NO-GAPS.
+
+    PERFORM format_date USING gs_alv-getri    CHANGING lv_getri.
+
+    WRITE gs_alv-enmng TO lv_temp LEFT-JUSTIFIED NO-GROUPING NO-SIGN DECIMALS 3.
+    lv_enmng = lv_temp. CONDENSE lv_enmng NO-GAPS.
+
+    lv_kzear = gs_alv-kzear. CONDENSE lv_kzear NO-GAPS.
+
+    CONCATENATE
+      lv_matnr lv_stlnr lv_aufpl lv_aufnr lv_plnnr lv_werks
+      lv_plnal lv_posnr lv_stlal lv_amein lv_meins
+      lv_gltri lv_ftrmi lv_gstri
+      lv_wemng lv_wemng_base lv_wemng_mt
+      lv_gltrs
+      lv_gamng_base lv_gamng_mt lv_gamng
+      lv_ftrms lv_gstrs
+      lv_status
+      lv_psamg lv_psamg_base
+      lv_elikz lv_xloek lv_dauat
+      lv_getri
+      lv_enmng lv_kzear
+      INTO gv_line SEPARATED BY '|'.
+    TRANSFER gv_line TO gv_filepath.
+
+  ENDLOOP.
+
+  CLOSE DATASET gv_filepath.
+
+  MESSAGE |File generated successfully: { gv_filepath }| TYPE 'S'.
+
+ENDFORM.
+
+
+FORM format_date USING    iv_date TYPE d
+                 CHANGING ev_str  TYPE string.
+  CLEAR ev_str.
+  IF iv_date IS NOT INITIAL AND iv_date <> '00000000'.
+    CONCATENATE iv_date+6(2) '.' iv_date+4(2) '.' iv_date+0(4) INTO ev_str.
+  ENDIF.
+ENDFORM.
+
+
+FORM display_alv.
+
+  DATA: lv_msg TYPE REF TO cx_salv_msg,
+        lv_nf  TYPE REF TO cx_salv_not_found.
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING r_salv_table = go_alv
+        CHANGING  t_table      = gt_alv ).
+
+      go_funcs = go_alv->get_functions( ).
+      go_funcs->set_all( abap_true ).
+
+      go_display = go_alv->get_display_settings( ).
+      go_display->set_list_header( 'Production Order Report - ALV Output' ).
+      go_display->set_striped_pattern( abap_true ).
+
+      go_layout = go_alv->get_layout( ).
+      gs_lkey-report = sy-repid.
+      go_layout->set_key( gs_lkey ).
+      go_layout->set_save_restriction( if_salv_c_layout=>restrict_none ).
+
+      go_columns = go_alv->get_columns( ).
+      go_columns->set_optimize( abap_true ).
+
+      TRY.
+          go_column = go_columns->get_column( 'WERKS' ).
+          go_column->set_short_text( 'Plant' ).
+          go_column->set_medium_text( 'Plant' ).
+          go_column->set_long_text( 'Plant' ).
+
+          go_column = go_columns->get_column( 'MATNR' ).
+          go_column->set_short_text( 'Material' ).
+          go_column->set_medium_text( 'Order Item Material' ).
+          go_column->set_long_text( 'Order Item Material' ).
+
+          go_column = go_columns->get_column( 'MAKTX' ).
+          go_column->set_short_text( 'Mat Desc' ).
+          go_column->set_medium_text( 'Item Mat Desc' ).
+          go_column->set_long_text( 'Order Item Material Description' ).
+
+          go_column = go_columns->get_column( 'DAUAT' ).
+          go_column->set_short_text( 'Ord Type' ).
+          go_column->set_medium_text( 'Order Type' ).
+          go_column->set_long_text( 'Order Type' ).
+
+          go_column = go_columns->get_column( 'AUFNR' ).
+          go_column->set_short_text( 'Order' ).
+          go_column->set_medium_text( 'Order' ).
+          go_column->set_long_text( 'Production Order' ).
+
+          go_column = go_columns->get_column( 'POSNR' ).
+          go_column->set_short_text( 'Item No' ).
+          go_column->set_medium_text( 'Order Item No' ).
+          go_column->set_long_text( 'Order Item Number' ).
+
+          go_column = go_columns->get_column( 'STLNR' ).
+          go_column->set_short_text( 'BOM ID' ).
+          go_column->set_medium_text( 'BOM ID' ).
+          go_column->set_long_text( 'BOM ID' ).
+
+          go_column = go_columns->get_column( 'STLAL' ).
+          go_column->set_short_text( 'Alt BOM' ).
+          go_column->set_medium_text( 'Alternative BOM' ).
+          go_column->set_long_text( 'Alternative BOM' ).
+
+          go_column = go_columns->get_column( 'AUFPL' ).
+          go_column->set_short_text( 'Rtg ID' ).
+          go_column->set_medium_text( 'Routing ID' ).
+          go_column->set_long_text( 'Routing ID' ).
+
+          go_column = go_columns->get_column( 'PLNNR' ).
+          go_column->set_short_text( 'Rtg Grp' ).
+          go_column->set_medium_text( 'Routing Group' ).
+          go_column->set_long_text( 'Routing Group' ).
+
+          go_column = go_columns->get_column( 'PLNAL' ).
+          go_column->set_short_text( 'Grp Ctr' ).
+          go_column->set_medium_text( 'Rtg Grp Counter' ).
+          go_column->set_long_text( 'Routing Group Counter' ).
+
+          go_column = go_columns->get_column( 'GAMNG_BASE' ).
+          go_column->set_short_text( 'Ord BsQt' ).
+          go_column->set_medium_text( 'Ord Qty Base Unt' ).
+          go_column->set_long_text( 'Order Quantity in Base Unit' ).
+
+          go_column = go_columns->get_column( 'GAMNG' ).
+          go_column->set_short_text( 'Ord Qty' ).
+          go_column->set_medium_text( 'Ord Qty Ord Unit' ).
+          go_column->set_long_text( 'Order Quantity in Order Unit' ).
+
+          go_column = go_columns->get_column( 'GAMNG_MT' ).
+          go_column->set_short_text( 'Ord QtMT' ).
+          go_column->set_medium_text( 'Ord Qty in MT' ).
+          go_column->set_long_text( 'Order Quantity in MT' ).
+
+          go_column = go_columns->get_column( 'WEMNG' ).
+          go_column->set_short_text( 'Del Qty' ).
+          go_column->set_medium_text( 'Dlvrd Qty Ord Unt' ).
+          go_column->set_long_text( 'Order Delivered Qty in Order Unit' ).
+
+          go_column = go_columns->get_column( 'WEMNG_BASE' ).
+          go_column->set_short_text( 'Del BsQt' ).
+          go_column->set_medium_text( 'Dlvrd Qty Base Unt' ).
+          go_column->set_long_text( 'Delivered Quantity in Base Unit' ).
+
+          go_column = go_columns->get_column( 'WEMNG_MT' ).
+          go_column->set_short_text( 'Del QtMT' ).
+          go_column->set_medium_text( 'Dlvrd Qty in MT' ).
+          go_column->set_long_text( 'Delivered Quantity in MT' ).
+
+          go_column = go_columns->get_column( 'PSAMG' ).
+          go_column->set_short_text( 'Scrp Qty' ).
+          go_column->set_medium_text( 'Scrap Qty Ord Unt' ).
+          go_column->set_long_text( 'Planned Scrap Qty in Order Unit' ).
+
+          go_column = go_columns->get_column( 'PSAMG_BASE' ).
+          go_column->set_short_text( 'Scrp BsQ' ).
+          go_column->set_medium_text( 'Scrap Qty Base Unt' ).
+          go_column->set_long_text( 'Planned Scrap Qty in Base Unit' ).
+
+          go_column = go_columns->get_column( 'AMEIN' ).
+          go_column->set_short_text( 'Prod Unt' ).
+          go_column->set_medium_text( 'Production Unit' ).
+          go_column->set_long_text( 'Production Unit' ).
+
+          go_column = go_columns->get_column( 'MEINS' ).
+          go_column->set_short_text( 'Base Unt' ).
+          go_column->set_medium_text( 'Base Unit' ).
+          go_column->set_long_text( 'Base Unit' ).
+
+          go_column = go_columns->get_column( 'RSNUM' ).
+          go_column->set_short_text( 'Res Num' ).
+          go_column->set_medium_text( 'Reservation No' ).
+          go_column->set_long_text( 'Reservation Number' ).
+
+          go_column = go_columns->get_column( 'RSPOS' ).
+          go_column->set_short_text( 'Res Item' ).
+          go_column->set_medium_text( 'Reservation Item' ).
+          go_column->set_long_text( 'Reservation Item' ).
+
+          go_column = go_columns->get_column( 'COMP_MATNR' ).
+          go_column->set_short_text( 'Comp Mat' ).
+          go_column->set_medium_text( 'Component Material' ).
+          go_column->set_long_text( 'Component Material' ).
+
+          go_column = go_columns->get_column( 'COMP_MAKTX' ).
+          go_column->set_short_text( 'Comp Desc' ).
+          go_column->set_medium_text( 'Comp Mat Desc' ).
+          go_column->set_long_text( 'Component Material Description' ).
+
+          go_column = go_columns->get_column( 'BDMNG' ).
+          go_column->set_short_text( 'Comp Req' ).
+          go_column->set_medium_text( 'Comp Req Qty' ).
+          go_column->set_long_text( 'Component Requirement Quantity' ).
+
+          go_column = go_columns->get_column( 'ENMNG' ).
+          go_column->set_short_text( 'Comp Wdr' ).
+          go_column->set_medium_text( 'Comp Withdrawn Qty' ).
+          go_column->set_long_text( 'Component Withdrawn Quantity' ).
+
+          go_column = go_columns->get_column( 'KZEAR' ).
+          go_column->set_short_text( 'Fin Iss' ).
+          go_column->set_medium_text( 'Final Issue Ind' ).
+          go_column->set_long_text( 'Component Final Issue Indicator' ).
+
+          go_column = go_columns->get_column( 'GLTRI' ).
+          go_column->set_short_text( 'Act Fin' ).
+          go_column->set_medium_text( 'Actual Finish Dt' ).
+          go_column->set_long_text( 'Actual Finish Date' ).
+
+          go_column = go_columns->get_column( 'FTRMI' ).
+          go_column->set_short_text( 'Act Rel' ).
+          go_column->set_medium_text( 'Actual Release Dt' ).
+          go_column->set_long_text( 'Actual Release Date' ).
+
+          go_column = go_columns->get_column( 'GSTRI' ).
+          go_column->set_short_text( 'Act Start' ).
+          go_column->set_medium_text( 'Actual Start Dt' ).
+          go_column->set_long_text( 'Actual Start Date' ).
+
+          go_column = go_columns->get_column( 'GLTRS' ).
+          go_column->set_short_text( 'Sch Fin' ).
+          go_column->set_medium_text( 'Sched Finish Dt' ).
+          go_column->set_long_text( 'Scheduled Finish Date' ).
+
+          go_column = go_columns->get_column( 'FTRMS' ).
+          go_column->set_short_text( 'Sch Rel' ).
+          go_column->set_medium_text( 'Sched Release Dt' ).
+          go_column->set_long_text( 'Scheduled Release Date' ).
+
+          go_column = go_columns->get_column( 'GSTRS' ).
+          go_column->set_short_text( 'Sch Start' ).
+          go_column->set_medium_text( 'Sched Start Dt' ).
+          go_column->set_long_text( 'Scheduled Start Date' ).
+
+          go_column = go_columns->get_column( 'GETRI' ).
+          go_column->set_short_text( 'Cnf Fin' ).
+          go_column->set_medium_text( 'Confirm Finish Dt' ).
+          go_column->set_long_text( 'Confirmed Finish Date' ).
+
+          go_column = go_columns->get_column( 'ELIKZ' ).
+          go_column->set_short_text( 'Del Comp' ).
+          go_column->set_medium_text( 'Delivery Completed' ).
+          go_column->set_long_text( 'Delivery Completed Indicator' ).
+
+          go_column = go_columns->get_column( 'XLOEK' ).
+          go_column->set_short_text( 'Del Flag' ).
+          go_column->set_medium_text( 'Deletion Flag' ).
+          go_column->set_long_text( 'Deletion Flag' ).
+
+          go_column = go_columns->get_column( 'STATUS' ).
+          go_column->set_short_text( 'Ord Stat' ).
+          go_column->set_medium_text( 'Order Status' ).
+          go_column->set_long_text( 'Order Status' ).
+
+        CATCH cx_salv_not_found INTO lv_nf.
+      ENDTRY.
+
+      go_alv->display( ).
+
+    CATCH cx_salv_msg INTO lv_msg.
+      MESSAGE lv_msg TYPE 'E'.
+  ENDTRY.
+
+ENDFORM.
