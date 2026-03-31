@@ -1050,3 +1050,74 @@ FORM display_alv.
   ENDTRY.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+MODULE handle_saleord_change INPUT.
+  "Process for Load Number(IHREZ)
+  IF vbkd-ihrez IS NOT INITIAL.
+    "Update Planned GI Date when sales order selection changes
+    IF sale_ord IS NOT INITIAL AND gt_vbeln_wadat IS NOT INITIAL.
+      CLEAR gs_vbeln_wadat.
+      READ TABLE gt_vbeln_wadat INTO gs_vbeln_wadat
+        WITH KEY vbeln = sale_ord.
+      IF sy-subrc = 0.
+        gv_planned_gi = gs_vbeln_wadat-wadat.
+      ENDIF.
+    ENDIF.
+***BOC--UJWAL--29.03.2026--Re-read appointment for selected SO
+    IF sale_ord IS NOT INITIAL.
+      DATA: ls_ysdssop_dd TYPE ysdssop.
+      CLEAR ls_ysdssop_dd.
+      SELECT SINGLE * FROM ysdssop INTO ls_ysdssop_dd
+        WHERE sales_order = sale_ord.
+      IF sy-subrc = 0.
+        app_date = ls_ysdssop_dd-app_date.
+        app_time = ls_ysdssop_dd-app_time.
+      ELSE.
+        CLEAR: app_date, app_time.
+      ENDIF.
+      wa_ysdssop-sales_order = sale_ord.
+    ENDIF.
+***EOC--UJWAL--29.03.2026--Re-read appointment for selected SO
+  ENDIF.
+ENDMODULE.
+```
+
+## What changed
+
+| Before | After |
+|---|---|
+| Dropdown change only updates PGI date | Also re-reads YSDSSOP for the selected SO |
+| app_date/app_time stays from first SO | app_date/app_time updates to selected SO's values |
+| wa_ysdssop-sales_order stays old | Updated to current dropdown selection |
+
+## Trace with your data
+```
+Load 437132 → SO1 = 4096155862, SO2 = 4096155863
+
+YSDSSOP:
+  SO 4096155862 → app_date = 03-28-2026, app_time = 08:30:00
+  SO 4096155863 → app_date = 04-01-2026, app_time = 10:00:00
+
+1. Submit → PBO picks SO1 (INDEX 1)
+   → Displays: 03-28-2026 / 08:30:00 ✓
+
+2. User changes dropdown to SO2
+   → handle_saleord_change fires
+   → Reads YSDSSOP for SO2
+   → Displays: 04-01-2026 / 10:00:00 ✓
+
+3. User changes back to SO1
+   → handle_saleord_change fires
+   → Reads YSDSSOP for SO1
+   → Displays: 03-28-2026 / 08:30:00 ✓
