@@ -1121,3 +1121,50 @@ YSDSSOP:
    → handle_saleord_change fires
    → Reads YSDSSOP for SO1
    → Displays: 03-28-2026 / 08:30:00 ✓
+
+
+
+
+
+
+
+***BOC--UJWAL--29.03.2026--Re-read appointment for selected SO (only on dropdown change)
+    IF sale_ord IS NOT INITIAL
+      AND sy-ucomm <> 'SAVE'
+      AND sy-ucomm <> 'DELE'
+      AND sy-ucomm <> 'REFRESH'.
+      CLEAR ls_ysdssop_dd.
+      SELECT SINGLE * FROM ysdssop INTO ls_ysdssop_dd
+        WHERE sales_order = sale_ord.
+      IF sy-subrc = 0.
+        app_date = ls_ysdssop_dd-app_date.
+        app_time = ls_ysdssop_dd-app_time.
+      ELSE.
+        CLEAR: app_date, app_time.
+      ENDIF.
+      wa_ysdssop-sales_order = sale_ord.
+    ENDIF.
+***EOC--UJWAL--29.03.2026--Re-read appointment for selected SO (only on dropdown change)
+```
+
+## What changed
+
+Added three conditions to **skip** the re-read when user is saving, deleting, or refreshing:
+
+| sy-ucomm | Action | Re-read? |
+|---|---|---|
+| 'SALEORD' or other | Dropdown changed | **Yes** — update display |
+| 'SAVE' | User saving appointment | **No** — keep user's entered values |
+| 'DELE' | User deleting appointment | **No** — keep current values for delete |
+| 'REFRESH' | User clicked refresh | **No** — fields get cleared anyway |
+
+## Trace after fix
+```
+1. User enters Load 437132 → Submit
+2. Dropdown shows SO1 (03-28-2026 / 08:30:00) ✓
+3. User changes dropdown to SO2
+   → sy-ucomm = 'SALEORD' → re-read fires → shows SO2's appointment ✓
+4. User enters NEW date 04-15-2026 and time 09:00:00
+5. User clicks Save
+   → sy-ucomm = 'SAVE' → re-read SKIPPED → user's values preserved
+   → shipment_display → save_appointment_data → saves 04-15-2026 / 09:00:00 ✓
