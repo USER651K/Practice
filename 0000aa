@@ -1,0 +1,62 @@
+gt_vbfa_so2del TYPE STANDARD TABLE OF ty_vbfa,   "Sales Order -> Delivery mapping
+
+
+
+lr_vbeln_so    TYPE RANGE OF vbfa-vbelv,
+      ls_range_so    LIKE LINE OF lr_vbeln_so.
+
+
+
+
+
+*--- Step 4b: Fetch Sales Order -> Delivery link from VBFA
+  CLEAR ls_range_so.
+  ls_range_so-sign   = 'I'.
+  ls_range_so-option = 'EQ'.
+  LOOP AT gt_vbfa_c INTO DATA(ls_vbfa_c_tmp).
+    ls_range_so-low = ls_vbfa_c_tmp-vbeln.
+    APPEND ls_range_so TO lr_vbeln_so.
+  ENDLOOP.
+  SORT lr_vbeln_so BY low.
+  DELETE ADJACENT DUPLICATES FROM lr_vbeln_so COMPARING low.
+
+  IF lr_vbeln_so IS NOT INITIAL.
+    SELECT vbelv posnv vbeln posnn vbtyp_n
+      FROM vbfa
+      INTO TABLE gt_vbfa_so2del
+      WHERE vbelv IN lr_vbeln_so
+        AND vbtyp_n = 'J'.
+  ENDIF.
+
+
+
+
+
+
+
+
+
+
+
+SORT gt_vbfa_so2del BY vbeln.
+
+
+
+
+
+
+
+*--- Sales Order: find which SO created this delivery
+      READ TABLE gt_vbfa_so2del INTO DATA(ls_so2del)
+        WITH KEY vbeln = ls_vbfa_j-vbeln BINARY SEARCH.
+      IF sy-subrc = 0.
+        gs_output-sales_order = ls_so2del-vbelv.   "VBELV = Sales Order
+      ELSE.
+        CLEAR gs_output-sales_order.
+      ENDIF.
+
+
+
+
+
+CLEAR: gs_output-delivery_no, gs_output-sales_order, gs_output-matnr, ...
