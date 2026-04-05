@@ -17,7 +17,7 @@ lr_vbeln_so    TYPE RANGE OF vbfa-vbelv,
     ls_range_so-low = ls_vbfa_c_tmp-vbeln.
     APPEND ls_range_so TO lr_vbeln_so.
   ENDLOOP.
-  SORT lr_vbeln_so BY low.
+  SORT lr_vbeln_so BY low.u
   DELETE ADJACENT DUPLICATES FROM lr_vbeln_so COMPARING low.
 
   IF lr_vbeln_so IS NOT INITIAL.
@@ -60,3 +60,18 @@ SORT gt_vbfa_so2del BY vbeln.
 
 
 CLEAR: gs_output-delivery_no, gs_output-sales_order, gs_output-matnr, ...
+
+
+
+
+
+
+lv_matnr = gs_alv-matnr. SHIFT lv_matnr LEFT DELETING LEADING '0'. CONDENSE lv_matnr NO-GAPS.
+    lv_stlnr = gs_alv-stlnr. SHIFT lv_stlnr LEFT DELETING LEADING '0'. CONDENSE lv_stlnr NO-GAPS.
+    lv_aufpl = gs_alv-aufpl. SHIFT lv_aufpl LEFT DELETING LEADING '0'. CONDENSE lv_aufpl NO-GAPS.
+    lv_aufnr = gs_alv-aufnr. SHIFT lv_aufnr LEFT DELETING LEADING '0'. CONDENSE lv_aufnr NO-GAPS.
+    lv_plnnr = gs_alv-plnnr. CONDENSE lv_plnnr NO-GAPS.
+    lv_werks = gs_alv-werks. CONDENSE lv_werks NO-GAPS.
+    lv_plnal = gs_alv-plnal. SHIFT lv_plnal LEFT DELETING LEADING '0'. CONDENSE lv_plnal NO-GAPS.
+    lv_posnr = gs_alv-posnr. SHIFT lv_posnr LEFT DELETING LEADING '0'. CONDENSE lv_posnr NO-GAPS.
+    lv_stlal = gs_alv-stlal. SHIFT lv_stlal LEFT DELETING LEADING '0'. CONDENSE lv_stlal NO-GAPS.
