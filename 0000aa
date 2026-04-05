@@ -75,3 +75,33 @@ lv_matnr = gs_alv-matnr. SHIFT lv_matnr LEFT DELETING LEADING '0'. CONDENSE lv_m
     lv_plnal = gs_alv-plnal. SHIFT lv_plnal LEFT DELETING LEADING '0'. CONDENSE lv_plnal NO-GAPS.
     lv_posnr = gs_alv-posnr. SHIFT lv_posnr LEFT DELETING LEADING '0'. CONDENSE lv_posnr NO-GAPS.
     lv_stlal = gs_alv-stlal. SHIFT lv_stlal LEFT DELETING LEADING '0'. CONDENSE lv_stlal NO-GAPS.
+
+
+
+
+
+
+
+gs_alv-werks = gs_afpo-dwerk.
+        gs_alv-matnr = gs_afpo-matnr.
+        SHIFT gs_alv-matnr LEFT DELETING LEADING '0'.
+        gs_alv-dauat = gs_afpo-dauat.
+        gs_alv-aufnr = gs_afpo-aufnr.
+        SHIFT gs_alv-aufnr LEFT DELETING LEADING '0'.
+        gs_alv-posnr = gs_afpo-posnr.
+        SHIFT gs_alv-posnr LEFT DELETING LEADING '0'.
+
+
+
+
+
+
+gs_alv-stlnr = gs_afko-stlnr.
+        SHIFT gs_alv-stlnr LEFT DELETING LEADING '0'.
+        gs_alv-stlal = gs_afko-stlal.
+        SHIFT gs_alv-stlal LEFT DELETING LEADING '0'.
+        gs_alv-aufpl = gs_afko-aufpl.
+        SHIFT gs_alv-aufpl LEFT DELETING LEADING '0'.
+        gs_alv-plnnr = gs_afko-plnnr.
+        gs_alv-plnal = gs_afko-plnal.
+        SHIFT gs_alv-plnal LEFT DELETING LEADING '0'.
