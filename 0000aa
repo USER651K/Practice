@@ -105,3 +105,45 @@ gs_alv-stlnr = gs_afko-stlnr.
         gs_alv-plnnr = gs_afko-plnnr.
         gs_alv-plnal = gs_afko-plnal.
         SHIFT gs_alv-plnal LEFT DELETING LEADING '0'.
+
+
+
+
+
+
+
+
+
+
+
+***BOC--UJWAL--31.03.2026--Control Required flag for SALE_ORD
+ IF vbkd-ihrez IS NOT INITIAL.
+  IF gt_vbkd[] IS NOT INITIAL.
+    LOOP AT SCREEN.
+      IF screen-name = 'SALE_ORD'.
+        screen-input = 1.
+        screen-active = 1.
+        screen-required = '1'.
+        MODIFY SCREEN.
+       EXIT.
+      ENDIF.
+    ENDLOOP.
+  ELSE.
+    LOOP AT SCREEN.
+      IF screen-name = 'SALE_ORD'.
+        screen-required = '0'.
+        MODIFY SCREEN.
+       EXIT.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+ ELSE.
+  LOOP AT SCREEN.
+    IF screen-name = 'SALE_ORD'.
+      screen-required = '0'.
+      MODIFY SCREEN.
+     EXIT.
+    ENDIF.
+  ENDLOOP.
+ ENDIF.
+***EOC--UJWAL--31.03.2026--Control Required flag for SALE_ORD
