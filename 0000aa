@@ -104,10 +104,7 @@ gs_alv-stlnr = gs_afko-stlnr.
         SHIFT gs_alv-aufpl LEFT DELETING LEADING '0'.
         gs_alv-plnnr = gs_afko-plnnr.
         gs_alv-plnal = gs_afko-plnal.
-        SHIFT gs_alv-plnal LEFT DELETING LEADING '0'.
-
-
-
+        SHIFT gs_alv-plnal LEFT DELETING LEADING '0'
 
 
 
@@ -147,3 +144,132 @@ gs_alv-stlnr = gs_afko-stlnr.
   ENDLOOP.
  ENDIF.
 ***EOC--UJWAL--31.03.2026--Control Required flag for SALE_ORD
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***BOC--UJWAL--06.04.2026--GI check variables for PO
+DATA: lv_gi_del   TYPE vbeln,
+      lv_gi_date  TYPE wadat_ist,
+      lv_gi_found TYPE abap_bool.
+***EOC--UJWAL--06.04.2026--GI check variables for PO
+
+
+
+
+
+
+
+
+
+***BOC--UJWAL--06.04.2026--GI complete check matching QAS logic
+              ELSE.
+                lv_gi_found = abap_false.
+                LOOP AT gt_po_vbkd INTO gs_po_vbkd.
+                  CLEAR lv_po_werks.
+                  SELECT SINGLE werks FROM vbap
+                    INTO lv_po_werks
+                    WHERE vbeln = gs_po_vbkd-vbeln
+                    AND   abgru = ''.
+                  IF sy-subrc = 0 AND lv_po_werks = likp-werks.
+                    CLEAR lv_gi_del.
+                    SELECT SINGLE vbeln FROM vbfa
+                      INTO lv_gi_del
+                      WHERE vbelv = gs_po_vbkd-vbeln
+                      AND   vbtyp_n = 'J'.
+                    IF sy-subrc = 0 AND lv_gi_del IS NOT INITIAL.
+                      CLEAR lv_gi_date.
+                      SELECT SINGLE wadat_ist FROM likp
+                        INTO lv_gi_date
+                        WHERE vbeln = lv_gi_del.
+                      IF lv_gi_date IS NOT INITIAL.
+                        lv_gi_found = abap_true.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+                ENDLOOP.
+
+                IF lv_gi_found = abap_true.
+                  MESSAGE 'Goods Issue completed' TYPE 'S'.
+                  LOOP AT SCREEN.
+                    IF screen-group1 = 'G2' OR screen-group1 = 'G1'.
+                      screen-output = 0.
+                      screen-active = 0.
+                      MODIFY SCREEN.
+                    ENDIF.
+                  ENDLOOP.
+                ELSE.
+                  MESSAGE 'No order found for this PO and Plant' TYPE 'I'.
+                  LOOP AT SCREEN.
+                    IF screen-group1 = 'G2'.
+                      screen-input = 0.
+                      screen-active = 0.
+                      MODIFY SCREEN.
+                    ENDIF.
+                  ENDLOOP.
+                ENDIF.
+                CLEAR: wa_ysdssop-sales_order, sale_ord, gv_planned_gi.
+              ENDIF.
+***EOC--UJWAL--06.04.2026--GI complete check matching QAS logic
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***BOC--UJWAL--06.04.2026--GI complete check matching QAS logic
+            ELSE.
+              lv_gi_found = abap_false.
+              LOOP AT gt_po_vbkd INTO gs_po_vbkd.
+                CLEAR lv_po_werks.
+                SELECT SINGLE werks FROM vbap
+                  INTO lv_po_werks
+                  WHERE vbeln = gs_po_vbkd-vbeln
+                  AND   abgru = ''.
+                IF sy-subrc = 0 AND lv_po_werks = likp-werks.
+                  CLEAR lv_gi_del.
+                  SELECT SINGLE vbeln FROM vbfa
+                    INTO lv_gi_del
+                    WHERE vbelv = gs_po_vbkd-vbeln
+                    AND   vbtyp_n = 'J'.
+                  IF sy-subrc = 0 AND lv_gi_del IS NOT INITIAL.
+                    CLEAR lv_gi_date.
+                    SELECT SINGLE wadat_ist FROM likp
+                      INTO lv_gi_date
+                      WHERE vbeln = lv_gi_del.
+                    IF lv_gi_date IS NOT INITIAL.
+                      lv_gi_found = abap_true.
+                    ENDIF.
+                  ENDIF.
+                ENDIF.
+              ENDLOOP.
+
+              IF lv_gi_found = abap_true.
+                MESSAGE 'Goods Issue completed' TYPE 'S'.
+              ELSE.
+                MESSAGE 'No order found for this PO and Plant' TYPE 'I'.
+              ENDIF.
+              CLEAR: sale_ord, gv_planned_gi.
+            ENDIF.
+***EOC--UJWAL--06.04.2026--GI complete check matching QAS logic
