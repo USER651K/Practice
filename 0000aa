@@ -273,3 +273,45 @@ DATA: lv_gi_del   TYPE vbeln,
               CLEAR: sale_ord, gv_planned_gi.
             ENDIF.
 ***EOC--UJWAL--06.04.2026--GI complete check matching QAS logic
+
+
+
+
+
+
+***BOC--UJWAL--06.04.2026
+DATA: lv_del_found TYPE abap_bool.
+***EOC--UJWAL--06.04.2026
+
+
+
+
+***BOC--UJWAL--06.04.2026--Delete for ALL SOs, skip missing
+          IF gt_vbkd[] IS NOT INITIAL.
+            lv_del_found = abap_false.
+            LOOP AT gt_vbkd INTO gs_vbkd.
+              sale_ord = gs_vbkd-vbeln.
+              SELECT SINGLE sales_order
+                FROM ysdssop INTO @DATA(lv_del_tmp)
+                WHERE sales_order = @sale_ord
+                AND app_date = @app_date
+                AND app_time = @app_time.
+              IF sy-subrc = 0.
+                DELETE FROM ysdssop
+                  WHERE sales_order = sale_ord
+                  AND app_date = app_date
+                  AND app_time = app_time.
+                COMMIT WORK.
+                lv_del_found = abap_true.
+              ENDIF.
+            ENDLOOP.
+            IF lv_del_found = abap_true.
+              MESSAGE 'Appointment Deleted' TYPE 'S'.
+              CLEAR: app_date, app_time.
+            ELSE.
+              MESSAGE 'No data found in table for these inputs' TYPE 'E'.
+            ENDIF.
+          ELSE.
+            MESSAGE 'No Sales Order found' TYPE 'E'.
+          ENDIF.
+***EOC--UJWAL--06.04.2026--Delete for ALL SOs, skip missing
