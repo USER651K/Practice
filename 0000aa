@@ -315,3 +315,543 @@ DATA: lv_del_found TYPE abap_bool.
             MESSAGE 'No Sales Order found' TYPE 'E'.
           ENDIF.
 ***EOC--UJWAL--06.04.2026--Delete for ALL SOs, skip missing
+
+
+
+
+
+
+
+
+BEGIN OF ty_afko,
+         aufnr TYPE afko-aufnr,
+         stlnr TYPE afko-stlnr,
+         aufpl TYPE afko-aufpl,
+         plnnr TYPE afko-plnnr,
+         plnal TYPE afko-plnal,
+         stlal TYPE afko-stlal,
+         stlty TYPE afko-stlty,
+         plnty TYPE afko-plnty,
+         gltri TYPE afko-gltri,
+
+
+
+
+
+
+
+BEGIN OF ty_resb,
+         rsnum TYPE resb-rsnum,
+         rspos TYPE resb-rspos,
+         matnr TYPE resb-matnr,
+         bdmng TYPE resb-bdmng,
+         enmng TYPE resb-enmng,
+         kzear TYPE resb-kzear,
+         bwart TYPE resb-bwart,
+         stlkn TYPE resb-stlkn,
+       END OF ty_resb,
+
+
+
+
+stlkn TYPE resb-stlkn,
+       END OF ty_resb,
+
+       BEGIN OF ty_plmz,
+         plnty TYPE plmz-plnty,
+         plnnr TYPE plmz-plnnr,
+         plnal TYPE plmz-plnal,
+         stlty TYPE plmz-stlty,
+         stlnr TYPE plmz-stlnr,
+         stlal TYPE plmz-stlal,
+         stlkn TYPE plmz-stlkn,
+         plnkn TYPE plmz-plnkn,
+         werks TYPE plmz-werks,
+       END OF ty_plmz,
+
+       BEGIN OF ty_plas,
+         plnty TYPE plas-plnty,
+         plnnr TYPE plas-plnnr,
+         plnal TYPE plas-plnal,
+         plnkn TYPE plas-plnkn,
+       END OF ty_plas,
+
+       BEGIN OF ty_plpo,
+         plnty TYPE plpo-plnty,
+         plnnr TYPE plpo-plnnr,
+         plnkn TYPE plpo-plnkn,
+         vornr TYPE plpo-vornr,
+         arbid TYPE plpo-arbid,
+         aedat TYPE plpo-aedat,
+       END OF ty_plpo,
+
+       BEGIN OF ty_crhd,
+         objid TYPE crhd-objid,
+         arbpl TYPE crhd-arbpl,
+       END OF ty_crhd,
+
+       BEGIN OF ty_makt,
+
+
+
+
+
+
+
+status     TYPE char200,
+         clsd_teco  TYPE char1,
+         vornr      TYPE plpo-vornr,
+         arbpl      TYPE crhd-arbpl,
+       END OF ty_alv.
+
+
+
+
+
+
+
+DATA: gt_afpo   TYPE STANDARD TABLE OF ty_afpo,
+      gt_afko   TYPE STANDARD TABLE OF ty_afko,
+      gt_aufk   TYPE STANDARD TABLE OF ty_aufk,
+      gt_jest   TYPE STANDARD TABLE OF ty_jest,
+      gt_tj02t  TYPE STANDARD TABLE OF ty_tj02t,
+      gt_resb   TYPE STANDARD TABLE OF ty_resb,
+      gt_plmz   TYPE STANDARD TABLE OF ty_plmz,
+      gt_plas   TYPE STANDARD TABLE OF ty_plas,
+      gt_plpo   TYPE STANDARD TABLE OF ty_plpo,
+      gt_crhd   TYPE STANDARD TABLE OF ty_crhd,
+      gt_makt   TYPE STANDARD TABLE OF ty_makt,
+      gt_status TYPE STANDARD TABLE OF ty_status,
+      gt_alv    TYPE STANDARD TABLE OF ty_alv,
+      gs_afpo   TYPE ty_afpo,
+      gs_afko   TYPE ty_afko,
+      gs_aufk   TYPE ty_aufk,
+      gs_jest   TYPE ty_jest,
+      gs_tj02t  TYPE ty_tj02t,
+      gs_resb   TYPE ty_resb,
+      gs_plmz   TYPE ty_plmz,
+      gs_plas   TYPE ty_plas,
+      gs_plpo   TYPE ty_plpo,
+      gs_crhd   TYPE ty_crhd,
+      gs_makt   TYPE ty_makt,
+      gs_status TYPE ty_status,
+      gs_alv    TYPE ty_alv.
+
+
+
+
+
+
+
+
+SELECT aufnr stlnr aufpl plnnr plnal stlal stlty plnty
+         gltri ftrmi gstri gltrs gamng ftrms gstrs getri rsnum
+    FROM afko
+    INTO TABLE gt_afko
+     FOR ALL ENTRIES IN gt_afpo
+   WHERE aufnr = gt_afpo-aufnr
+     AND gstrs IN s_gstrs.
+
+
+
+
+
+
+
+SELECT rsnum rspos matnr bdmng enmng kzear bwart stlkn
+    FROM resb
+    INTO TABLE gt_resb
+     FOR ALL ENTRIES IN gt_afko
+   WHERE rsnum = gt_afko-rsnum.
+
+  IF gt_resb IS NOT INITIAL.
+    SORT gt_resb BY rsnum rspos.
+  ENDIF.
+
+  PERFORM fetch_allocation_data.
+
+
+
+
+
+
+
+
+
+
+
+CLEAR ls_comp_makt.
+        READ TABLE gt_makt INTO ls_comp_makt
+             WITH KEY matnr = gs_resb-matnr
+             BINARY SEARCH.
+        IF sy-subrc = 0.
+          gs_alv-comp_maktx = ls_comp_makt-maktx.
+        ENDIF.
+
+        CLEAR: gs_alv-vornr, gs_alv-arbpl.
+        PERFORM get_allocation USING    gs_afko-plnty
+                                        gs_afko-plnnr
+                                        gs_afko-plnal
+                                        gs_afko-stlty
+                                        gs_afko-stlnr
+                                        gs_afko-stlal
+                                        gs_resb-stlkn
+                                        gs_afpo-dwerk
+                               CHANGING gs_alv-vornr
+                                        gs_alv-arbpl.
+
+        APPEND gs_alv TO gt_alv.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+SORT gt_status BY aufnr.
+
+ENDFORM.
+
+
+FORM fetch_allocation_data.
+
+  DATA: lt_plmz_keys TYPE STANDARD TABLE OF ty_afko,
+        lt_plas_keys TYPE STANDARD TABLE OF ty_afko,
+        lt_plpo_tmp  TYPE STANDARD TABLE OF ty_plpo.
+
+  IF gt_afko IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  IF gt_resb IS NOT INITIAL.
+    lt_plmz_keys = gt_afko.
+    SORT lt_plmz_keys BY plnty plnnr plnal stlty stlnr stlal.
+    DELETE ADJACENT DUPLICATES FROM lt_plmz_keys
+      COMPARING plnty plnnr plnal stlty stlnr stlal.
+
+    IF lt_plmz_keys IS NOT INITIAL.
+      SELECT plnty plnnr plnal stlty stlnr stlal stlkn plnkn werks
+        FROM plmz
+        INTO TABLE gt_plmz
+         FOR ALL ENTRIES IN lt_plmz_keys
+       WHERE plnty = lt_plmz_keys-plnty
+         AND plnnr = lt_plmz_keys-plnnr
+         AND plnal = lt_plmz_keys-plnal
+         AND stlty = lt_plmz_keys-stlty
+         AND stlnr = lt_plmz_keys-stlnr
+         AND stlal = lt_plmz_keys-stlal
+         AND loekz = space.
+
+      IF gt_plmz IS NOT INITIAL.
+        SORT gt_plmz BY plnty plnnr plnal stlty stlnr stlal stlkn werks.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+  lt_plas_keys = gt_afko.
+  SORT lt_plas_keys BY plnty plnnr plnal.
+  DELETE ADJACENT DUPLICATES FROM lt_plas_keys
+    COMPARING plnty plnnr plnal.
+
+  IF lt_plas_keys IS NOT INITIAL.
+    SELECT plnty plnnr plnal plnkn
+      FROM plas
+      INTO TABLE gt_plas
+       FOR ALL ENTRIES IN lt_plas_keys
+     WHERE plnty = lt_plas_keys-plnty
+       AND plnnr = lt_plas_keys-plnnr
+       AND plnal = lt_plas_keys-plnal
+       AND loekz = space.
+
+    IF gt_plas IS NOT INITIAL.
+      SORT gt_plas BY plnty plnnr plnal plnkn.
+    ENDIF.
+  ENDIF.
+
+  IF gt_plmz IS NOT INITIAL.
+    SELECT plnty plnnr plnkn vornr arbid aedat
+      FROM plpo
+      INTO TABLE gt_plpo
+       FOR ALL ENTRIES IN gt_plmz
+     WHERE plnty = gt_plmz-plnty
+       AND plnnr = gt_plmz-plnnr
+       AND plnkn = gt_plmz-plnkn
+       AND loekz = space.
+  ENDIF.
+
+  IF gt_plas IS NOT INITIAL.
+    SELECT plnty plnnr plnkn vornr arbid aedat
+      FROM plpo
+      INTO TABLE lt_plpo_tmp
+       FOR ALL ENTRIES IN gt_plas
+     WHERE plnty = gt_plas-plnty
+       AND plnnr = gt_plas-plnnr
+       AND plnkn = gt_plas-plnkn
+       AND loekz = space.
+
+    IF lt_plpo_tmp IS NOT INITIAL.
+      APPEND LINES OF lt_plpo_tmp TO gt_plpo.
+    ENDIF.
+  ENDIF.
+
+  IF gt_plpo IS NOT INITIAL.
+    SORT gt_plpo BY plnty plnnr plnkn vornr aedat.
+    DELETE ADJACENT DUPLICATES FROM gt_plpo
+      COMPARING plnty plnnr plnkn vornr aedat.
+    SORT gt_plpo BY plnty plnnr plnkn.
+  ENDIF.
+
+  IF gt_plpo IS NOT INITIAL.
+    SELECT objid arbpl
+      FROM crhd
+      INTO TABLE gt_crhd
+       FOR ALL ENTRIES IN gt_plpo
+     WHERE objid = gt_plpo-arbid.
+
+    IF gt_crhd IS NOT INITIAL.
+      SORT gt_crhd BY objid.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+
+
+FORM get_allocation USING    iv_plnty TYPE plnty
+                             iv_plnnr TYPE plnnr
+                             iv_plnal TYPE plnal
+                             iv_stlty TYPE stlty
+                             iv_stlnr TYPE stlnr
+                             iv_stlal TYPE stlal
+                             iv_stlkn TYPE stlkn
+                             iv_werks TYPE werks_d
+                    CHANGING ev_vornr TYPE plpo-vornr
+                             ev_arbpl TYPE crhd-arbpl.
+
+  DATA: lv_plnkn      TYPE plpo-plnkn,
+        lv_arbid      TYPE plpo-arbid,
+        lv_plas_idx   TYPE sy-tabix,
+        lv_plpo_idx   TYPE sy-tabix,
+        lv_use_plmz   TYPE abap_bool,
+        ls_plmz       TYPE ty_plmz,
+        ls_plas       TYPE ty_plas,
+        ls_plpo       TYPE ty_plpo,
+        ls_crhd       TYPE ty_crhd,
+        ls_best_plpo  TYPE ty_plpo.
+
+  CLEAR: ev_vornr, ev_arbpl, lv_use_plmz.
+
+  CLEAR ls_plmz.
+  READ TABLE gt_plmz INTO ls_plmz
+       WITH KEY plnty = iv_plnty
+                plnnr = iv_plnnr
+                plnal = iv_plnal
+                stlty = iv_stlty
+                stlnr = iv_stlnr
+                stlal = iv_stlal
+                stlkn = iv_stlkn
+                werks = iv_werks
+       BINARY SEARCH.
+
+  IF sy-subrc = 0.
+    lv_plnkn    = ls_plmz-plnkn.
+    lv_use_plmz = abap_true.
+  ELSE.
+    READ TABLE gt_plas TRANSPORTING NO FIELDS
+         WITH KEY plnty = iv_plnty
+                  plnnr = iv_plnnr
+                  plnal = iv_plnal
+         BINARY SEARCH.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    lv_plas_idx = sy-tabix.
+  ENDIF.
+
+  CLEAR ls_best_plpo.
+
+  IF lv_use_plmz = abap_true.
+    READ TABLE gt_plpo TRANSPORTING NO FIELDS
+         WITH KEY plnty = iv_plnty
+                  plnnr = iv_plnnr
+                  plnkn = lv_plnkn
+         BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_plpo_idx = sy-tabix.
+
+      LOOP AT gt_plpo INTO ls_plpo FROM lv_plpo_idx.
+        IF ls_plpo-plnty <> iv_plnty
+           OR ls_plpo-plnnr <> iv_plnnr
+           OR ls_plpo-plnkn <> lv_plnkn.
+          EXIT.
+        ENDIF.
+
+        IF ls_best_plpo-vornr IS INITIAL
+           OR ls_plpo-vornr < ls_best_plpo-vornr.
+          ls_best_plpo = ls_plpo.
+        ELSEIF ls_plpo-vornr = ls_best_plpo-vornr
+           AND ls_plpo-aedat > ls_best_plpo-aedat.
+          ls_best_plpo = ls_plpo.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+  ELSE.
+    LOOP AT gt_plas INTO ls_plas FROM lv_plas_idx.
+      IF ls_plas-plnty <> iv_plnty
+         OR ls_plas-plnnr <> iv_plnnr
+         OR ls_plas-plnal <> iv_plnal.
+        EXIT.
+      ENDIF.
+
+      READ TABLE gt_plpo TRANSPORTING NO FIELDS
+           WITH KEY plnty = iv_plnty
+                    plnnr = iv_plnnr
+                    plnkn = ls_plas-plnkn
+           BINARY SEARCH.
+      IF sy-subrc = 0.
+        lv_plpo_idx = sy-tabix.
+
+        LOOP AT gt_plpo INTO ls_plpo FROM lv_plpo_idx.
+          IF ls_plpo-plnty <> iv_plnty
+             OR ls_plpo-plnnr <> iv_plnnr
+             OR ls_plpo-plnkn <> ls_plas-plnkn.
+            EXIT.
+          ENDIF.
+
+          IF ls_best_plpo-vornr IS INITIAL
+             OR ls_plpo-vornr < ls_best_plpo-vornr.
+            ls_best_plpo = ls_plpo.
+          ELSEIF ls_plpo-vornr = ls_best_plpo-vornr
+             AND ls_plpo-aedat > ls_best_plpo-aedat.
+            ls_best_plpo = ls_plpo.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+  IF ls_best_plpo-vornr IS NOT INITIAL.
+    ev_vornr = ls_best_plpo-vornr.
+    lv_arbid = ls_best_plpo-arbid.
+
+    IF lv_arbid IS NOT INITIAL.
+      CLEAR ls_crhd.
+      READ TABLE gt_crhd INTO ls_crhd
+           WITH KEY objid = lv_arbid
+           BINARY SEARCH.
+      IF sy-subrc = 0.
+        ev_arbpl = ls_crhd-arbpl.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+
+
+FORM write_to_server.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+lv_clsd_teco  TYPE string,
+        lv_vornr      TYPE string,
+        lv_arbpl      TYPE string,
+        lv_temp       TYPE c LENGTH 24.
+
+
+
+
+
+
+
+
+
+'ComponentWithdrawnQuantity'
+    'ComponentFinalIssueIndicator'
+    'CLSDTECOACTIVE'
+    'AllocatedOperation'
+    'AllocatedWC'
+    INTO gv_line SEPARATED BY '|'.
+
+
+
+
+
+
+
+
+
+
+lv_kzear = gs_alv-kzear. CONDENSE lv_kzear NO-GAPS.
+    lv_clsd_teco = gs_alv-clsd_teco. CONDENSE lv_clsd_teco NO-GAPS.
+    lv_vornr     = gs_alv-vornr.     CONDENSE lv_vornr NO-GAPS.
+    lv_arbpl     = gs_alv-arbpl.     CONDENSE lv_arbpl NO-GAPS.
+
+    CONCATENATE
+      lv_matnr lv_stlnr lv_aufpl lv_aufnr lv_plnnr lv_werks
+      lv_plnal lv_posnr lv_stlal lv_amein lv_meins
+      lv_gltri lv_ftrmi lv_gstri
+      lv_wemng lv_wemng_base lv_wemng_mt
+      lv_gltrs
+      lv_gamng_base lv_gamng_mt lv_gamng
+      lv_ftrms lv_gstrs
+      lv_status
+      lv_psamg lv_psamg_base
+      lv_elikz lv_xloek lv_dauat
+      lv_getri
+      lv_enmng lv_kzear
+      lv_clsd_teco
+      lv_vornr lv_arbpl
+      INTO gv_line SEPARATED BY '|'.
+
+
+
+
+
+
+
+
+
+
+go_column = go_columns->get_column( 'CLSD_TECO' ).
+          go_column->set_short_text( 'CLSD/TECO' ).
+          go_column->set_medium_text( 'CLSD/TECO ACTIVE' ).
+          go_column->set_long_text( 'CLSD/TECO ACTIVE' ).
+
+          go_column = go_columns->get_column( 'VORNR' ).
+          go_column->set_short_text( 'Alloc Op' ).
+          go_column->set_medium_text( 'Allocated Operation' ).
+          go_column->set_long_text( 'Allocated Operation' ).
+
+          go_column = go_columns->get_column( 'ARBPL' ).
+          go_column->set_short_text( 'Alloc WC' ).
+          go_column->set_medium_text( 'Allocated WC' ).
+          go_column->set_long_text( 'Allocated Work Center' ).
+
+        CATCH cx_salv_not_found INTO lv_nf.
+
+
+
