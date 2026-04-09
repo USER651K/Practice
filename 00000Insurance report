@@ -1,3 +1,76 @@
+BEGIN OF ty_final,
+          bukrs              TYPE bukrs,
+          kunnr              TYPE kunnr,
+          name1              TYPE name1,
+
+
+
+
+
+
+
+
+
+BEGIN OF ty_final_dtl,
+          bukrs              TYPE bukrs,
+          kunnr              TYPE kunnr,
+          name1              TYPE name1,
+
+
+
+
+
+
+
+LOOP AT gt_test1 ASSIGNING <fs_test>.
+    CLEAR ls_final_dtl.
+
+    ls_final_dtl-bukrs = <fs_test>-rbukrs.
+    ls_final_dtl-kunnr = <fs_test>-kunnr.
+    ls_final_dtl-prctr = <fs_test>-prctr.
+
+
+
+
+
+LOOP AT gt_test2 ASSIGNING <fs_test>.
+    CLEAR ls_final_dtl.
+
+    ls_final_dtl-bukrs = <fs_test>-rbukrs.
+    ls_final_dtl-kunnr = <fs_test>-kunnr.
+    ls_final_dtl-prctr = <fs_test>-prctr.
+
+
+
+
+IF rb_dtl = 'X'.
+    add_fldcat 'PRCTR' 'Profit Center'.
+  ENDIF.
+
+  add_fldcat 'BUKRS' 'Company Code'.
+  add_fldcat 'KUNNR' 'Customer No.'.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ************************************************************************
 * Program Name      : ZECGC_CUSTOMER_AGEING         Object ID:         *
 * Description       : ECGC Debtor Ageing Report (Customer)             *
