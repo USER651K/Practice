@@ -1,0 +1,1833 @@
+************************************************************************
+* Program Name      : ZECGC_CUSTOMER_AGEING         Object ID:         *
+* Description       : ECGC Debtor Ageing Report (Customer)             *
+*                     Performance-Optimized Version                    *
+* Create Date       : 02.04.2026                                       *
+* Tech Owner        : Ujwal                                            *
+* Project Module    : R2R / FI                                         *
+************************************************************************
+*                        Change Log                                    *
+************************************************************************
+*  REQ#         DATE         WHO            CHANGE_ID        DESCR     *
+*-----------------------------------------------------------------------
+*  001       02.04.2026     Ujwal                           Initial    *
+*  - Due Date only (no Invoice Date option)                            *
+*  - Account groups restricted to ZEXP and ZDOM only                   *
+*  - Group entity elimination ONLY for company code >= 5000           *
+*    (1010 and 1020 have no elimination)                               *
+*  - Advance: positive->NotDue, negative->reverse bucket adjustment    *
+*  - Total Due adjustment for ZDOM/other groups                        *
+*  - Removed advance aging bucket columns from ALV                     *
+*  Performance Optimizations:                                          *
+*  - FIMA_DAYS_AND_MONTHS_AND_YEARS replaced with ABAP date math      *
+*  - NET_DUE_DATE_GET retained (complex SAP logic, cannot simplify)    *
+*  - Batched UKM_MALUSLIST_PROCESSING (single call for all partners)   *
+*  - FIELD-SYMBOLS in all LOOPs / READ TABLEs                         *
+*  - BINARY SEARCH on all major internal tables with proper SORT       *
+*  - Eliminated redundant FAGL1/FAGL2 copy loops                      *
+*  - Bucket limits converted to integer once (not per-row)             *
+************************************************************************
+
+REPORT zecgc_customer_ageing.
+
+INCLUDE zecgc_cust_ageing_top.
+
+INCLUDE zecgc_cust_ageing_f01.
+
+AT SELECTION-SCREEN OUTPUT.
+  IF p_date IS INITIAL.
+    p_date = sy-datum.
+  ENDIF.
+
+INITIALIZATION.
+  s_ktokd-sign   = 'I'.
+  s_ktokd-option = 'EQ'.
+  s_ktokd-low    = 'ZEXP'.
+  APPEND s_ktokd.
+
+  s_ktokd-sign   = 'I'.
+  s_ktokd-option = 'EQ'.
+  s_ktokd-low    = 'ZDOM'.
+  APPEND s_ktokd.
+
+AT SELECTION-SCREEN.
+
+* Validate: Only ZEXP and ZDOM account groups allowed
+  LOOP AT s_ktokd.
+    IF s_ktokd-low NE 'ZEXP' AND s_ktokd-low NE 'ZDOM'.
+      MESSAGE 'Only account groups ZEXP and ZDOM are allowed' TYPE 'E'.
+    ENDIF.
+    IF s_ktokd-high IS NOT INITIAL
+    AND s_ktokd-high NE 'ZEXP' AND s_ktokd-high NE 'ZDOM'.
+      MESSAGE 'Only account groups ZEXP and ZDOM are allowed' TYPE 'E'.
+    ENDIF.
+  ENDLOOP.
+
+START-OF-SELECTION.
+  PERFORM get_data.
+
+END-OF-SELECTION.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*&  Include           ZECGC_CUST_AGEING_TOP
+*&---------------------------------------------------------------------*
+* ECGC Customer Ageing Report - Declarations (Performance Optimized)
+* Company code > 5000 not allowed | Due Date only | ZEXP + ZDOM
+*&---------------------------------------------------------------------*
+
+TYPE-POOLS : slis.
+
+TABLES : bsad, faglflexa, bkpf, bseg, kna1, knvp, pa0001, pa0002.
+
+*----------------------------------------------------------------------*
+* Type Definitions
+*----------------------------------------------------------------------*
+TYPES : BEGIN OF ty_bsad,
+          bukrs   TYPE bukrs,
+          kunnr   TYPE kunnr,
+          umskz   TYPE umskz,
+          augdt   TYPE augdt,
+          gjahr   TYPE gjahr,
+          belnr   TYPE belnr_d,
+          buzei   TYPE buzei,
+          budat   TYPE budat,
+          bldat   TYPE bldat,
+          xblnr   TYPE xblnr1,
+          blart   TYPE blart,
+          bschl   TYPE bschl,
+          shkzg   TYPE shkzg,
+          gsber   TYPE bsad-gsber,
+          dmbtr   TYPE bsad-dmbtr,
+          hkont   TYPE hkont,
+          zfbdt   TYPE dzfbdt,
+          zterm   TYPE dzterm,
+          zbd1t   TYPE dzbd1t,
+          zbd2t   TYPE dzbd2t,
+          zbd3t   TYPE dzbd3t,
+          rebzg   TYPE rebzg,
+          rebzj   TYPE rebzj,
+          rebzz   TYPE rebzz,
+          no_days TYPE i,
+          duedt   TYPE datum,
+        END OF ty_bsad,
+
+        BEGIN OF ty_fagl,
+          ryear  TYPE gjahr,
+          docnr  TYPE belnr_d,
+          rbukrs TYPE bukrs,
+          docln  TYPE docln6,
+          prctr  TYPE prctr,
+          rbusa  TYPE gsber,
+          hsl    TYPE vlcur12,
+          drcrk  TYPE shkzg,
+          buzei  TYPE buzei,
+          bschl  TYPE bschl,
+        END OF ty_fagl,
+
+        BEGIN OF ty_test,
+          ryear    TYPE faglflexa-ryear,
+          docnr    TYPE faglflexa-docnr,
+          rbukrs   TYPE faglflexa-rbukrs,
+          docln(3) TYPE c,
+          prctr    TYPE faglflexa-prctr,
+          amt_dbt  TYPE faglflexa-hsl,
+          amt_cdt  TYPE faglflexa-hsl,
+          advance  TYPE faglflexa-hsl,
+          flag     TYPE c,
+          kunnr    TYPE kunnr,
+        END OF ty_test,
+
+        BEGIN OF ty_kna1,
+          kunnr TYPE kunnr,
+          name1 TYPE name1,
+          ort01 TYPE ort01,
+          ktokd TYPE ktokd,
+          regio TYPE kna1-regio,
+          kukla TYPE kna1-kukla,
+        END OF ty_kna1,
+
+        BEGIN OF ty_final,
+          kunnr              TYPE kunnr,
+          name1              TYPE name1,
+          ort01              TYPE ort01,
+          ktokd              TYPE ktokd,
+          ktokd_d            TYPE char30,
+          regio              TYPE kna1-regio,
+          regio_d            TYPE char30,
+          parvw              TYPE knvp-parvw,
+          pernr              TYPE knvp-pernr,
+          name               TYPE char50,
+          advance            TYPE faglflexa-hsl,
+          od1                TYPE vlcur12,
+          od31               TYPE vlcur12,
+          od61               TYPE vlcur12,
+          od91               TYPE vlcur12,
+          od121              TYPE vlcur12,
+          od181              TYPE vlcur12,
+          total_due          TYPE vlcur12,
+          total              TYPE vlcur12,
+          notdue             TYPE vlcur12,
+          telnr              TYPE telnr,
+          paymnt_amount      TYPE wertv8,
+          paymnt_date        TYPE dats,
+          limit              TYPE ukm_credit_limit,
+          utilization        TYPE ukm_credlimit_used,
+          exposure           TYPE ukm_sgm_amount,
+          total_exposure     TYPE ukm_credlimit_usedw,
+          ovdue_net_date     TYPE ukm_ovdue_net_date,
+          ovdue_days         TYPE ukm_ovdue_days,
+          ovdue_amount       TYPE ukm_amount,
+          customer_group     TYPE kdgrp,
+          custom_group_descp TYPE ktext,
+          sales_group        TYPE vkgrp,
+          sales_group_descp  TYPE bezei20,
+          open_order_value   TYPE netwr_ap,
+          vkorg              TYPE char10,
+        END OF ty_final,
+
+        BEGIN OF ty_final_dtl,
+          kunnr              TYPE kunnr,
+          name1              TYPE name1,
+          ort01              TYPE ort01,
+          ktokd              TYPE ktokd,
+          ktokd_d            TYPE char50,
+          regio              TYPE kna1-regio,
+          regio_d            TYPE char30,
+          parvw              TYPE knvp-parvw,
+          pernr              TYPE knvp-pernr,
+          name               TYPE char50,
+          docnr              TYPE faglflexa-docnr,
+          xblnr              TYPE xblnr1,
+          bldat              TYPE bldat,
+          budat              TYPE datum,
+          blart              TYPE blart,
+          gsber              TYPE gsber,
+          dudat              TYPE datum,
+          umskz              TYPE bsad-umskz,
+          amt_dbt            TYPE faglflexa-hsl,
+          amt_cdt            TYPE faglflexa-hsl,
+          advance            TYPE faglflexa-hsl,
+          netval             TYPE faglflexa-hsl,
+          od1                TYPE vlcur12,
+          od31               TYPE vlcur12,
+          od61               TYPE vlcur12,
+          od91               TYPE vlcur12,
+          od121              TYPE vlcur12,
+          od181              TYPE vlcur12,
+          ebeln              TYPE rseg-ebeln,
+          unamt              TYPE faglflexa-hsl,
+          total_due          TYPE vlcur12,
+          total              TYPE vlcur12,
+          hkont              TYPE hkont,
+          prctr              TYPE prctr,
+          dayno              TYPE pea_scrdd,
+          notdue             TYPE vlcur12,
+          telnr              TYPE telnr,
+          paymnt_amount      TYPE wertv8,
+          paymnt_date        TYPE dats,
+          limit              TYPE ukm_credit_limit,
+          utilization        TYPE ukm_credlimit_used,
+          exposure           TYPE ukm_sgm_amount,
+          total_exposure     TYPE ukm_credlimit_usedw,
+          ovdue_net_date     TYPE ukm_ovdue_net_date,
+          ovdue_days         TYPE ukm_ovdue_days,
+          ovdue_amount       TYPE ukm_amount,
+          customer_group     TYPE kdgrp,
+          custom_group_descp TYPE ktext,
+          sales_group        TYPE vkgrp,
+          sales_group_descp  TYPE bezei20,
+          open_order_value   TYPE netwr_ap,
+          vkorg              TYPE char10,
+        END OF ty_final_dtl.
+
+TYPES: BEGIN OF ts_t074,
+         umskz TYPE t074-umskz,
+         hkont TYPE t074-hkont,
+         skont TYPE t074-skont,
+       END OF ts_t074,
+
+       BEGIN OF r_hkont,
+         sign   TYPE c LENGTH 1,
+         option TYPE c LENGTH 2,
+         low    LIKE bsid-hkont,
+         high   LIKE bsid-hkont,
+       END OF r_hkont,
+
+       BEGIN OF ts_knb1,
+         kunnr TYPE knb1-kunnr,
+         akont TYPE knb1-akont,
+       END OF ts_knb1,
+
+       BEGIN OF r_kunnr,
+         sign   TYPE c LENGTH 1,
+         option TYPE c LENGTH 2,
+         low    LIKE knb1-kunnr,
+         high   LIKE knb1-kunnr,
+       END OF r_kunnr.
+
+TYPES: BEGIN OF r_kunnr_r,
+         sign   TYPE c LENGTH 1,
+         option TYPE c LENGTH 2,
+         low    LIKE kna1-kunnr,
+         high   LIKE kna1-kunnr,
+       END OF r_kunnr_r.
+
+TYPES: BEGIN OF ty_kna1_r,
+         kunnr TYPE kunnr,
+         name1 TYPE name1,
+         ort01 TYPE ort01,
+         ktokd TYPE ktokd,
+         regio TYPE kna1-regio,
+         parvw TYPE knvp-parvw,
+         pernr TYPE knvp-pernr,
+       END OF ty_kna1_r.
+
+TYPES: BEGIN OF ty_pa0001,
+         pernr TYPE pa0001-pernr,
+         ename TYPE pa0001-ename,
+       END OF ty_pa0001.
+
+TYPES: BEGIN OF ty_pa0006,
+         pernr TYPE pa0006-pernr,
+         telnr TYPE pa0006-telnr,
+       END OF ty_pa0006.
+
+TYPES: BEGIN OF ty_elim_entity,
+         name TYPE char40,
+       END OF ty_elim_entity.
+
+TYPES: BEGIN OF ty_partner,
+         customer        TYPE kunnr,
+         businesspartner TYPE bu_partner,
+       END OF ty_partner,
+
+       BEGIN OF ty_customer,
+         customer           TYPE kunnr,
+         customer_group     TYPE kdgrp,
+         custom_group_descp TYPE ktext,
+         sales_group        TYPE vkgrp,
+         sales_group_descp  TYPE bezei,
+       END OF ty_customer,
+
+       BEGIN OF ty_opensales,
+         kunnr    TYPE kunag,
+         bukrs_vf TYPE bukrs_vf,
+         netwr    TYPE netwr_ap,
+         vbeln    TYPE vbeln_va,
+         gbsta    TYPE gbsta,
+         gbstk    TYPE gbstk,
+         lfgsk    TYPE lkgsk,
+         lfgsa    TYPE lfgsa,
+       END OF ty_opensales.
+
+*----------------------------------------------------------------------*
+* Selection Screen
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+  SELECT-OPTIONS : s_bukrs FOR bkpf-bukrs OBLIGATORY NO INTERVALS NO-EXTENSION,
+                   s_blart FOR bkpf-blart,
+                   s_kunnr FOR bseg-kunnr,
+                   s_ktokd FOR kna1-ktokd,
+                   s_regio FOR kna1-regio,
+                   s_hkont FOR bseg-hkont,
+                   s_pernr FOR pa0002-pernr MATCHCODE OBJECT prem,
+                   s_prctr FOR faglflexa-prctr,
+                   s_rbusa FOR faglflexa-rbusa.
+  PARAMETERS : p_date TYPE bsad-budat OBLIGATORY.
+  SELECT-OPTIONS : s_glind FOR bseg-umskz MODIF ID m1.
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN : COMMENT 1(15) text-015,
+    POSITION 33.
+    PARAMETERS p_c1 TYPE c LENGTH 4 DEFAULT '30'.
+    PARAMETERS p_c2 TYPE c LENGTH 4 DEFAULT '60'.
+    PARAMETERS p_c3 TYPE c LENGTH 4 DEFAULT '90'.
+    PARAMETERS p_c4 TYPE c LENGTH 4 DEFAULT '120'.
+    PARAMETERS p_c5 TYPE c LENGTH 4 DEFAULT '180'.
+  SELECTION-SCREEN END OF LINE.
+SELECTION-SCREEN END OF BLOCK b1.
+
+DATA: rb_sum TYPE char1,
+      rb_dtl TYPE char1.
+rb_sum = 'X'.
+
+*----------------------------------------------------------------------*
+* Ageing bucket limits (converted to integer once)
+*----------------------------------------------------------------------*
+DATA: gv_c1 TYPE i,
+      gv_c2 TYPE i,
+      gv_c3 TYPE i,
+      gv_c4 TYPE i,
+      gv_c5 TYPE i.
+
+*----------------------------------------------------------------------*
+* Internal Tables
+*----------------------------------------------------------------------*
+DATA: it_t074 TYPE STANDARD TABLE OF ts_t074,
+      t_hkont TYPE STANDARD TABLE OF r_hkont,
+      w_hkont TYPE r_hkont,
+      it_knb1 TYPE STANDARD TABLE OF ts_knb1,
+      t_kunnr TYPE STANDARD TABLE OF r_kunnr,
+      w_kunnr TYPE r_kunnr.
+
+DATA: gt_bsad      TYPE STANDARD TABLE OF ty_bsad,
+      gt_bsid      TYPE STANDARD TABLE OF ty_bsad,
+      gt_fagl_bsad TYPE STANDARD TABLE OF ty_fagl,
+      gt_fagl_bsid TYPE STANDARD TABLE OF ty_fagl,
+      gt_test1     TYPE STANDARD TABLE OF ty_test,
+      gt_test2     TYPE STANDARD TABLE OF ty_test,
+      gt_kna1      TYPE STANDARD TABLE OF ty_kna1,
+      gt_final     TYPE STANDARD TABLE OF ty_final,
+      gt_final_dtl TYPE STANDARD TABLE OF ty_final_dtl.
+
+DATA: t_kunnr_r  TYPE STANDARD TABLE OF r_kunnr_r,
+      w_kunnr_r  TYPE r_kunnr_r,
+      it_kna1_r  TYPE STANDARD TABLE OF ty_kna1_r,
+      it_pa0001  TYPE STANDARD TABLE OF ty_pa0001,
+      it_pa0006  TYPE STANDARD TABLE OF ty_pa0006,
+      it_t077x   TYPE STANDARD TABLE OF t077x,
+      it_t005u   TYPE STANDARD TABLE OF t005u,
+      it_knvp    TYPE TABLE OF knvp.
+
+DATA: gt_elim_entities TYPE STANDARD TABLE OF ty_elim_entity.
+
+DATA: gt_partner   TYPE TABLE OF ty_partner,
+      gt_customer  TYPE TABLE OF ty_customer,
+      gt_opensales TYPE TABLE OF ty_opensales.
+
+*----------------------------------------------------------------------*
+* ALV Data
+*----------------------------------------------------------------------*
+DATA : gt_fieldcat    TYPE slis_t_fieldcat_alv,
+       gt_top_of_page TYPE slis_t_listheader,
+       gs_layout      TYPE slis_layout_alv,
+       gv_tabname     TYPE slis_fieldname.
+
+DATA : c1 TYPE string,
+       c2 TYPE string,
+       c3 TYPE string,
+       c4 TYPE string,
+       c5 TYPE string,
+       c7 TYPE string.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*&  Include           ZECGC_CUST_AGEING_F01
+*&---------------------------------------------------------------------*
+* ECGC Customer Ageing Report - Subroutines (Performance Optimized)
+*
+* WHAT WAS OPTIMIZED vs Reference ZR2RR071_CUSTOMER_AGEING:
+*  1. NET_DUE_DATE_GET - RETAINED (complex SAP payment term logic,
+*     handles rebzg/shkzg/koart - cannot be safely simplified)
+*  2. FIMA_DAYS_AND_MONTHS_AND_YEARS - REPLACED with ABAP date math
+*     (safe: we only need day difference, date subtraction is identical)
+*  3. UKM_MALUSLIST_PROCESSING - batched (single call for ALL partners
+*     instead of one per customer)
+*  4. FIELD-SYMBOLS in every LOOP and READ TABLE (no data copy)
+*  5. BINARY SEARCH on every READ TABLE with proper preceding SORT
+*  6. Eliminated gt_fagl1/gt_fagl2 redundant copy loops
+*  7. Bucket limits converted to integer once (gv_c1..gv_c5)
+*  8. Group entity elimination conditional on company code >= 5000
+*     (1010 and 1020 process all customers without elimination)
+*&---------------------------------------------------------------------*
+
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_DATA
+*&---------------------------------------------------------------------*
+FORM get_data .
+
+  DATA: lv_bukrs_num TYPE i.
+
+* Convert bucket limits to integer once
+  gv_c1 = p_c1.
+  gv_c2 = p_c2.
+  gv_c3 = p_c3.
+  gv_c4 = p_c4.
+  gv_c5 = p_c5.
+
+  PERFORM build_elimination_list.
+  PERFORM fetch_kna1.
+
+* Group entity elimination applies ONLY for company code >= 5000
+* (1010 and 1020 process all customers normally without elimination)
+  lv_bukrs_num = s_bukrs-low.
+  IF lv_bukrs_num >= 5000.
+    PERFORM eliminate_group_entities.
+  ENDIF.
+
+  PERFORM fetch_bsad.
+  PERFORM fetch_bsid.
+  PERFORM merge_data.
+  PERFORM move_to_final.
+  PERFORM adjust_advance_in_summary.
+  PERFORM fetch_credit_data_batch.
+  PERFORM display_output.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  BUILD_ELIMINATION_LIST
+*&---------------------------------------------------------------------*
+FORM build_elimination_list.
+
+  DATA: ls_elim TYPE ty_elim_entity.
+
+  CLEAR gt_elim_entities.
+  ls_elim-name = 'LT FOODS'.            APPEND ls_elim TO gt_elim_entities.
+  ls_elim-name = 'NATURE BIO'.          APPEND ls_elim TO gt_elim_entities.
+  ls_elim-name = 'NBFL'.                APPEND ls_elim TO gt_elim_entities.
+  ls_elim-name = 'ECO PURE'.            APPEND ls_elim TO gt_elim_entities.
+  ls_elim-name = 'KUSHA INC'.           APPEND ls_elim TO gt_elim_entities.
+  ls_elim-name = 'UNIVERSAL TRADERS'.   APPEND ls_elim TO gt_elim_entities.
+  ls_elim-name = 'DAAWAT FOODS'.        APPEND ls_elim TO gt_elim_entities.
+  ls_elim-name = 'BONNE NATURE'.        APPEND ls_elim TO gt_elim_entities.
+  ls_elim-name = 'KAMEDA'.              APPEND ls_elim TO gt_elim_entities.
+  ls_elim-name = 'GLOBAL FOOD TRADING'. APPEND ls_elim TO gt_elim_entities.
+  ls_elim-name = 'SIDHU FOODS'.         APPEND ls_elim TO gt_elim_entities.
+  ls_elim-name = 'GFT'.                 APPEND ls_elim TO gt_elim_entities.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  ELIMINATE_GROUP_ENTITIES
+*&---------------------------------------------------------------------*
+FORM eliminate_group_entities.
+
+  DATA: lv_name_upper TYPE char40,
+        lv_delete     TYPE abap_bool.
+
+  FIELD-SYMBOLS: <fs_kna1r> TYPE ty_kna1_r,
+                 <fs_elim>  TYPE ty_elim_entity.
+
+  LOOP AT it_kna1_r ASSIGNING <fs_kna1r>.
+    lv_delete = abap_false.
+    lv_name_upper = <fs_kna1r>-name1.
+    TRANSLATE lv_name_upper TO UPPER CASE.
+
+    LOOP AT gt_elim_entities ASSIGNING <fs_elim>.
+      IF lv_name_upper CS <fs_elim>-name.
+        lv_delete = abap_true.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_delete = abap_true.
+      DELETE it_kna1_r.
+    ENDIF.
+  ENDLOOP.
+
+  REFRESH t_kunnr_r.
+  LOOP AT it_kna1_r ASSIGNING <fs_kna1r>.
+    w_kunnr_r-sign   = 'I'.
+    w_kunnr_r-option = 'EQ'.
+    w_kunnr_r-low    = <fs_kna1r>-kunnr.
+    APPEND w_kunnr_r TO t_kunnr_r.
+  ENDLOOP.
+
+  IF t_kunnr_r IS INITIAL.
+    MESSAGE 'No customers remain after group entity elimination' TYPE 'I' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  FETCH_BSAD
+*&---------------------------------------------------------------------*
+* NET_DUE_DATE_GET retained for correctness (handles rebzg, shkzg, koart)
+* FIMA_DAYS_AND_MONTHS_AND_YEARS replaced with safe ABAP date subtraction
+*----------------------------------------------------------------------*
+FORM fetch_bsad .
+
+  DATA: lv_date1 TYPE datum,
+        lv_diff  TYPE i.
+
+  FIELD-SYMBOLS: <fs_bsad> TYPE ty_bsad,
+                 <fs_fagl> TYPE ty_fagl,
+                 <fs_t074> TYPE ts_t074.
+
+  IF s_hkont IS NOT INITIAL.
+    SELECT umskz hkont skont
+    FROM t074 INTO TABLE it_t074
+    WHERE ktopl EQ '5000'
+    AND   umskz IN s_glind
+    AND   hkont IN s_hkont.
+
+    IF sy-subrc EQ 0.
+      LOOP AT s_hkont.
+        w_hkont-sign = 'I'. w_hkont-option = 'EQ'. w_hkont-low = s_hkont-low.
+        APPEND w_hkont TO t_hkont. CLEAR w_hkont.
+      ENDLOOP.
+      LOOP AT it_t074 ASSIGNING <fs_t074>.
+        w_hkont-sign = 'I'. w_hkont-option = 'EQ'. w_hkont-low = <fs_t074>-skont.
+        APPEND w_hkont TO t_hkont. CLEAR w_hkont.
+      ENDLOOP.
+      SORT t_hkont BY low.
+      DELETE ADJACENT DUPLICATES FROM t_hkont COMPARING low.
+      DELETE t_hkont WHERE low IS INITIAL.
+
+      SELECT bukrs kunnr umskz augdt gjahr belnr buzei budat
+             bldat xblnr blart bschl gsber dmbtr hkont
+             zfbdt zterm zbd1t zbd2t zbd3t rebzg rebzj rebzz shkzg
+      FROM bsad INTO CORRESPONDING FIELDS OF TABLE gt_bsad
+      WHERE bukrs EQ s_bukrs-low
+      AND   kunnr IN t_kunnr_r
+      AND   umskz IN s_glind
+      AND   augdt GT p_date
+      AND   budat LE p_date
+      AND   blart IN s_blart
+      AND   hkont IN t_hkont.
+    ENDIF.
+  ELSE.
+    SELECT bukrs kunnr umskz augdt gjahr belnr buzei budat
+           bldat xblnr blart bschl gsber dmbtr hkont
+           zfbdt zterm zbd1t zbd2t zbd3t rebzg rebzj rebzz shkzg
+    FROM bsad INTO CORRESPONDING FIELDS OF TABLE gt_bsad
+    WHERE bukrs EQ s_bukrs-low
+    AND   kunnr IN t_kunnr_r
+    AND   umskz IN s_glind
+    AND   augdt GT p_date
+    AND   budat LE p_date
+    AND   blart IN s_blart
+    AND   hkont IN s_hkont.
+  ENDIF.
+
+  CHECK gt_bsad IS NOT INITIAL.
+
+  SELECT ryear docnr rbukrs docln prctr rbusa hsl drcrk buzei bschl
+  FROM faglflexa INTO TABLE gt_fagl_bsad
+  FOR ALL ENTRIES IN gt_bsad
+  WHERE rbukrs EQ gt_bsad-bukrs
+  AND   ryear  EQ gt_bsad-gjahr
+  AND   docnr  EQ gt_bsad-belnr
+  AND   buzei  EQ gt_bsad-buzei
+  AND   rldnr  EQ '0L'
+  AND   rbusa  IN s_rbusa
+  AND   prctr  IN s_prctr.
+
+* Sort for BINARY SEARCH
+  SORT gt_bsad BY bukrs gjahr belnr buzei.
+
+* Backfill bschl from BSAD into FAGL where missing
+  LOOP AT gt_fagl_bsad ASSIGNING <fs_fagl> WHERE bschl IS INITIAL.
+    READ TABLE gt_bsad ASSIGNING <fs_bsad>
+      WITH KEY bukrs = <fs_fagl>-rbukrs
+               gjahr = <fs_fagl>-ryear
+               belnr = <fs_fagl>-docnr
+               buzei = <fs_fagl>-buzei
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_fagl>-bschl = <fs_bsad>-bschl.
+    ENDIF.
+  ENDLOOP.
+
+* Due date calculation and day difference
+  LOOP AT gt_bsad ASSIGNING <fs_bsad>.
+    CLEAR lv_date1.
+
+*   NET_DUE_DATE_GET retained: handles rebzg, shkzg, koart correctly
+    CALL FUNCTION 'NET_DUE_DATE_GET'
+      EXPORTING
+        i_zfbdt = <fs_bsad>-zfbdt
+        i_zbd1t = <fs_bsad>-zbd1t
+        i_zbd2t = <fs_bsad>-zbd2t
+        i_zbd3t = <fs_bsad>-zbd3t
+        i_shkzg = <fs_bsad>-shkzg
+        i_rebzg = <fs_bsad>-rebzg
+        i_koart = 'D'
+      IMPORTING
+        e_faedt = lv_date1.
+
+    <fs_bsad>-duedt = lv_date1.
+
+*   PERF: Replaces FIMA_DAYS_AND_MONTHS_AND_YEARS with ABAP date math
+*   (safe: only day difference needed, ABAP date subtraction = identical result)
+    IF lv_date1 > p_date.
+      <fs_bsad>-no_days = lv_date1 - p_date.
+    ELSE.
+      lv_diff = p_date - lv_date1.
+      <fs_bsad>-no_days = lv_diff * -1.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  FETCH_BSID
+*&---------------------------------------------------------------------*
+FORM fetch_bsid .
+
+  DATA: lv_date1 TYPE datum,
+        lv_diff  TYPE i.
+
+  FIELD-SYMBOLS: <fs_bsid> TYPE ty_bsad,
+                 <fs_fagl> TYPE ty_fagl,
+                 <fs_t074> TYPE ts_t074.
+
+  REFRESH it_t074.
+
+  IF s_hkont IS NOT INITIAL.
+    SELECT umskz hkont skont
+    FROM t074 INTO TABLE it_t074
+    WHERE ktopl EQ '5000'
+    AND   umskz IN s_glind
+    AND   hkont IN s_hkont.
+
+    IF sy-subrc EQ 0.
+      LOOP AT s_hkont.
+        w_hkont-sign = 'I'. w_hkont-option = 'EQ'. w_hkont-low = s_hkont-low.
+        APPEND w_hkont TO t_hkont. CLEAR w_hkont.
+      ENDLOOP.
+      LOOP AT it_t074 ASSIGNING <fs_t074>.
+        w_hkont-sign = 'I'. w_hkont-option = 'EQ'. w_hkont-low = <fs_t074>-skont.
+        APPEND w_hkont TO t_hkont. CLEAR w_hkont.
+      ENDLOOP.
+      SORT t_hkont BY low.
+      DELETE ADJACENT DUPLICATES FROM t_hkont COMPARING low.
+      DELETE t_hkont WHERE low IS INITIAL.
+
+      SELECT bukrs kunnr umskz augdt gjahr belnr buzei budat
+             bldat xblnr blart bschl gsber dmbtr hkont
+             zfbdt zterm zbd1t zbd2t zbd3t rebzg rebzj rebzz shkzg
+      FROM bsid INTO CORRESPONDING FIELDS OF TABLE gt_bsid
+      WHERE bukrs EQ s_bukrs-low
+      AND   kunnr IN t_kunnr_r
+      AND   umskz IN s_glind
+      AND   budat LE p_date
+      AND   blart IN s_blart
+      AND   hkont IN t_hkont.
+    ENDIF.
+  ELSE.
+    SELECT bukrs kunnr umskz augdt gjahr belnr buzei budat
+           bldat xblnr blart bschl gsber dmbtr hkont
+           zfbdt zterm zbd1t zbd2t zbd3t rebzg rebzj rebzz shkzg
+    FROM bsid INTO CORRESPONDING FIELDS OF TABLE gt_bsid
+    WHERE bukrs EQ s_bukrs-low
+    AND   kunnr IN t_kunnr_r
+    AND   umskz IN s_glind
+    AND   budat LE p_date
+    AND   blart IN s_blart
+    AND   hkont IN s_hkont.
+  ENDIF.
+
+  CHECK gt_bsid IS NOT INITIAL.
+
+  SELECT ryear docnr rbukrs docln prctr rbusa hsl drcrk buzei bschl
+  FROM faglflexa INTO TABLE gt_fagl_bsid
+  FOR ALL ENTRIES IN gt_bsid
+  WHERE rbukrs EQ gt_bsid-bukrs
+  AND   ryear  EQ gt_bsid-gjahr
+  AND   docnr  EQ gt_bsid-belnr
+  AND   buzei  EQ gt_bsid-buzei
+  AND   rldnr  EQ '0L'
+  AND   rbusa  IN s_rbusa
+  AND   prctr  IN s_prctr.
+
+  SORT gt_bsid BY bukrs gjahr belnr buzei.
+
+  LOOP AT gt_fagl_bsid ASSIGNING <fs_fagl> WHERE bschl IS INITIAL.
+    READ TABLE gt_bsid ASSIGNING <fs_bsid>
+      WITH KEY bukrs = <fs_fagl>-rbukrs
+               gjahr = <fs_fagl>-ryear
+               belnr = <fs_fagl>-docnr
+               buzei = <fs_fagl>-buzei
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_fagl>-bschl = <fs_bsid>-bschl.
+    ENDIF.
+  ENDLOOP.
+
+  LOOP AT gt_bsid ASSIGNING <fs_bsid>.
+    CLEAR lv_date1.
+
+    CALL FUNCTION 'NET_DUE_DATE_GET'
+      EXPORTING
+        i_zfbdt = <fs_bsid>-zfbdt
+        i_zbd1t = <fs_bsid>-zbd1t
+        i_zbd2t = <fs_bsid>-zbd2t
+        i_zbd3t = <fs_bsid>-zbd3t
+        i_shkzg = <fs_bsid>-shkzg
+        i_rebzg = <fs_bsid>-rebzg
+        i_koart = 'D'
+      IMPORTING
+        e_faedt = lv_date1.
+
+    <fs_bsid>-duedt = lv_date1.
+
+    IF lv_date1 > p_date.
+      <fs_bsid>-no_days = lv_date1 - p_date.
+    ELSE.
+      lv_diff = p_date - lv_date1.
+      <fs_bsid>-no_days = lv_diff * -1.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  MERGE_DATA
+*&---------------------------------------------------------------------*
+FORM merge_data.
+  PERFORM manipulate_bsad.
+  PERFORM manipulate_bsid.
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  MANIPULATE_BSAD
+*&---------------------------------------------------------------------*
+FORM manipulate_bsad .
+
+  DATA: ls_test1 TYPE ty_test.
+
+  FIELD-SYMBOLS: <fs_fagl>  TYPE ty_fagl,
+                 <fs_bsad>  TYPE ty_bsad,
+                 <fs_bsad2> TYPE ty_bsad.
+
+  SORT gt_bsad BY bukrs belnr gjahr buzei.
+
+  LOOP AT gt_fagl_bsad ASSIGNING <fs_fagl>.
+    CLEAR ls_test1.
+    ls_test1-ryear  = <fs_fagl>-ryear.
+    ls_test1-docnr  = <fs_fagl>-docnr.
+    ls_test1-rbukrs = <fs_fagl>-rbukrs.
+    ls_test1-docln  = <fs_fagl>-docln.
+    ls_test1-prctr  = <fs_fagl>-prctr.
+
+    IF <fs_fagl>-bschl BETWEEN '01' AND '08'.
+      IF <fs_fagl>-hsl >= 0.
+        ls_test1-amt_dbt = <fs_fagl>-hsl.
+      ELSE.
+        ls_test1-amt_cdt = <fs_fagl>-hsl * '-1'.
+      ENDIF.
+    ELSEIF <fs_fagl>-bschl BETWEEN '11' AND '18'.
+      IF <fs_fagl>-hsl >= 0.
+        ls_test1-amt_dbt = <fs_fagl>-hsl.
+      ELSE.
+        ls_test1-amt_cdt = <fs_fagl>-hsl * '-1'.
+      ENDIF.
+    ELSEIF <fs_fagl>-bschl EQ '09'.
+      ls_test1-advance = <fs_fagl>-hsl.
+    ELSEIF <fs_fagl>-bschl EQ '19'.
+      ls_test1-advance = <fs_fagl>-hsl.
+    ENDIF.
+
+    READ TABLE gt_bsad ASSIGNING <fs_bsad>
+      WITH KEY bukrs = <fs_fagl>-rbukrs
+               belnr = <fs_fagl>-docnr
+               gjahr = <fs_fagl>-ryear
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      READ TABLE gt_bsad ASSIGNING <fs_bsad2>
+        WITH KEY bukrs = <fs_fagl>-rbukrs
+                 belnr = <fs_fagl>-docnr
+                 gjahr = <fs_fagl>-ryear
+                 buzei = <fs_fagl>-buzei
+        BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_test1-kunnr = <fs_bsad2>-kunnr.
+      ELSE.
+        ls_test1-kunnr = <fs_bsad>-kunnr.
+      ENDIF.
+      COLLECT ls_test1 INTO gt_test1.
+    ENDIF.
+  ENDLOOP.
+
+  IF gt_test1 IS NOT INITIAL.
+    SELECT kunnr name1 ort01 ktokd regio kukla
+    INTO TABLE gt_kna1
+    FROM kna1
+    FOR ALL ENTRIES IN gt_test1
+    WHERE kunnr = gt_test1-kunnr.
+  ENDIF.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  MANIPULATE_BSID
+*&---------------------------------------------------------------------*
+FORM manipulate_bsid .
+
+  DATA: ls_test2 TYPE ty_test.
+
+  FIELD-SYMBOLS: <fs_fagl>  TYPE ty_fagl,
+                 <fs_bsid>  TYPE ty_bsad,
+                 <fs_bsid2> TYPE ty_bsad.
+
+  SORT gt_bsid BY bukrs belnr gjahr buzei.
+
+  LOOP AT gt_fagl_bsid ASSIGNING <fs_fagl>.
+    CLEAR ls_test2.
+    ls_test2-ryear  = <fs_fagl>-ryear.
+    ls_test2-docnr  = <fs_fagl>-docnr.
+    ls_test2-rbukrs = <fs_fagl>-rbukrs.
+    ls_test2-docln  = <fs_fagl>-docln.
+    ls_test2-prctr  = <fs_fagl>-prctr.
+
+    IF <fs_fagl>-bschl BETWEEN '01' AND '08'.
+      IF <fs_fagl>-hsl >= 0.
+        ls_test2-amt_dbt = <fs_fagl>-hsl.
+      ELSE.
+        ls_test2-amt_cdt = <fs_fagl>-hsl * '-1'.
+      ENDIF.
+    ELSEIF <fs_fagl>-bschl BETWEEN '11' AND '18'.
+      IF <fs_fagl>-hsl >= 0.
+        ls_test2-amt_dbt = <fs_fagl>-hsl.
+      ELSE.
+        ls_test2-amt_cdt = <fs_fagl>-hsl * '-1'.
+      ENDIF.
+    ELSEIF <fs_fagl>-bschl EQ '09'.
+      ls_test2-advance = <fs_fagl>-hsl.
+    ELSEIF <fs_fagl>-bschl EQ '19'.
+      ls_test2-advance = <fs_fagl>-hsl.
+    ENDIF.
+
+    READ TABLE gt_bsid ASSIGNING <fs_bsid>
+      WITH KEY bukrs = <fs_fagl>-rbukrs
+               belnr = <fs_fagl>-docnr
+               gjahr = <fs_fagl>-ryear
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      READ TABLE gt_bsid ASSIGNING <fs_bsid2>
+        WITH KEY bukrs = <fs_fagl>-rbukrs
+                 belnr = <fs_fagl>-docnr
+                 gjahr = <fs_fagl>-ryear
+                 buzei = <fs_fagl>-buzei
+        BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_test2-kunnr = <fs_bsid2>-kunnr.
+      ELSE.
+        ls_test2-kunnr = <fs_bsid>-kunnr.
+      ENDIF.
+      COLLECT ls_test2 INTO gt_test2.
+    ENDIF.
+  ENDLOOP.
+
+  IF gt_test2 IS NOT INITIAL.
+    SELECT kunnr name1 ort01 ktokd regio kukla
+    APPENDING TABLE gt_kna1
+    FROM kna1
+    FOR ALL ENTRIES IN gt_test2
+    WHERE kunnr = gt_test2-kunnr.
+  ENDIF.
+
+  SORT gt_kna1 BY kunnr.
+  DELETE ADJACENT DUPLICATES FROM gt_kna1 COMPARING kunnr.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  MOVE_TO_FINAL
+*&---------------------------------------------------------------------*
+FORM move_to_final.
+
+  DATA: lv_dayno  TYPE i,
+        lv_netval TYPE vlcur12.
+
+  FIELD-SYMBOLS: <fs_test>   TYPE ty_test,
+                 <fs_bsad>   TYPE ty_bsad,
+                 <fs_bsid>   TYPE ty_bsad,
+                 <fs_kna1>   TYPE ty_kna1,
+                 <fs_kna1r>  TYPE ty_kna1_r,
+                 <fs_pa0001> TYPE ty_pa0001,
+                 <fs_pa0006> TYPE ty_pa0006,
+                 <fs_t077x>  TYPE t077x,
+                 <fs_t005u>  TYPE t005u,
+                 <fs_fagl>   TYPE ty_fagl,
+                 <fs_dtl>    TYPE ty_final_dtl.
+
+  DATA: ls_final_dtl TYPE ty_final_dtl,
+        ls_final     TYPE ty_final.
+
+* Pre-sort all lookup tables ONCE for BINARY SEARCH
+  SORT gt_kna1   BY kunnr.
+  SORT it_kna1_r BY kunnr.
+  SORT it_pa0001 BY pernr.
+  SORT it_pa0006 BY pernr.
+  SORT it_t077x  BY ktokd.
+  SORT it_t005u  BY bland.
+  SORT gt_bsad   BY bukrs belnr gjahr.
+  SORT gt_bsid   BY bukrs belnr gjahr.
+  SORT gt_fagl_bsid BY rbukrs ryear docnr buzei.
+
+*----------------------------------------------------------------------*
+* Process cleared items (gt_test1 from BSAD)
+*----------------------------------------------------------------------*
+  LOOP AT gt_test1 ASSIGNING <fs_test>.
+    CLEAR ls_final_dtl.
+
+    ls_final_dtl-kunnr = <fs_test>-kunnr.
+    ls_final_dtl-prctr = <fs_test>-prctr.
+
+    READ TABLE gt_kna1 ASSIGNING <fs_kna1>
+      WITH KEY kunnr = <fs_test>-kunnr BINARY SEARCH.
+    IF sy-subrc = 0.
+      ls_final_dtl-name1 = <fs_kna1>-name1.
+      ls_final_dtl-ort01 = <fs_kna1>-ort01.
+      ls_final_dtl-ktokd = <fs_kna1>-ktokd.
+      ls_final_dtl-regio = <fs_kna1>-regio.
+      IF <fs_kna1>-kukla = '04' OR <fs_kna1>-kukla = ''.
+        ls_final_dtl-vkorg = 'Domestic'.
+      ELSEIF <fs_kna1>-kukla = '05'.
+        ls_final_dtl-vkorg = 'Export'.
+      ENDIF.
+      READ TABLE it_t077x ASSIGNING <fs_t077x>
+        WITH KEY ktokd = <fs_kna1>-ktokd BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_final_dtl-ktokd_d = <fs_t077x>-txt30.
+      ENDIF.
+      READ TABLE it_t005u ASSIGNING <fs_t005u>
+        WITH KEY bland = <fs_kna1>-regio BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_final_dtl-regio_d = <fs_t005u>-bezei.
+      ENDIF.
+
+      READ TABLE it_kna1_r ASSIGNING <fs_kna1r>
+        WITH KEY kunnr = <fs_test>-kunnr BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_final_dtl-parvw = <fs_kna1r>-parvw.
+        ls_final_dtl-pernr = <fs_kna1r>-pernr.
+        READ TABLE it_pa0001 ASSIGNING <fs_pa0001>
+          WITH KEY pernr = <fs_kna1r>-pernr BINARY SEARCH.
+        IF sy-subrc = 0.
+          ls_final_dtl-name = <fs_pa0001>-ename.
+        ENDIF.
+        READ TABLE it_pa0006 ASSIGNING <fs_pa0006>
+          WITH KEY pernr = <fs_kna1r>-pernr BINARY SEARCH.
+        IF sy-subrc = 0.
+          ls_final_dtl-telnr = <fs_pa0006>-telnr.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+    ls_final_dtl-docnr = <fs_test>-docnr.
+
+    READ TABLE gt_bsad ASSIGNING <fs_bsad>
+      WITH KEY bukrs = <fs_test>-rbukrs
+               belnr = <fs_test>-docnr
+               gjahr = <fs_test>-ryear
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      ls_final_dtl-xblnr = <fs_bsad>-xblnr.
+      ls_final_dtl-bldat = <fs_bsad>-bldat.
+      ls_final_dtl-budat = <fs_bsad>-budat.
+      ls_final_dtl-blart = <fs_bsad>-blart.
+      ls_final_dtl-dudat = <fs_bsad>-duedt.
+      ls_final_dtl-umskz = <fs_bsad>-umskz.
+      ls_final_dtl-hkont = <fs_bsad>-hkont.
+    ENDIF.
+
+    lv_dayno = p_date - ls_final_dtl-dudat.
+    ls_final_dtl-dayno = lv_dayno.
+
+    ls_final_dtl-amt_dbt = <fs_test>-amt_dbt.
+    ls_final_dtl-advance = <fs_test>-advance.
+    ls_final_dtl-amt_cdt = <fs_test>-amt_cdt.
+    lv_netval = ls_final_dtl-amt_dbt - ls_final_dtl-amt_cdt.
+    ls_final_dtl-netval = lv_netval.
+
+    IF ls_final_dtl-dudat GT p_date.
+      ls_final_dtl-notdue = lv_netval.
+    ELSEIF lv_dayno >= 0.
+      IF lv_dayno <= gv_c1.
+        ls_final_dtl-od1 = lv_netval.
+      ELSEIF lv_dayno <= gv_c2.
+        ls_final_dtl-od31 = lv_netval.
+      ELSEIF lv_dayno <= gv_c3.
+        ls_final_dtl-od61 = lv_netval.
+      ELSEIF lv_dayno <= gv_c4.
+        ls_final_dtl-od91 = lv_netval.
+      ELSEIF lv_dayno <= gv_c5.
+        ls_final_dtl-od121 = lv_netval.
+      ELSE.
+        ls_final_dtl-od181 = lv_netval.
+      ENDIF.
+    ENDIF.
+
+    ls_final_dtl-total = lv_netval.
+    APPEND ls_final_dtl TO gt_final_dtl.
+  ENDLOOP.
+
+*----------------------------------------------------------------------*
+* Process open items (gt_test2 from BSID)
+*----------------------------------------------------------------------*
+  LOOP AT gt_test2 ASSIGNING <fs_test>.
+    CLEAR ls_final_dtl.
+
+    ls_final_dtl-kunnr = <fs_test>-kunnr.
+    ls_final_dtl-prctr = <fs_test>-prctr.
+
+    READ TABLE gt_kna1 ASSIGNING <fs_kna1>
+      WITH KEY kunnr = <fs_test>-kunnr BINARY SEARCH.
+    IF sy-subrc = 0.
+      ls_final_dtl-name1 = <fs_kna1>-name1.
+      ls_final_dtl-ort01 = <fs_kna1>-ort01.
+      ls_final_dtl-ktokd = <fs_kna1>-ktokd.
+      ls_final_dtl-regio = <fs_kna1>-regio.
+      IF <fs_kna1>-kukla = '04' OR <fs_kna1>-kukla = ''.
+        ls_final_dtl-vkorg = 'Domestic'.
+      ELSEIF <fs_kna1>-kukla = '05'.
+        ls_final_dtl-vkorg = 'Export'.
+      ENDIF.
+      READ TABLE it_t077x ASSIGNING <fs_t077x>
+        WITH KEY ktokd = <fs_kna1>-ktokd BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_final_dtl-ktokd_d = <fs_t077x>-txt30.
+      ENDIF.
+      READ TABLE it_t005u ASSIGNING <fs_t005u>
+        WITH KEY bland = <fs_kna1>-regio BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_final_dtl-regio_d = <fs_t005u>-bezei.
+      ENDIF.
+
+      READ TABLE it_kna1_r ASSIGNING <fs_kna1r>
+        WITH KEY kunnr = <fs_test>-kunnr BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_final_dtl-parvw = <fs_kna1r>-parvw.
+        ls_final_dtl-pernr = <fs_kna1r>-pernr.
+        READ TABLE it_pa0001 ASSIGNING <fs_pa0001>
+          WITH KEY pernr = <fs_kna1r>-pernr BINARY SEARCH.
+        IF sy-subrc = 0.
+          ls_final_dtl-name = <fs_pa0001>-ename.
+        ENDIF.
+        READ TABLE it_pa0006 ASSIGNING <fs_pa0006>
+          WITH KEY pernr = <fs_kna1r>-pernr BINARY SEARCH.
+        IF sy-subrc = 0.
+          ls_final_dtl-telnr = <fs_pa0006>-telnr.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+    ls_final_dtl-docnr = <fs_test>-docnr.
+
+    READ TABLE gt_bsid ASSIGNING <fs_bsid>
+      WITH KEY bukrs = <fs_test>-rbukrs
+               belnr = <fs_test>-docnr
+               gjahr = <fs_test>-ryear
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      ls_final_dtl-xblnr = <fs_bsid>-xblnr.
+      ls_final_dtl-bldat = <fs_bsid>-bldat.
+      ls_final_dtl-budat = <fs_bsid>-budat.
+      ls_final_dtl-blart = <fs_bsid>-blart.
+      ls_final_dtl-dudat = <fs_bsid>-duedt.
+      ls_final_dtl-umskz = <fs_bsid>-umskz.
+      ls_final_dtl-hkont = <fs_bsid>-hkont.
+
+      READ TABLE gt_fagl_bsid ASSIGNING <fs_fagl>
+        WITH KEY rbukrs = <fs_bsid>-bukrs
+                 ryear  = <fs_bsid>-gjahr
+                 docnr  = <fs_bsid>-belnr
+                 buzei  = <fs_bsid>-buzei
+        BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_final_dtl-gsber = <fs_fagl>-rbusa.
+      ENDIF.
+    ENDIF.
+
+    lv_dayno = p_date - ls_final_dtl-dudat.
+    ls_final_dtl-dayno = lv_dayno.
+
+    ls_final_dtl-amt_dbt = <fs_test>-amt_dbt.
+    ls_final_dtl-advance = <fs_test>-advance.
+    ls_final_dtl-amt_cdt = <fs_test>-amt_cdt.
+    lv_netval = ls_final_dtl-amt_dbt - ls_final_dtl-amt_cdt.
+    ls_final_dtl-netval = lv_netval.
+
+    IF ls_final_dtl-dudat GT p_date.
+      ls_final_dtl-notdue = lv_netval.
+    ELSEIF lv_dayno >= 0.
+      IF lv_dayno <= gv_c1.
+        ls_final_dtl-od1 = lv_netval.
+      ELSEIF lv_dayno <= gv_c2.
+        ls_final_dtl-od31 = lv_netval.
+      ELSEIF lv_dayno <= gv_c3.
+        ls_final_dtl-od61 = lv_netval.
+      ELSEIF lv_dayno <= gv_c4.
+        ls_final_dtl-od91 = lv_netval.
+      ELSEIF lv_dayno <= gv_c5.
+        ls_final_dtl-od121 = lv_netval.
+      ELSE.
+        ls_final_dtl-od181 = lv_netval.
+      ENDIF.
+    ENDIF.
+
+    ls_final_dtl-total = lv_netval.
+    APPEND ls_final_dtl TO gt_final_dtl.
+  ENDLOOP.
+
+* Calculate total_due at detail level
+  LOOP AT gt_final_dtl ASSIGNING <fs_dtl>.
+    <fs_dtl>-total_due = <fs_dtl>-total - <fs_dtl>-notdue.
+  ENDLOOP.
+
+* Collect into summary
+  IF rb_sum = 'X'.
+    LOOP AT gt_final_dtl ASSIGNING <fs_dtl>.
+      CLEAR ls_final.
+      MOVE-CORRESPONDING <fs_dtl> TO ls_final.
+      COLLECT ls_final INTO gt_final.
+    ENDLOOP.
+  ENDIF.
+
+* Reconciliation account filter
+  IF gt_final_dtl IS NOT INITIAL.
+    SELECT kunnr akont FROM knb1 INTO TABLE it_knb1
+    FOR ALL ENTRIES IN gt_final_dtl
+    WHERE kunnr EQ gt_final_dtl-kunnr
+    AND   akont IN s_hkont[].
+  ENDIF.
+
+  IF sy-subrc EQ 0.
+    IF s_hkont IS NOT INITIAL.
+      DELETE gt_final_dtl WHERE hkont NOT IN s_hkont.
+    ENDIF.
+
+    DATA: wa_knb1 TYPE ts_knb1.
+    LOOP AT it_knb1 INTO wa_knb1.
+      w_kunnr-sign = 'I'. w_kunnr-option = 'EQ'. w_kunnr-low = wa_knb1-kunnr.
+      APPEND w_kunnr TO t_kunnr. CLEAR w_kunnr.
+    ENDLOOP.
+
+    DELETE gt_final_dtl WHERE kunnr NOT IN t_kunnr.
+  ENDIF.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  ADJUST_ADVANCE_IN_SUMMARY
+*&---------------------------------------------------------------------*
+* ZEXP: positive advance -> Not Due, negative -> reverse bucket adjust
+* ZDOM/others: if Total Due = 0, adjust with Not Due
+*----------------------------------------------------------------------*
+FORM adjust_advance_in_summary.
+
+  DATA: lv_adj TYPE vlcur12.
+
+  FIELD-SYMBOLS: <fs_final> TYPE ty_final.
+
+  LOOP AT gt_final ASSIGNING <fs_final>.
+
+*--- ZEXP: Advance adjustment ---
+    IF <fs_final>-ktokd = 'ZEXP'.
+
+      IF <fs_final>-advance > 0.
+        <fs_final>-notdue  = <fs_final>-notdue + <fs_final>-advance.
+        <fs_final>-advance = 0.
+
+      ELSEIF <fs_final>-advance < 0.
+        lv_adj = <fs_final>-advance * -1.
+
+*       Adjust overdue buckets from oldest to newest
+*       1) >181 Days
+        IF lv_adj > 0 AND <fs_final>-od181 > 0.
+          IF <fs_final>-od181 >= lv_adj.
+            <fs_final>-od181 = <fs_final>-od181 - lv_adj. lv_adj = 0.
+          ELSE.
+            lv_adj = lv_adj - <fs_final>-od181. <fs_final>-od181 = 0.
+          ENDIF.
+        ENDIF.
+*       2) 121-180 Days
+        IF lv_adj > 0 AND <fs_final>-od121 > 0.
+          IF <fs_final>-od121 >= lv_adj.
+            <fs_final>-od121 = <fs_final>-od121 - lv_adj. lv_adj = 0.
+          ELSE.
+            lv_adj = lv_adj - <fs_final>-od121. <fs_final>-od121 = 0.
+          ENDIF.
+        ENDIF.
+*       3) 91-120 Days
+        IF lv_adj > 0 AND <fs_final>-od91 > 0.
+          IF <fs_final>-od91 >= lv_adj.
+            <fs_final>-od91 = <fs_final>-od91 - lv_adj. lv_adj = 0.
+          ELSE.
+            lv_adj = lv_adj - <fs_final>-od91. <fs_final>-od91 = 0.
+          ENDIF.
+        ENDIF.
+*       4) 61-90 Days
+        IF lv_adj > 0 AND <fs_final>-od61 > 0.
+          IF <fs_final>-od61 >= lv_adj.
+            <fs_final>-od61 = <fs_final>-od61 - lv_adj. lv_adj = 0.
+          ELSE.
+            lv_adj = lv_adj - <fs_final>-od61. <fs_final>-od61 = 0.
+          ENDIF.
+        ENDIF.
+*       5) 31-60 Days
+        IF lv_adj > 0 AND <fs_final>-od31 > 0.
+          IF <fs_final>-od31 >= lv_adj.
+            <fs_final>-od31 = <fs_final>-od31 - lv_adj. lv_adj = 0.
+          ELSE.
+            lv_adj = lv_adj - <fs_final>-od31. <fs_final>-od31 = 0.
+          ENDIF.
+        ENDIF.
+*       6) 0-30 Days
+        IF lv_adj > 0 AND <fs_final>-od1 > 0.
+          IF <fs_final>-od1 >= lv_adj.
+            <fs_final>-od1 = <fs_final>-od1 - lv_adj. lv_adj = 0.
+          ELSE.
+            lv_adj = lv_adj - <fs_final>-od1. <fs_final>-od1 = 0.
+          ENDIF.
+        ENDIF.
+*       7) Last resort: reduce Not Due
+        IF lv_adj > 0 AND <fs_final>-notdue > 0.
+          IF <fs_final>-notdue >= lv_adj.
+            <fs_final>-notdue = <fs_final>-notdue - lv_adj. lv_adj = 0.
+          ELSE.
+            lv_adj = lv_adj - <fs_final>-notdue. <fs_final>-notdue = 0.
+          ENDIF.
+        ENDIF.
+
+        <fs_final>-advance = 0.
+      ENDIF.
+    ENDIF.
+
+*--- ZDOM and other groups: Total Due adjustment ---
+    IF <fs_final>-ktokd NE 'ZEXP'.
+      IF <fs_final>-total_due = 0 AND <fs_final>-notdue <> 0.
+        <fs_final>-total_due = <fs_final>-notdue.
+      ENDIF.
+    ENDIF.
+
+*--- Recalculate totals ---
+    <fs_final>-total_due = <fs_final>-od1   + <fs_final>-od31  + <fs_final>-od61
+                         + <fs_final>-od91  + <fs_final>-od121 + <fs_final>-od181.
+    <fs_final>-total     = <fs_final>-total_due + <fs_final>-notdue.
+
+  ENDLOOP.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  FETCH_CREDIT_DATA_BATCH
+*&---------------------------------------------------------------------*
+* PERF: Single batched UKM_MALUSLIST_PROCESSING for ALL partners
+*----------------------------------------------------------------------*
+FORM fetch_credit_data_batch.
+
+  TYPES: BEGIN OF ukmms_maluslist_dsp,
+           t_partner_range   TYPE bup_partner_range_t,
+           t_limitr_range    TYPE ukm_t_limit_rule_ranges,
+           t_csgmnt_range    TYPE ukm_t_crsgm_range,
+           t_follow_up_dt    TYPE RANGE OF ukm_follow_up_dt,
+           t_credit_group    TYPE RANGE OF ukm_cred_group,
+           t_coordinator     TYPE RANGE OF ukm_coordinator,
+           t_risk_class      TYPE RANGE OF ukm_risk_class,
+           t_ukmsb0_range    TYPE bup_partner_range_t,
+           t_ukmsbg_range    TYPE bup_partner_range_t,
+           t_where           TYPE rsds_twhere,
+           t_range           TYPE rsds_trange,
+           packsize          TYPE sy-tabix,
+           t_out             TYPE ukm_t_bp_cms_malusdsp_out,
+           credit_limit_used TYPE ukm_credlimit_used,
+           log_handle        TYPE ukmms_tobj_handle,
+           intnumber         TYPE sy-index,
+           extnumber         TYPE balnrext,
+           s_statistics      TYPE ukmms_massdata_statistics,
+         END OF ukmms_maluslist_dsp,
+
+         BEGIN OF ty_ntamt,
+           kunnr    TYPE kunag,
+           bukrs_vf TYPE bukrs_vf,
+           netwr    TYPE netwr_ap,
+         END OF ty_ntamt.
+
+  DATA: lt_ukmms_parameters TYPE ukmms_maluslist_dsp,
+        lr_partner_all      TYPE TABLE OF selopt,
+        ls_partner_rng      TYPE selopt,
+        lt_overdue          TYPE ukm_ts_bp_vector_it,
+        lv_buspartnr        TYPE bu_partner,
+        lv_segment          TYPE ukm_credit_sgmnt,
+        lt_ntamt            TYPE TABLE OF ty_ntamt,
+        ls_ntamt            TYPE ty_ntamt.
+
+  FIELD-SYMBOLS: <fs_final>    TYPE ty_final,
+                 <fs_partner>  TYPE ty_partner,
+                 <fs_customer> TYPE ty_customer,
+                 <fs_overdue>  TYPE LINE OF ukm_ts_bp_vector_it.
+
+  CHECK gt_final IS NOT INITIAL.
+
+  PERFORM get_partner_data USING gt_final[] gt_bsid
+                        CHANGING gt_partner[] gt_customer[] gt_opensales[].
+
+  SORT gt_partner  BY customer.
+  SORT gt_customer BY customer.
+
+* Build ONE range of ALL partners for single batch UKM call
+  LOOP AT gt_partner ASSIGNING <fs_partner>.
+    ls_partner_rng-sign   = 'I'.
+    ls_partner_rng-option = 'EQ'.
+    ls_partner_rng-low    = <fs_partner>-businesspartner.
+    APPEND ls_partner_rng TO lr_partner_all.
+  ENDLOOP.
+
+  lv_segment = s_bukrs-low.
+
+  IF lr_partner_all IS NOT INITIAL.
+    lt_ukmms_parameters-t_partner_range[] = lr_partner_all.
+    lt_ukmms_parameters-t_csgmnt_range[]  = s_bukrs[].
+
+    CALL FUNCTION 'UKM_MALUSLIST_PROCESSING'
+      CHANGING
+        c_basics = lt_ukmms_parameters.
+  ENDIF.
+
+* Pre-calculate open order totals in single pass
+  SORT gt_opensales BY kunnr.
+  LOOP AT gt_opensales INTO DATA(ls_opensales).
+    AT NEW kunnr.
+      CLEAR ls_ntamt.
+    ENDAT.
+    ls_ntamt-netwr    = ls_ntamt-netwr + ls_opensales-netwr.
+    ls_ntamt-bukrs_vf = ls_opensales-bukrs_vf.
+    AT END OF kunnr.
+      ls_ntamt-kunnr = ls_opensales-kunnr.
+      APPEND ls_ntamt TO lt_ntamt.
+    ENDAT.
+  ENDLOOP.
+  SORT lt_ntamt BY kunnr bukrs_vf.
+
+* Fill credit data from batched results
+  LOOP AT gt_final ASSIGNING <fs_final>.
+
+    READ TABLE gt_partner ASSIGNING <fs_partner>
+      WITH KEY customer = <fs_final>-kunnr BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_buspartnr = <fs_partner>-businesspartner.
+
+      DATA(ls_ukmms) = VALUE #(
+        lt_ukmms_parameters-t_out[ partner      = lv_buspartnr
+                                    credit_sgmnt = lv_segment ] OPTIONAL ).
+      IF ls_ukmms IS NOT INITIAL.
+        <fs_final>-utilization    = ls_ukmms-credit_limit_used.
+        <fs_final>-limit          = ls_ukmms-credit_limit.
+        <fs_final>-exposure       = ls_ukmms-amount.
+        <fs_final>-total_exposure = ls_ukmms-credit_limit_usedw.
+      ENDIF.
+
+      CLEAR lt_overdue.
+      CALL FUNCTION 'UKM_DB_UKMBP_VECTOR_READ'
+        EXPORTING
+          i_partner       = lv_buspartnr
+          i_segment       = lv_segment
+        IMPORTING
+          et_bp_vector_it = lt_overdue
+        EXCEPTIONS
+          not_found = 1
+          OTHERS    = 2.
+      IF sy-subrc = 0.
+        READ TABLE lt_overdue ASSIGNING <fs_overdue> INDEX 1.
+        IF sy-subrc = 0.
+          <fs_final>-ovdue_days     = <fs_overdue>-ovdue_days.
+          <fs_final>-ovdue_amount   = <fs_overdue>-ovdue_amount.
+          <fs_final>-ovdue_net_date = <fs_overdue>-ovdue_net_date.
+          <fs_final>-paymnt_amount  = <fs_overdue>-paymnt_amount.
+          <fs_final>-paymnt_date    = <fs_overdue>-paymnt_date.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+    READ TABLE gt_customer ASSIGNING <fs_customer>
+      WITH KEY customer = <fs_final>-kunnr BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_final>-customer_group     = <fs_customer>-customer_group.
+      <fs_final>-custom_group_descp = <fs_customer>-custom_group_descp.
+      <fs_final>-sales_group        = <fs_customer>-sales_group.
+      <fs_final>-sales_group_descp  = <fs_customer>-sales_group_descp.
+    ENDIF.
+
+    READ TABLE lt_ntamt INTO ls_ntamt
+      WITH KEY kunnr    = <fs_final>-kunnr
+               bukrs_vf = s_bukrs-low
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_final>-open_order_value = ls_ntamt-netwr.
+    ENDIF.
+
+  ENDLOOP.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_PARTNER_DATA
+*&---------------------------------------------------------------------*
+FORM get_partner_data USING pt_data LIKE gt_final
+                            pt_comp LIKE gt_bsid
+                   CHANGING ct_partner LIKE gt_partner
+                            ct_customer LIKE gt_customer
+                            ct_opensales LIKE gt_opensales.
+
+  DATA: lr_kunnr TYPE TABLE OF selopt.
+
+  CLEAR: ct_partner, ct_customer, ct_opensales.
+  CHECK pt_data IS NOT INITIAL.
+
+  DATA(lt_data) = pt_data[].
+  SORT lt_data BY kunnr.
+  DELETE ADJACENT DUPLICATES FROM lt_data COMPARING kunnr.
+
+  lr_kunnr = VALUE #( FOR ls_kunnr IN lt_data
+                      ( sign = 'I' option = 'EQ' low = ls_kunnr-kunnr ) ).
+
+  CHECK lr_kunnr IS NOT INITIAL.
+
+  SELECT customer, businesspartner
+  FROM abusinesspartner
+  INTO TABLE @ct_partner
+  WHERE customer IN @lr_kunnr.
+
+  IF ct_partner IS NOT INITIAL.
+    SELECT a~kunnr, a~kdgrp, b~ktext, a~vkgrp, c~bezei
+    FROM knvv AS a
+    INNER JOIN t151t AS b ON a~kdgrp = b~kdgrp
+    INNER JOIN tvgrt AS c ON a~vkgrp = c~vkgrp
+    INTO TABLE @ct_customer
+    FOR ALL ENTRIES IN @ct_partner
+    WHERE kunnr = @ct_partner-customer
+    AND   c~spras = @sy-langu.
+  ENDIF.
+
+  SELECT a~vbeln, a~kunnr, a~bukrs_vf, b~gbsta, b~netwr,
+         a~gbstk, a~lfgsk, b~lfgsa
+  FROM vbak AS a
+  INNER JOIN vbap AS b ON a~vbeln = b~vbeln
+  INTO CORRESPONDING FIELDS OF TABLE @ct_opensales
+  WHERE a~kunnr IN @lr_kunnr
+  AND   a~bukrs_vf IN @s_bukrs
+  AND   b~gbsta <> 'C'
+  AND ( ( a~gbstk EQ 'A' OR a~gbstk = 'B' )
+     OR ( a~lfgsk EQ 'A' OR a~lfgsk = 'B' ) )
+  AND ( ( b~gbsta = 'A' OR b~gbsta = 'B' )
+     OR ( b~lfgsa = 'A' OR b~lfgsa = 'B' ) ).
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_OUTPUT
+*&---------------------------------------------------------------------*
+FORM display_output .
+  PERFORM gen_top.
+  PERFORM create_fldcat.
+  PERFORM display_final.
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_FLDCAT
+*&---------------------------------------------------------------------*
+FORM create_fldcat .
+
+  DATA : lv_fldcat  TYPE slis_fieldcat_alv,
+         lv_index   TYPE i,
+         lv_from(4).
+
+  CONCATENATE '0 -' p_c1 'Days' INTO c1 SEPARATED BY space.
+  lv_from = p_c1 + 1. CONCATENATE lv_from '-' p_c2 'Days' INTO c2 SEPARATED BY space.
+  lv_from = p_c2 + 1. CONCATENATE lv_from '-' p_c3 'Days' INTO c3 SEPARATED BY space.
+  lv_from = p_c3 + 1. CONCATENATE lv_from '-' p_c4 'Days' INTO c4 SEPARATED BY space.
+  lv_from = p_c4 + 1. CONCATENATE lv_from '-' p_c5 'Days' INTO c5 SEPARATED BY space.
+  lv_from = p_c5 + 1. CONCATENATE '>' lv_from 'Days' INTO c7 SEPARATED BY space.
+
+  IF rb_dtl = 'X'.
+    gv_tabname = 'GT_FINAL_DTL'.
+  ELSEIF rb_sum = 'X'.
+    gv_tabname = 'GT_FINAL'.
+  ENDIF.
+
+  REFRESH gt_fieldcat.
+
+  DEFINE add_fldcat.
+    CLEAR lv_fldcat.
+    lv_index = lv_index + 1.
+    lv_fldcat-col_pos   = lv_index.
+    lv_fldcat-fieldname = &1.
+    lv_fldcat-tabname   = gv_tabname.
+    lv_fldcat-seltext_m = &2.
+    APPEND lv_fldcat TO gt_fieldcat.
+  END-OF-DEFINITION.
+
+  IF rb_dtl = 'X'.
+    add_fldcat 'PRCTR' 'Profit Center'.
+  ENDIF.
+
+  add_fldcat 'KUNNR' 'Customer No.'.
+  add_fldcat 'NAME1' 'Customer Name'.
+  add_fldcat 'VKORG' 'Customer Classification'.
+  add_fldcat 'KTOKD' 'Customer Account Group'.
+  add_fldcat 'KTOKD_D' 'Customer Account Desc'.
+  add_fldcat 'REGIO' 'Customer Region'.
+  add_fldcat 'REGIO_D' 'Customer Region Desc'.
+  add_fldcat 'PARVW' 'Partner Function'.
+  add_fldcat 'PERNR' 'Sales Employee Number'.
+  add_fldcat 'NAME'  'Sales Employee'.
+  add_fldcat 'TELNR' 'Telephone'.
+
+  IF rb_dtl = 'X'.
+    add_fldcat 'DOCNR' 'Document Number'.
+    add_fldcat 'BLART' 'Doc Type'.
+    add_fldcat 'EBELN' 'PO No'.
+    add_fldcat 'XBLNR' 'Reference'.
+    add_fldcat 'BLDAT' 'Document Date'.
+    add_fldcat 'BUDAT' 'Posting Date'.
+    add_fldcat 'UMSKZ' 'Spcl. G/L Ind.'.
+    add_fldcat 'DUDAT' 'Due Date'.
+    add_fldcat 'DAYNO' 'No Of Days'.
+    add_fldcat 'AMT_DBT' 'Debit Amount'.
+    add_fldcat 'AMT_CDT' 'Credit Amount'.
+    add_fldcat 'ADVANCE' 'Advance'.
+    add_fldcat 'NETVAL'  'Net Value'.
+    add_fldcat 'HKONT'  'G/L Account'.
+  ENDIF.
+
+  IF rb_sum IS NOT INITIAL.
+    add_fldcat 'ORT01' 'Address'.
+  ENDIF.
+
+  add_fldcat 'NOTDUE' 'Not Due'.
+  add_fldcat 'OD1'    c1.
+  add_fldcat 'OD31'   c2.
+  add_fldcat 'OD61'   c3.
+  add_fldcat 'OD91'   c4.
+  add_fldcat 'OD121'  c5.
+  add_fldcat 'OD181'  c7.
+
+  IF rb_sum = 'X'.
+    add_fldcat 'TOTAL_DUE' 'Total Due'.
+    add_fldcat 'TOTAL'     'Due + NotDue'.
+  ENDIF.
+
+  add_fldcat 'PAYMNT_AMOUNT'      'Last Payment Value'.
+  add_fldcat 'PAYMNT_DATE'        'Last Payment Date'.
+  add_fldcat 'LIMIT'              'Credit Limit'.
+  add_fldcat 'EXPOSURE'           'Credit Exposure'.
+  add_fldcat 'TOTAL_EXPOSURE'     'Total Exposed Amount'.
+  add_fldcat 'UTILIZATION'        'Utilization'.
+  add_fldcat 'OVDUE_DAYS'         'Overdue Days'.
+  add_fldcat 'OVDUE_AMOUNT'       'Outstanding'.
+  add_fldcat 'OVDUE_NET_DATE'     'Due Date'.
+  add_fldcat 'CUSTOMER_GROUP'     'Customer Group'.
+  add_fldcat 'CUSTOM_GROUP_DESCP' 'Customer Group Desc.'.
+  add_fldcat 'SALES_GROUP'        'Sales Group'.
+  add_fldcat 'SALES_GROUP_DESCP'  'Sales Group Description'.
+  add_fldcat 'OPEN_ORDER_VALUE'   'Open Order Value'.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  GEN_TOP
+*&---------------------------------------------------------------------*
+FORM gen_top .
+
+  DATA: info(100), lv_text TYPE string,
+        lv_butxt TYPE char25, ls_line TYPE slis_listheader.
+
+  ls_line-typ = 'H'.
+  SELECT SINGLE butxt INTO lv_butxt FROM t001 WHERE bukrs = s_bukrs-low.
+  ls_line-info = lv_butxt.
+  APPEND ls_line TO gt_top_of_page.
+
+  CLEAR ls_line.
+  ls_line-typ = 'H'. ls_line-info = 'ECGC Customer Ageing Report (Due Date)'.
+  APPEND ls_line TO gt_top_of_page.
+
+  CLEAR: ls_line, info. ls_line-typ = 'S'.
+  IF s_rbusa-low IS NOT INITIAL.
+    WRITE s_rbusa-low TO info.
+    SELECT SINGLE gtext FROM tgsbt INTO lv_text WHERE gsber = s_rbusa-low.
+    CONDENSE lv_text.
+  ELSEIF s_rbusa-high IS NOT INITIAL.
+    WRITE s_rbusa-high TO info.
+    SELECT SINGLE gtext FROM tgsbt INTO lv_text WHERE gsber = s_rbusa-high.
+    CONDENSE lv_text.
+  ELSE.
+    WRITE '*' TO info.
+  ENDIF.
+  CONDENSE info.
+  CONCATENATE 'Business Area :' info lv_text INTO info SEPARATED BY space.
+  ls_line-info = info. APPEND ls_line TO gt_top_of_page.
+
+  CLEAR: ls_line, info. ls_line-typ = 'S'.
+  WRITE p_date TO info. CONDENSE info.
+  CONCATENATE 'Key Date :' info INTO info SEPARATED BY space.
+  ls_line-info = info. APPEND ls_line TO gt_top_of_page.
+
+  CLEAR ls_line. ls_line-typ = 'S'.
+  WRITE sy-datum TO info.
+  CONCATENATE 'Date :' info INTO info SEPARATED BY space.
+  ls_line-info = info. APPEND ls_line TO gt_top_of_page.
+
+  CLEAR ls_line. ls_line-typ = 'S'.
+  ls_line-info = 'Ageing: Due Date | Groups: ZEXP, ZDOM (Entities Eliminated)'.
+  APPEND ls_line TO gt_top_of_page.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  ALV_TOP_OF_PAGE
+*&---------------------------------------------------------------------*
+FORM alv_top_of_page.
+  CALL FUNCTION 'REUSE_ALV_COMMENTARY_WRITE'
+    EXPORTING it_list_commentary = gt_top_of_page.
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_FINAL
+*&---------------------------------------------------------------------*
+FORM display_final .
+
+  IF rb_dtl = 'X'.
+    IF gt_final_dtl IS NOT INITIAL.
+      gs_layout-colwidth_optimize = 'X'.
+      CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+        EXPORTING
+          i_callback_program     = sy-cprog
+          is_layout              = gs_layout
+          it_fieldcat            = gt_fieldcat[]
+          i_callback_top_of_page = 'ALV_TOP_OF_PAGE'
+          i_save                 = 'A'
+        TABLES
+          t_outtab               = gt_final_dtl[]
+        EXCEPTIONS
+          program_error = 1
+          OTHERS        = 2.
+    ELSE.
+      MESSAGE 'No data found for the selection criteria' TYPE 'S' DISPLAY LIKE 'E'.
+    ENDIF.
+  ELSEIF rb_sum = 'X'.
+    IF gt_final IS NOT INITIAL.
+      gs_layout-colwidth_optimize = 'X'.
+      CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+        EXPORTING
+          i_callback_program     = sy-cprog
+          is_layout              = gs_layout
+          it_fieldcat            = gt_fieldcat[]
+          i_callback_top_of_page = 'ALV_TOP_OF_PAGE'
+          i_save                 = 'A'
+        TABLES
+          t_outtab               = gt_final[]
+        EXCEPTIONS
+          program_error = 1
+          OTHERS        = 2.
+    ELSE.
+      MESSAGE 'No data found for the selection criteria' TYPE 'S' DISPLAY LIKE 'E'.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  FETCH_KNA1
+*&---------------------------------------------------------------------*
+FORM fetch_kna1 .
+
+  FIELD-SYMBOLS: <fs_kna1r> TYPE ty_kna1_r.
+
+  REFRESH: it_kna1_r, t_kunnr_r, it_t077x, it_knvp.
+
+  SELECT a~kunnr a~name1 a~ort01 a~ktokd a~regio
+         b~parvw b~pernr
+  FROM kna1 AS a
+  LEFT OUTER JOIN knvp AS b
+    ON a~kunnr = b~kunnr AND b~parvw = 'VE'
+  INTO TABLE it_kna1_r
+  WHERE a~kunnr IN s_kunnr
+  AND   a~ktokd IN s_ktokd
+  AND   a~regio IN s_regio.
+
+  DELETE it_kna1_r WHERE pernr NOT IN s_pernr.
+
+  IF it_kna1_r IS INITIAL.
+    MESSAGE 'No Data is available as per Selection' TYPE 'I' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  LOOP AT it_kna1_r ASSIGNING <fs_kna1r>.
+    w_kunnr_r-sign = 'I'. w_kunnr_r-option = 'EQ'. w_kunnr_r-low = <fs_kna1r>-kunnr.
+    APPEND w_kunnr_r TO t_kunnr_r.
+  ENDLOOP.
+
+  IF it_kna1_r IS NOT INITIAL.
+    SELECT pernr ename FROM pa0001 INTO TABLE it_pa0001
+      FOR ALL ENTRIES IN it_kna1_r WHERE pernr = it_kna1_r-pernr.
+
+    SELECT pernr telnr FROM pa0006 INTO TABLE it_pa0006
+      FOR ALL ENTRIES IN it_kna1_r WHERE pernr = it_kna1_r-pernr.
+
+    SELECT * FROM t077x INTO TABLE it_t077x
+      FOR ALL ENTRIES IN it_kna1_r
+      WHERE spras = sy-langu AND ktokd = it_kna1_r-ktokd.
+
+    SELECT * FROM t005u INTO TABLE it_t005u
+      FOR ALL ENTRIES IN it_kna1_r
+      WHERE spras = sy-langu AND land1 = 'IN' AND bland = it_kna1_r-regio.
+  ENDIF.
+
+  DELETE it_t077x WHERE spras <> sy-langu.
+  DELETE it_t005u WHERE spras <> sy-langu OR land1 <> 'IN'.
+
+ENDFORM.
+
