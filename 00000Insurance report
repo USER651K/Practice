@@ -1,3 +1,86 @@
+FORM fetch_cn_code_master.
+
+  DATA: ls_cat  TYPE ty_rvo_cat,
+        lv_desc TYPE text30.
+
+  "--- Category Master ---
+  SELECT serial_no description
+    FROM zmm_rvo_cat
+    INTO TABLE gt_rvo_cat.
+
+  IF gt_rvo_cat IS INITIAL.
+    MESSAGE 'Category master ZMM_RVO_CAT is empty. Please maintain via SM30.'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  CLEAR: gv_serial_pb, gv_serial_npb.
+
+  LOOP AT gt_rvo_cat INTO ls_cat.
+    lv_desc = ls_cat-description.
+    CONDENSE lv_desc.
+    TRANSLATE lv_desc TO UPPER CASE.
+
+    IF lv_desc = 'PB'.
+      gv_serial_pb = ls_cat-serial_no.
+    ELSEIF lv_desc = 'NON-PB'.
+      gv_serial_npb = ls_cat-serial_no.
+    ENDIF.
+  ENDLOOP.
+
+  IF gv_serial_pb IS INITIAL OR gv_serial_npb IS INITIAL.
+    MESSAGE 'Descriptions PB / Non-PB missing in ZMM_RVO_CAT.'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  "--- HSN/CN Code Master ---
+  SELECT steuc category
+    FROM zmm_rvo_hsn
+    INTO TABLE gt_rvo_hsn.
+
+  SORT gt_rvo_hsn BY steuc.
+
+  IF gt_rvo_hsn IS INITIAL.
+    MESSAGE 'HSN Code master table is empty. Please maintain via SM30.'
+            TYPE 'S' DISPLAY LIKE 'W'.
+  ENDIF.
+
+ENDFORM.
+
+
+
+
+
+
+
+
+"--- Category lookup from ZMM_RVO_HSN (exact match) ---
+    READ TABLE gt_rvo_hsn INTO DATA(ls_hsn)
+      WITH KEY steuc = gs_output-steuc
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      IF ls_hsn-category = gv_serial_pb.
+        gs_output-category = gc_pb.
+      ELSEIF ls_hsn-category = gv_serial_npb.
+        gs_output-category = gc_npb.
+      ELSE.
+        gs_output-category = gc_unk.
+      ENDIF.
+    ELSE.
+      gs_output-category = gc_unk.
+    ENDIF.
+
+
+
+
+
+
+
+
+
+
+
 "--- Category lookup from ZMM_RVO_HSN (exact match) ---
     READ TABLE gt_rvo_hsn INTO DATA(ls_hsn)
       WITH KEY steuc = gs_output-steuc
