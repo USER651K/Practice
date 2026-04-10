@@ -1,3 +1,26 @@
+FORM fetch_cn_code_master.
+
+  SELECT steuc category
+    FROM zmm_rvo_hsn
+    INTO TABLE gt_rvo_hsn.
+
+  SORT gt_rvo_hsn BY steuc.
+
+  IF gt_rvo_hsn IS INITIAL.
+    MESSAGE 'HSN Code master table is empty. Please maintain via SM30.'
+            TYPE 'S' DISPLAY LIKE 'W'.
+  ENDIF.
+
+ENDFORM.
+
+
+
+
+
+
+
+
+
 BEGIN OF ty_final,
           bukrs              TYPE bukrs,
           kunnr              TYPE kunnr,
