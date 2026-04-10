@@ -1,3 +1,27 @@
+"--- Category lookup from ZMM_RVO_HSN (exact match) ---
+    READ TABLE gt_rvo_hsn INTO DATA(ls_hsn)
+      WITH KEY steuc = gs_output-steuc
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      CASE ls_hsn-category.
+        WHEN gc_cat_pb.
+          gs_output-category = gc_pb.
+        WHEN gc_cat_npb.
+          gs_output-category = gc_npb.
+        WHEN OTHERS.
+          gs_output-category = gc_unk.
+      ENDCASE.
+    ELSE.
+      gs_output-category = gc_unk.
+    ENDIF.
+
+
+
+
+
+
+
+
 FORM fetch_cn_code_master.
 
   SELECT steuc category
