@@ -1,3 +1,12 @@
+IF lv_wkurs <> 0.
+        lv_total_amt = ( lv_netpr / abs( lv_wkurs ) ) * ls_mseg-bpmng.
+      ENDIF.
+
+
+
+
+
+
 CONSTANTS: gc_bwart    TYPE bwart    VALUE '101',
            gc_werks    TYPE werks_d  VALUE '3100',
            gc_bsart    TYPE bsart    VALUE 'ZEUL',
