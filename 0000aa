@@ -1,3 +1,167 @@
+CONSTANTS: gc_bwart    TYPE bwart    VALUE '101',
+           gc_werks    TYPE werks_d  VALUE '3100',
+           gc_bsart    TYPE bsart    VALUE 'ZEUL',
+           gc_eur      TYPE waers    VALUE 'EUR',
+           gc_pb       TYPE char10   VALUE 'PB',
+           gc_npb      TYPE char10   VALUE 'Non-PB',
+           gc_unk      TYPE char10   VALUE 'Unknown',
+           gc_cat_pb   TYPE char3    VALUE '001',
+           gc_cat_npb  TYPE char3    VALUE '002',
+           gc_sf       TYPE tdsfname VALUE 'ZSF_RVO_PRICE'.
+
+
+
+
+
+
+
+
+
+TYPES: BEGIN OF ty_rvo_cat,
+         serial_no   TYPE zrvo_category,
+         description TYPE text40,
+       END OF ty_rvo_cat.
+
+TYPES: BEGIN OF ty_rvo_hsn,
+         steuc    TYPE steuc,
+         category TYPE zrvo_category,
+       END OF ty_rvo_hsn.
+
+
+
+
+
+
+
+gt_rvo_cat TYPE STANDARD TABLE OF ty_rvo_cat,
+      gt_rvo_hsn TYPE STANDARD TABLE OF ty_rvo_hsn.
+
+
+
+
+
+
+
+
+DATA: gv_serial_pb   TYPE zrvo_category,
+      gv_serial_npb  TYPE zrvo_category,
+      gv_date_from   TYPE sy-datum,
+      gv_date_to     TYPE sy-datum,
+      gv_week        TYPE scal-week,
+
+
+
+
+
+
+
+
+
+
+
+FORM fetch_cn_code_master.
+
+  DATA: ls_cat  TYPE ty_rvo_cat,
+        lv_desc TYPE text30.
+
+  "--- Category Master ---
+  SELECT serial_no description
+    FROM zmm_rvo_cat
+    INTO TABLE gt_rvo_cat.
+
+  IF gt_rvo_cat IS INITIAL.
+    MESSAGE 'Category master ZMM_RVO_CAT is empty. Please maintain.'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  CLEAR: gv_serial_pb, gv_serial_npb.
+
+  LOOP AT gt_rvo_cat INTO ls_cat.
+    lv_desc = ls_cat-description.
+    CONDENSE lv_desc.
+    TRANSLATE lv_desc TO UPPER CASE.
+
+    IF lv_desc = 'PARBOILED'.
+      gv_serial_pb = ls_cat-serial_no.
+    ELSEIF lv_desc = 'NON-PARBOILED'.
+      gv_serial_npb = ls_cat-serial_no.
+    ENDIF.
+  ENDLOOP.
+
+  IF gv_serial_pb IS INITIAL OR gv_serial_npb IS INITIAL.
+    MESSAGE 'Descriptions PARBOILED / NON-PARBOILED missing in ZMM_RVO_CAT.'
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  "--- HSN/CN Code Master ---
+  SELECT steuc category
+    FROM zmm_rvo_hsn
+    INTO TABLE gt_rvo_hsn.
+
+  SORT gt_rvo_hsn BY steuc.
+
+  IF gt_rvo_hsn IS INITIAL.
+    MESSAGE 'HSN Code master table is empty. Please maintain.'
+            TYPE 'S' DISPLAY LIKE 'W'.
+  ENDIF.
+
+ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"=== Category Classification from ZMM_RVO_HSN ===
+    READ TABLE gt_rvo_hsn INTO DATA(ls_hsn)
+      WITH KEY steuc = lv_steuc_raw
+      BINARY SEARCH.
+    IF sy-subrc <> 0.
+      CONTINUE.
+    ENDIF.
+
+    IF ls_hsn-category = gv_serial_pb.
+      lv_category = gc_pb.
+    ELSEIF ls_hsn-category = gv_serial_npb.
+      lv_category = gc_npb.
+    ELSE.
+      CONTINUE.
+    ENDIF.
+
+
+
+
+
+
+
+IF lv_wkurs > 0.
+        lv_total_amt = ( lv_netpr / lv_wkurs ) * ls_mseg-bpmng.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 gt_vbfa_so2del TYPE STANDARD TABLE OF ty_vbfa,   "Sales Order -> Delivery mapping
 
 
