@@ -1,0 +1,153 @@
+*BOC--Code Added--Ujwal--15.04.2026.
+       BEGIN OF ty_afvc,
+         aufpl TYPE afvc-aufpl,
+         vornr TYPE afvc-vornr,
+         arbid TYPE afvc-arbid,
+       END OF ty_afvc,
+
+       BEGIN OF ty_crhd,
+         objid TYPE crhd-objid,
+         arbpl TYPE crhd-arbpl,
+       END OF ty_crhd,
+*EOC--Code Added--Ujwal--15.04.2026.
+
+
+
+
+
+
+
+
+
+*BOC--Code Added--Ujwal--15.04.2026.
+      gt_afvc   TYPE STANDARD TABLE OF ty_afvc,
+      gt_crhd   TYPE STANDARD TABLE OF ty_crhd,
+*EOC--Code Added--Ujwal--15.04.2026.
+
+
+
+
+
+
+
+*BOC--Code Added--Ujwal--15.04.2026.
+      gs_afvc   TYPE ty_afvc,
+      gs_crhd   TYPE ty_crhd,
+*EOC--Code Added--Ujwal--15.04.2026.
+
+
+
+
+
+
+
+
+*BOC--Code Added By Ujwal--15.04.2026.
+        CLEAR gs_alv-arbpl.
+        gs_alv-vornr = gs_resb-vornr.
+        IF gs_resb-vornr IS NOT INITIAL.
+          PERFORM get_workcenter USING    gs_afko-aufpl
+                                          gs_resb-vornr
+                                 CHANGING gs_alv-arbpl.
+        ENDIF.
+*EOC--Code Added By Ujwal--15.04.2026.
+
+
+
+
+
+
+
+
+
+
+
+
+*BOC--Code Added By Ujwal--15.04.2026.
+FORM fetch_allocation_data.
+
+  DATA: lt_arbid_keys TYPE STANDARD TABLE OF ty_afvc.
+
+  IF gt_afko IS INITIAL OR gt_resb IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  SELECT aufpl vornr arbid
+    FROM afvc
+    INTO TABLE gt_afvc
+     FOR ALL ENTRIES IN gt_afko
+   WHERE aufpl = gt_afko-aufpl
+     AND loekz = space.
+
+  IF gt_afvc IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  SORT gt_afvc BY aufpl vornr.
+
+  lt_arbid_keys = gt_afvc.
+  DELETE lt_arbid_keys WHERE arbid IS INITIAL.
+  SORT lt_arbid_keys BY arbid.
+  DELETE ADJACENT DUPLICATES FROM lt_arbid_keys COMPARING arbid.
+
+  IF lt_arbid_keys IS NOT INITIAL.
+    SELECT objid arbpl
+      FROM crhd
+      INTO TABLE gt_crhd
+       FOR ALL ENTRIES IN lt_arbid_keys
+     WHERE objid = lt_arbid_keys-arbid.
+
+    IF gt_crhd IS NOT INITIAL.
+      SORT gt_crhd BY objid.
+      DELETE ADJACENT DUPLICATES FROM gt_crhd COMPARING objid.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+
+
+FORM get_workcenter USING    iv_aufpl TYPE afko-aufpl
+                             iv_vornr TYPE resb-vornr
+                    CHANGING ev_arbpl TYPE crhd-arbpl.
+
+  DATA: ls_afvc TYPE ty_afvc,
+        ls_crhd TYPE ty_crhd.
+
+  CLEAR ev_arbpl.
+
+  IF iv_aufpl IS INITIAL OR iv_vornr IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  READ TABLE gt_afvc INTO ls_afvc
+       WITH KEY aufpl = iv_aufpl
+                vornr = iv_vornr
+       BINARY SEARCH.
+  IF sy-subrc <> 0.
+    RETURN.
+  ENDIF.
+
+  IF ls_afvc-arbid IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  READ TABLE gt_crhd INTO ls_crhd
+       WITH KEY objid = ls_afvc-arbid
+       BINARY SEARCH.
+  IF sy-subrc = 0.
+    ev_arbpl = ls_crhd-arbpl.
+  ENDIF.
+
+ENDFORM.
+*EOC--Code Added By Ujwal--15.04.2026.
+
+
+
+
+
+
+
+
+
+
+
