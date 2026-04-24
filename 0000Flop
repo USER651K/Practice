@@ -1,3 +1,50 @@
+*&---------------------------------------------------------------------*
+*& Form DETERMINE_DATE_RANGES
+*&---------------------------------------------------------------------*
+FORM determine_date_ranges.
+
+  DATA: ls_budat LIKE LINE OF s_budat,
+        lv_year  TYPE numc4.
+
+  READ TABLE s_budat INDEX 1 INTO ls_budat.
+
+  gv_cy_from = ls_budat-low.
+  gv_cy_to   = ls_budat-high.
+  IF gv_cy_to IS INITIAL.
+    gv_cy_to = gv_cy_from.
+  ENDIF.
+
+  gv_ref_date = gv_cy_to.
+
+  lv_year = gv_cy_from+0(4).
+  lv_year = lv_year - 1.
+  CONCATENATE lv_year gv_cy_from+4(4) INTO gv_py_from.
+
+  lv_year = gv_cy_to+0(4).
+  lv_year = lv_year - 1.
+  CONCATENATE lv_year gv_cy_to+4(4) INTO gv_py_to.
+
+ENDFORM.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ZFLOP_REPORT - Complete Production-Ready ABAP Code
 
 ---
