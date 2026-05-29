@@ -1,0 +1,15 @@
+***BOC--UJWAL--28.05.2026--Fallback: handle POs with items already delivery-complete
+        IF it_poitem[] IS INITIAL.
+          SELECT ebeln ebelp FROM ekpo
+            INTO CORRESPONDING FIELDS OF TABLE it_poitem
+            WHERE ebeln = gs_ekko-ebeln
+            AND   loekz = space.
+          LOOP AT it_poitem.
+            it_poitem-no_more_gr  = 'X'.
+            it_poitemx-po_item    = it_poitem-po_item.
+            it_poitemx-no_more_gr = 'X'.
+            MODIFY it_poitem.
+            APPEND it_poitemx.
+          ENDLOOP.
+        ENDIF.
+***EOC--UJWAL--28.05.2026
