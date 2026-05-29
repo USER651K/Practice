@@ -13,3 +13,15 @@
           ENDLOOP.
         ENDIF.
 ***EOC--UJWAL--28.05.2026
+
+
+
+
+
+***BOC--UJWAL--29.05.2026--Pass header to force ME framework for BAdI
+        CLEAR: ls_poheader, ls_poheaderx.
+        SELECT SINGLE unsez FROM ekko
+          INTO ls_poheader-our_ref
+          WHERE ebeln = gs_ekko-ebeln.
+        ls_poheaderx-our_ref = 'X'.
+***EOC--UJWAL--29.05.2026
