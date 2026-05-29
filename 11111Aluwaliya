@@ -25,3 +25,58 @@
           WHERE ebeln = gs_ekko-ebeln.
         ls_poheaderx-our_ref = 'X'.
 ***EOC--UJWAL--29.05.2026
+
+
+
+
+
+
+
+
+
+***BOC--UJWAL--29.05.2026
+    DATA: ls_poheader   TYPE bapimepoheader,
+          ls_poheaderx  TYPE bapimepoheaderx,
+          lv_orig_unsez TYPE ekko-unsez,
+          lt_return2    TYPE TABLE OF bapiret2.
+***EOC--UJWAL--29.05.2026
+
+
+
+
+
+
+***BOC--UJWAL--29.05.2026--Force header change for BAdI trigger
+        CLEAR: ls_poheader, ls_poheaderx, lv_orig_unsez.
+        SELECT SINGLE unsez FROM ekko
+          INTO lv_orig_unsez
+          WHERE ebeln = gs_ekko-ebeln.
+        IF lv_orig_unsez IS INITIAL.
+          ls_poheader-our_ref = 'ZAUTLF'.
+        ELSE.
+          CONCATENATE lv_orig_unsez(11) 'Z' INTO ls_poheader-our_ref.
+        ENDIF.
+        ls_poheaderx-our_ref = 'X'.
+***EOC--UJWAL--29.05.2026
+
+
+
+
+
+
+
+***BOC--UJWAL--29.05.2026--Restore OUR_REF to original value
+          CLEAR: ls_poheader, ls_poheaderx, lt_return2.
+          ls_poheader-our_ref  = lv_orig_unsez.
+          ls_poheaderx-our_ref = 'X'.
+          CALL FUNCTION 'BAPI_PO_CHANGE'
+            EXPORTING
+              purchaseorder = gs_ekko-ebeln
+              poheader      = ls_poheader
+              poheaderx     = ls_poheaderx
+            TABLES
+              return = lt_return2.
+          CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+            EXPORTING
+              wait = 'X'.
+***EOC--UJWAL--29.05.2026
