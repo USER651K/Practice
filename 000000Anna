@@ -35,3 +35,62 @@ DATA: lv_prueflos TYPE qals-prueflos,
   ENDIF.
 
 *&  EOC - <YourID> - BA_3767
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*&  Include  ZXQPLU02
+*&  BOC - <YourID> - BA_3767 - Duplicate Batch in Manual Lot Creation
+*&---------------------------------------------------------------------*
+
+DATA: lv_prueflos TYPE qals-prueflos,
+      lv_curlot   TYPE qals-prueflos,
+      lv_tcode    TYPE sy-tcode.
+
+FIELD-SYMBOLS: <lv_lot> TYPE qals-prueflos.
+
+  lv_tcode = sy-tcode.
+
+* Rule 4 - Batch not entered -> skip ; Rule 5 - QA03 display -> skip
+  CHECK i_qals-charg IS NOT INITIAL.
+  CHECK lv_tcode = 'QA01' OR lv_tcode = 'QA02'.
+
+* Current lot being processed (QA02). I_QALS-PRUEFLOS is unreliable in
+* this exit, and global QALS is not visible, so read it from SAPLQPL1.
+  ASSIGN ('(SAPLQPL1)QALS-PRUEFLOS') TO <lv_lot>.
+  IF <lv_lot> IS ASSIGNED.
+    lv_curlot = <lv_lot>.
+  ENDIF.
+
+* Find an existing lot with same batch + origin 89, excluding current lot
+  SELECT prueflos
+    INTO lv_prueflos
+    FROM qals
+    UP TO 1 ROWS
+   WHERE charg    = i_qals-charg
+     AND herkunft = '89'
+     AND prueflos NE lv_curlot
+   ORDER BY PRIMARY KEY.
+  ENDSELECT.
+
+  IF sy-subrc = 0.
+    MESSAGE e398(00) WITH 'Entered Batch' i_qals-charg
+                          'is already assigned to Lot' lv_prueflos.
+  ENDIF.
+
+*&  EOC - <YourID> - BA_3767
