@@ -188,3 +188,53 @@ endmethod.
     ENDIF.
   ENDIF.
 " EOC - <YourID> - BA_3767
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*&  Include  ZXBS1U01
+*&  BOC - <YourID> - BA_3767 - Duplicate Batch check (QA02 change path)
+*&---------------------------------------------------------------------*
+
+  DATA: lv_dup_lot TYPE qals-prueflos.
+
+  FIELD-SYMBOLS: <lv_charg>  TYPE qals-charg,
+                 <lv_curlot> TYPE qals-prueflos.
+
+* Only act in QA02 change transaction
+  CHECK sy-tcode = 'QA02'.
+
+* Read the entered batch and current lot from SAPLQPL1's global QALS.
+* If SAPLQPL1 is not on the stack (exit fired elsewhere), ASSIGN fails
+* and we do nothing - this guards against the exit's broad scope.
+  ASSIGN ('(SAPLQPL1)QALS-CHARG')    TO <lv_charg>.
+  CHECK sy-subrc = 0.
+  ASSIGN ('(SAPLQPL1)QALS-PRUEFLOS') TO <lv_curlot>.
+  CHECK sy-subrc = 0.
+
+* Batch not entered yet -> nothing to check
+  CHECK <lv_charg> IS NOT INITIAL.
+
+* Find an existing lot with same batch + origin 89, excluding current lot
+  SELECT prueflos INTO lv_dup_lot FROM qals UP TO 1 ROWS
+    WHERE charg    = <lv_charg>
+      AND herkunft = '89'
+      AND prueflos NE <lv_curlot>
+    ORDER BY PRIMARY KEY.
+  ENDSELECT.
+
+  IF sy-subrc = 0.
+    MESSAGE e398(00) WITH 'Entered Batch' <lv_charg>
+                          'is already assigned to Lot' lv_dup_lot.
+  ENDIF.
+
+*&  EOC - <YourID> - BA_3767
