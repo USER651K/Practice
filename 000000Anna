@@ -159,3 +159,32 @@ method IF_EX_SMOD_QPL10001~EXIT_SAPLQPL1_002.
 
 *  EOC - <YourID> - BA_3767
 endmethod.
+
+
+
+
+
+
+
+
+
+
+" BOC - <YourID> - BA_3767 - Duplicate Batch check (QA02 change path)
+  DATA: lv_dup_lot TYPE qals-prueflos.
+
+  IF qals-charg IS NOT INITIAL
+    AND sy-tcode = 'QA02'.
+
+    SELECT prueflos INTO lv_dup_lot FROM qals UP TO 1 ROWS
+      WHERE charg    = qals-charg
+        AND herkunft = '89'
+        AND prueflos NE qals-prueflos
+      ORDER BY PRIMARY KEY.
+    ENDSELECT.
+
+    IF sy-subrc = 0.
+      MESSAGE e398(00) WITH 'Entered Batch' qals-charg
+                            'is already assigned to Lot' lv_dup_lot.
+    ENDIF.
+  ENDIF.
+" EOC - <YourID> - BA_3767
