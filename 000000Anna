@@ -1,4 +1,4 @@
-u*&---------------------------------------------------------------------*
+7u*&---------------------------------------------------------------------*
 *&  Include  ZXQPLU02
 *&  BOC - <YourID> - BA_3767 - Duplicate Batch in Manual Lot Creation
 *&---------------------------------------------------------------------*
@@ -331,4 +331,39 @@ METHOD if_ex_inspectionlot_update~change_at_save.
                             'is already assigned to Lot' lv_dup_lot.
     ENDIF.
   ENDIF.
+ENDMETHOD.
+
+
+
+
+
+
+
+
+METHOD if_ex_inspectionlot_update~change_at_save.
+*  BA_3767 - Duplicate batch check on QA02 save
+
+  DATA: lv_dup_lot TYPE qals-prueflos.
+
+* Only validate if a batch is entered AND it was actually changed
+* (FS rule 2: unchanged batch -> allow; changed batch -> re-check)
+  IF new_insplot-charg IS NOT INITIAL
+    AND new_insplot-charg NE old_insplot-charg.
+
+*   Is the new batch already on another origin-89 lot?
+    SELECT prueflos INTO lv_dup_lot FROM qals UP TO 1 ROWS
+      WHERE charg    = new_insplot-charg
+        AND herkunft = '89'
+        AND prueflos NE new_insplot-prueflos
+      ORDER BY PRIMARY KEY.
+    ENDSELECT.
+
+    IF sy-subrc = 0.
+      MESSAGE e398(00) WITH 'Entered Batch' new_insplot-charg
+                            'is already assigned to Lot' lv_dup_lot
+                       RAISING error_with_message.
+    ENDIF.
+
+  ENDIF.
+
 ENDMETHOD.
