@@ -1,4 +1,4 @@
-*&---------------------------------------------------------------------*
+u*&---------------------------------------------------------------------*
 *&  Include  ZXQPLU02
 *&  BOC - <YourID> - BA_3767 - Duplicate Batch in Manual Lot Creation
 *&---------------------------------------------------------------------*
@@ -300,3 +300,35 @@ endmethod.
   ENDIF.
 
 *&  EOC - <YourID> - BA_3767
+
+
+
+
+
+
+
+
+
+
+
+
+
+METHOD if_ex_inspectionlot_update~change_at_save.
+" BA_3767 - Duplicate batch check on QA02 save
+  DATA: lv_dup_lot TYPE qals-prueflos.
+
+" (read i_qals / the import param - confirm exact name from Parameters tab)
+  IF <import_qals>-charg IS NOT INITIAL.
+    SELECT prueflos INTO lv_dup_lot FROM qals UP TO 1 ROWS
+      WHERE charg    = <import_qals>-charg
+        AND herkunft = '89'
+        AND prueflos NE <import_qals>-prueflos
+      ORDER BY PRIMARY KEY.
+    ENDSELECT.
+    IF sy-subrc = 0.
+"     raise exception / message to block save - confirm mechanism
+      MESSAGE e398(00) WITH 'Entered Batch' <import_qals>-charg
+                            'is already assigned to Lot' lv_dup_lot.
+    ENDIF.
+  ENDIF.
+ENDMETHOD.
