@@ -367,3 +367,34 @@ METHOD if_ex_inspectionlot_update~change_at_save.
   ENDIF.
 
 ENDMETHOD.
+
+
+
+
+
+
+
+
+METHOD if_ex_inspectionlot_update~create_at_save.
+*  BA_3767 - Duplicate batch HARD BLOCK on QA01 save (creation)
+
+  DATA: lv_dup_lot TYPE qals-prueflos.
+
+  IF new_insplot-charg IS NOT INITIAL.
+
+*   Creation: any existing origin-89 lot with this batch is a duplicate.
+    SELECT prueflos INTO lv_dup_lot FROM qals UP TO 1 ROWS
+      WHERE charg    = new_insplot-charg
+        AND herkunft = '89'
+      ORDER BY PRIMARY KEY.
+    ENDSELECT.
+
+    IF sy-subrc = 0.
+      MESSAGE e398(00) WITH 'Entered Batch' new_insplot-charg
+                            'is already assigned to Lot' lv_dup_lot
+                       RAISING error_with_message.
+    ENDIF.
+
+  ENDIF.
+
+ENDMETHOD.
