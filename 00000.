@@ -1,0 +1,277 @@
+*&---------------------------------------------------------------------*
+*& Pick Sheet data-retrieval + form call  (BA-4030)
+*&
+*& Use as: a standalone test report FIRST (to validate logic),
+*& then transplant the FILL_DATA form body into the COPIED standard
+*& PPF processing class/method.
+*&
+*& JOIN (locked from DDIC):
+*&   /SCWM/ORDIM_O-RDOCID = /SCDL/DB_PROCH_O-DOCID
+*&   /SCWM/ORDIM_O-RDOCID = /SCDL/DB_PROCI_O-DOCID
+*&   /SCWM/ORDIM_O-RITMID = /SCDL/DB_PROCI_O-ITEMID
+*&
+*& House standards: BOC/EOC, no inline DATA, no message class,
+*& pre-7.40-safe, SORT + BINARY SEARCH.
+*&---------------------------------------------------------------------*
+REPORT zscwm_wo_picksheet_test.
+
+***BOC--UJWAL--11.06.2026
+
+*--- Selection (test mode only; PPF passes these in the real class) -----
+PARAMETERS: p_lgnum TYPE /scwm/ordim_o-lgnum OBLIGATORY,
+            p_who   TYPE /scwm/ordim_o-who   OBLIGATORY.
+
+*--- Types -------------------------------------------------------------
+TYPES: BEGIN OF ty_wt,
+         lgnum  TYPE /scwm/ordim_o-lgnum,
+         tanum  TYPE /scwm/ordim_o-tanum,
+         who    TYPE /scwm/ordim_o-who,
+         rdocid TYPE /scwm/ordim_o-rdocid,
+         ritmid TYPE /scwm/ordim_o-ritmid,
+         vlpla  TYPE /scwm/ordim_o-vlpla,
+         vlenr  TYPE /scwm/ordim_o-vlenr,
+         charg  TYPE /scwm/ordim_o-charg,
+         vsolm  TYPE /scwm/ordim_o-vsolm,
+         meins  TYPE /scwm/ordim_o-meins,
+         weight TYPE /scwm/ordim_o-weight,
+         unit_w TYPE /scwm/ordim_o-unit_w,
+       END OF ty_wt.
+
+TYPES: BEGIN OF ty_item,
+         docid     TYPE /scdl/db_proci_o-docid,
+         itemid    TYPE /scdl/db_proci_o-itemid,
+         itemno    TYPE /scdl/db_proci_o-itemno,
+         productno TYPE /scdl/db_proci_o-productno,
+         batchno   TYPE /scdl/db_proci_o-batchno,
+       END OF ty_item.
+
+*--- Globals -----------------------------------------------------------
+DATA: gt_wt   TYPE STANDARD TABLE OF ty_wt,
+      gs_wt   TYPE ty_wt,
+      gt_item TYPE STANDARD TABLE OF ty_item,
+      gs_item TYPE ty_item.
+
+DATA: gs_proch TYPE /scdl/db_proch_o,
+      gv_docid TYPE /scdl/db_proch_o-docid,
+      gv_langu TYPE spras.
+
+DATA: gs_hdr   TYPE zscwm_s_pick_hdr,
+      gt_itm   TYPE zscwm_t_pick_itm,
+      gs_itm   TYPE zscwm_s_pick_itm.
+
+DATA: gv_whse_txt  TYPE /scwm/t300t-lnumt,
+      gv_matid     TYPE /sapapo/matkey-matid,
+      gv_maktx     TYPE /sapapo/mattxt-maktx,
+      gv_partyno   TYPE /scdl/db_bploc-partyno,
+      gv_cust_name TYPE but000-name_org1,
+      gv_adrnr     TYPE adrc-addrnumber,
+      gv_name1     TYPE adrc-name1,
+      gv_name2     TYPE adrc-name2.
+
+DATA: gv_hu_cnt    TYPE i,
+      gv_qty_c     TYPE char20,
+      gv_wgt_c     TYPE char20,
+      gv_wgt_mt    TYPE p DECIMALS 3,
+      gv_mt_c      TYPE char20,
+      gv_fname     TYPE rs38l_fnam.   " generated SF function module name
+
+*=======================================================================
+START-OF-SELECTION.
+  PERFORM fill_data.
+  PERFORM call_form.
+
+*&---------------------------------------------------------------------*
+*&      Form  FILL_DATA   (this body goes into the PPF class method)
+*&---------------------------------------------------------------------*
+FORM fill_data.
+
+  IF gv_langu IS INITIAL.
+    gv_langu = sy-langu.
+  ENDIF.
+
+*--- 1. Warehouse tasks for this WO -----------------------------------
+  SELECT lgnum tanum who rdocid ritmid
+         vlpla vlenr charg vsolm meins weight unit_w
+    FROM /scwm/ordim_o
+    INTO TABLE gt_wt
+   WHERE lgnum = p_lgnum
+     AND who   = p_who.
+
+  IF gt_wt IS INITIAL.
+    RETURN.
+  ENDIF.
+
+  SORT gt_wt BY ritmid.
+
+*--- 2. OD header (shared DOCID) --------------------------------------
+  READ TABLE gt_wt INTO gs_wt INDEX 1.
+  gv_docid = gs_wt-rdocid.
+
+  SELECT SINGLE * FROM /scdl/db_proch_o
+    INTO gs_proch
+   WHERE docid = gv_docid.
+
+*--- 3. OD items for this delivery ------------------------------------
+  SELECT docid itemid itemno productno batchno
+    FROM /scdl/db_proci_o
+    INTO TABLE gt_item
+   WHERE docid = gv_docid.
+
+  SORT gt_item BY itemid.
+
+*--- 4. Warehouse name (language dependent) ---------------------------
+  IF gs_wt-lgnum IS NOT INITIAL.
+    SELECT SINGLE lnumt FROM /scwm/t300t
+      INTO gv_whse_txt
+     WHERE spras = gv_langu
+       AND lgnum = gs_wt-lgnum.
+  ENDIF.
+
+*--- 5. Customer name : PARTNERTO_ID -> BPLOC -> BUT000 ----------------
+  IF gs_proch-partnerto_id IS NOT INITIAL.
+    SELECT SINGLE partyno FROM /scdl/db_bploc
+      INTO gv_partyno
+     WHERE partyid = gs_proch-partnerto_id.
+    IF sy-subrc = 0 AND gv_partyno IS NOT INITIAL.
+      SELECT SINGLE name_org1 FROM but000
+        INTO gv_cust_name
+       WHERE partner = gv_partyno.
+    ENDIF.
+  ENDIF.
+
+*--- 6. Address : WAREHOUSE_ID -> /SAPAPO/LOC -> ADRC -----------------
+  IF gs_proch-warehouse_id IS NOT INITIAL.
+    SELECT SINGLE adrnummer FROM /sapapo/loc
+      INTO gv_adrnr
+     WHERE loc_uuid = gs_proch-warehouse_id.
+    IF sy-subrc = 0 AND gv_adrnr IS NOT INITIAL.
+      SELECT SINGLE name1 name2 FROM adrc
+        INTO (gv_name1, gv_name2)
+       WHERE addrnumber = gv_adrnr
+         AND date_from <= sy-datum
+         AND nation     = space.
+    ENDIF.
+  ENDIF.
+
+*--- 7. Header structure ----------------------------------------------
+  CLEAR gs_hdr.
+  gs_hdr-whse_no    = gs_wt-lgnum.
+  gs_hdr-whse_name  = gv_whse_txt.
+  gs_hdr-whse_order = gs_wt-who.
+  gs_hdr-outb_delv  = gs_proch-docno.
+  gs_hdr-cust_name  = gv_cust_name.
+  gs_hdr-shipto_name = gv_cust_name.   " same BP unless ship-to differs
+  gs_hdr-addr_name1 = gv_name1.
+  gs_hdr-addr_name2 = gv_name2.
+  gs_hdr-coll_date  = space.           " blank/manual until Anu confirms
+* gs_hdr-sales_order = ...             " TODO-SO : NOT from ORDIM_O
+  WRITE gs_proch-cretst_date_wh TO gs_hdr-cre_date DD/MM/YYYY.
+
+*--- Total HUs = count of distinct non-initial source HUs --------------
+  CLEAR gv_hu_cnt.
+  LOOP AT gt_wt INTO gs_wt WHERE vlenr IS NOT INITIAL.
+    gv_hu_cnt = gv_hu_cnt + 1.
+  ENDLOOP.
+  gs_hdr-total_hu = gv_hu_cnt.         " ISSUE-HU: confirm source vs dest
+
+*--- 8. Item rows : loop WT, join to OD item, resolve description -----
+  LOOP AT gt_wt INTO gs_wt.
+
+    CLEAR gs_itm.
+    CLEAR: gv_matid, gv_maktx, gs_item.
+
+    READ TABLE gt_item INTO gs_item
+      WITH KEY itemid = gs_wt-ritmid BINARY SEARCH.
+
+    IF sy-subrc = 0.
+      gs_itm-item_no  = gs_item-itemno.
+      gs_itm-material = gs_item-productno.
+
+      SELECT SINGLE matid FROM /sapapo/matkey
+        INTO gv_matid
+       WHERE matnr = gs_item-productno.
+      IF sy-subrc = 0 AND gv_matid IS NOT INITIAL.
+        SELECT SINGLE maktx FROM /sapapo/mattxt
+          INTO gv_maktx
+         WHERE matid = gv_matid
+           AND spras = gv_langu.
+      ENDIF.
+      gs_itm-description = gv_maktx.
+    ENDIF.
+
+    gs_itm-batch      = gs_wt-charg.       " printable batch
+    gs_itm-source_bin = gs_wt-vlpla.
+    gs_itm-uom        = gs_wt-meins.
+    gs_itm-hu_pallet  = gs_wt-vlenr.       " ISSUE-HU: source HU
+
+*   format target qty -> char
+    CLEAR gv_qty_c.
+    WRITE gs_wt-vsolm TO gv_qty_c UNIT gs_wt-meins LEFT-JUSTIFIED
+                                  NO-GROUPING.
+    CONDENSE gv_qty_c NO-GAPS.
+    gs_itm-target_qty = gv_qty_c.
+
+*   format weight -> "352 KG (0.352 MT)" style ; ISSUE-WT (confirm filled)
+    CLEAR: gv_wgt_c, gv_mt_c, gv_wgt_mt.
+    WRITE gs_wt-weight TO gv_wgt_c LEFT-JUSTIFIED NO-GROUPING.
+    CONDENSE gv_wgt_c NO-GAPS.
+    IF gs_wt-unit_w = 'KG'.
+      gv_wgt_mt = gs_wt-weight / 1000.
+      WRITE gv_wgt_mt TO gv_mt_c LEFT-JUSTIFIED NO-GROUPING.
+      CONDENSE gv_mt_c NO-GAPS.
+      CONCATENATE gv_wgt_c gs_wt-unit_w '(' gv_mt_c 'MT)'
+             INTO gs_itm-weight SEPARATED BY space.
+    ELSE.
+      CONCATENATE gv_wgt_c gs_wt-unit_w INTO gs_itm-weight
+             SEPARATED BY space.
+    ENDIF.
+
+    APPEND gs_itm TO gt_itm.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  CALL_FORM
+*&---------------------------------------------------------------------*
+FORM call_form.
+
+* resolve the generated SF function module name at runtime
+  CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+    EXPORTING
+      formname           = 'ZSCWM_WO_PICKSHEET'
+    IMPORTING
+      fm_name            = gv_fname
+    EXCEPTIONS
+      no_form            = 1
+      no_function_module = 2
+      OTHERS             = 3.
+  IF sy-subrc <> 0.
+    RETURN.
+  ENDIF.
+
+  CALL FUNCTION gv_fname
+    EXPORTING
+      is_header  = gs_hdr
+      it_item    = gt_itm
+    EXCEPTIONS
+      formatting_error = 1
+      internal_error   = 2
+      send_error       = 3
+      user_canceled    = 4
+      OTHERS           = 5.
+
+ENDFORM.
+
+***EOC--UJWAL--11.06.2026
+
+*=======================================================================
+* OPEN ITEMS (do NOT close before sign-off):
+*  TODO-SO  : SALES_ORDER source — NOT on /SCWM/ORDIM_O (VBELN absent).
+*             Get from delivery predecessor. Field left unset.
+*  ISSUE-WT : confirm /SCWM/ORDIM_O-WEIGHT populated on confirmed WT.
+*  ISSUE-HU : VLENR = source HU; confirm sheet wants source vs dest.
+*  COLL-DATE: blank/manual until Anu confirms.
+*  SHIPTO   : currently = customer BP; if ship-to party differs,
+*             resolve its own PARTNERTO and BP name separately.
+*=======================================================================
