@@ -275,3 +275,134 @@ ENDFORM.
 *  SHIPTO   : currently = customer BP; if ship-to party differs,
 *             resolve its own PARTNERTO and BP name separately.
 *=======================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& CORRECTED item-row logic for ZSCWM_WO_PICKSHEET  (BA-4030)
+*&
+*& ROOT CAUSE (confirmed in debugger):
+*&   /SCWM/ORDIM_O-RDOCID and -RITMID are INITIAL (all-zero GUID) for
+*&   these HU/stock-driven picks (FLGHUTO=X, ProcType 2010 PICK).
+*&   => the RITMID = ITEMID delivery-item join cannot match.
+*&
+*& FIX:
+*&   Material + Description come from the WT's own MATID, not the OD item.
+*&     ORDIM_O-MATID -> /SAPAPO/MATKEY-MATID  get MATNR  (Material)
+*&     ORDIM_O-MATID -> /SAPAPO/MATTXT-MATID  get MAKTX  (Description)
+*&   Keep the OD-item read only as a FALLBACK for when RITMID is filled
+*&   (delivery-driven WTs), so both task types are covered.
+*&---------------------------------------------------------------------*
+
+***BOC--UJWAL--16.06.2026
+
+* NOTE: add MATID to ty_wt and to the ORDIM_O SELECT field list:
+*   gt_wt ... matid TYPE /scwm/ordim_o-matid,
+*   SELECT ... matid ... FROM /scwm/ordim_o ...
+
+*--- extra globals needed -------------------------------------------
+* DATA: gv_matnr TYPE /sapapo/matkey-matnr.
+
+  LOOP AT gt_wt INTO gs_wt.
+
+    CLEAR gs_itm.
+    CLEAR: gv_matid, gv_maktx, gv_matnr, gs_item.
+
+*   --- Material + Description : primary path via WT MATID ----------
+    IF gs_wt-matid IS NOT INITIAL.
+
+      SELECT SINGLE matnr FROM /sapapo/matkey
+        INTO gv_matnr
+       WHERE matid = gs_wt-matid.
+      IF sy-subrc = 0.
+        gs_itm-material = gv_matnr.
+      ENDIF.
+
+      SELECT SINGLE maktx FROM /sapapo/mattxt
+        INTO gv_maktx
+       WHERE matid = gs_wt-matid
+         AND langu = gv_langu.
+      IF sy-subrc = 0.
+        gs_itm-description = gv_maktx.
+      ENDIF.
+
+    ENDIF.
+
+*   --- Item No (and material fallback) via OD item, ONLY if the -----
+*       delivery-item link is actually populated on this WT ----------
+    IF gs_wt-ritmid IS NOT INITIAL.
+      READ TABLE gt_item INTO gs_item
+        WITH KEY itemid = gs_wt-ritmid BINARY SEARCH.
+      IF sy-subrc = 0.
+        gs_itm-item_no = gs_item-itemno.
+*       if MATID path above found nothing, fall back to OD productno
+        IF gs_itm-material IS INITIAL.
+          gs_itm-material = gs_item-productno.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+*   --- WT-level fields (always present) ---------------------------
+    gs_itm-batch      = gs_wt-charg.
+    gs_itm-source_bin = gs_wt-vlpla.
+    gs_itm-uom        = gs_wt-meins.
+    gs_itm-hu_pallet  = gs_wt-vlenr.
+
+*   --- target qty -> char -----------------------------------------
+    CLEAR gv_qty_c.
+    WRITE gs_wt-vsolm TO gv_qty_c UNIT gs_wt-meins LEFT-JUSTIFIED
+                                  NO-GROUPING.
+    CONDENSE gv_qty_c NO-GAPS.
+    gs_itm-target_qty = gv_qty_c.
+
+*   --- weight -> "1021 KG (1.021 MT)" style -----------------------
+    CLEAR: gv_wgt_c, gv_mt_c, gv_wgt_mt.
+    WRITE gs_wt-weight TO gv_wgt_c LEFT-JUSTIFIED NO-GROUPING.
+    CONDENSE gv_wgt_c NO-GAPS.
+    IF gs_wt-unit_w = 'KG'.
+      gv_wgt_mt = gs_wt-weight / 1000.
+      WRITE gv_wgt_mt TO gv_mt_c LEFT-JUSTIFIED NO-GROUPING.
+      CONDENSE gv_mt_c NO-GAPS.
+      CONCATENATE gv_wgt_c gs_wt-unit_w '(' gv_mt_c 'MT)'
+             INTO gs_itm-weight SEPARATED BY space.
+    ELSE.
+      CONCATENATE gv_wgt_c gs_wt-unit_w INTO gs_itm-weight
+             SEPARATED BY space.
+    ENDIF.
+
+    APPEND gs_itm TO gt_itm.
+  ENDLOOP.
+
+***EOC--UJWAL--16.06.2026
+
+*=======================================================================
+* STILL OPEN:
+*  ITEM_NO  : blank for these HU picks (RITMID empty). Confirm with
+*             Dharma whether Item No is even required on the sheet for
+*             stock-driven picks, or where it should come from.
+*  WEIGHT   : now CONFIRMED populated (1021.000 / MT seen in debugger). OK.
+*  UNIT_W   : debugger shows MEINS = 'MT'. Your weight unit may be 'MT'
+*             not 'KG' -- so the KG->MT branch may never fire. CHECK the
+*             actual UNIT_W value and adjust the IF accordingly.
+*  TARGET_QTY: VSOLM = 1.000 here; printed '1'. Looks fine now.
+*  SALES_ORDER / SHIP-TO / COLL_DATE: unchanged open items.
+*=======================================================================
+
