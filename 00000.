@@ -406,3 +406,40 @@ ENDFORM.
 *  SALES_ORDER / SHIP-TO / COLL_DATE: unchanged open items.
 *=======================================================================
 
+
+
+
+
+DATA: ls_mat_global TYPE /scwm/s_material_global.
+
+
+
+
+
+
+
+
+***BOC--UJWAL--16.06.2026
+* --- Material + Description : via standard EWM resolver -----------
+    IF gs_wt-matid IS NOT INITIAL.
+
+      CLEAR ls_mat_global.
+      CALL FUNCTION '/SCWM/MATERIAL_READ_SINGLE'
+        EXPORTING
+          iv_matid     = gs_wt-matid
+          iv_langu     = gv_langu
+        IMPORTING
+          es_mat_global = ls_mat_global
+        EXCEPTIONS
+          wrong_call   = 1
+          not_found    = 2
+          OTHERS       = 3.
+
+      IF sy-subrc = 0.
+        gs_itm-material    = ls_mat_global-matnr.
+        gs_itm-description = ls_mat_global-maktx.
+      ENDIF.
+
+    ENDIF.
+***EOC--UJWAL--16.06.2026
+
