@@ -1,0 +1,31 @@
+DATA: lv_dir TYPE string.
+
+  CASE sy-sysid.
+    WHEN 'DEV'.
+      lv_dir = '/mnt/edifiles/'.
+    WHEN 'QAS'.
+      lv_dir = '/usr/sap/trans/O9/out/'.
+    WHEN 'PRD'.
+      lv_dir = '/usr/sap/trans/O9/out/'.
+    WHEN OTHERS.
+      lv_dir = '/mnt/edifiles/'.
+  ENDCASE.
+
+  gv_filepath = |{ lv_dir }In_Routing.csv|.
+
+
+
+
+
+
+
+
+
+IF gt_alv IS NOT INITIAL.
+    IF p_file = abap_true.
+      PERFORM write_to_server.
+    ENDIF.
+    IF sy-batch = abap_false.
+      PERFORM display_alv.
+    ENDIF.
+  ELSE.
