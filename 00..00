@@ -8,3 +8,25 @@ READ TABLE lt_afru INTO DATA(ls_afru_dt)
       CONCATENATE 'Confirmed on' lv_date 'at' lv_time 'hrs'
              INTO gv_conf_date SEPARATED BY space.
     ENDIF.
+
+
+
+
+
+
+
+
+
+
+CLEAR gv_conf_date.
+    LOOP AT lt_afru INTO DATA(ls_afru_dt).
+      IF ls_afru_dt-rmzhl = ls_afwd-rmzhl.
+        DATA: lv_date(10) TYPE c,
+              lv_time(8)  TYPE c.
+        WRITE ls_afru_dt-ersda TO lv_date DD/MM/YYYY.
+        WRITE ls_afru_dt-erzet TO lv_time USING EDIT MASK '__:__:__'.
+        CONCATENATE 'Confirmed on' lv_date 'at' lv_time 'hrs'
+               INTO gv_conf_date SEPARATED BY space.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
