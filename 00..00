@@ -30,3 +30,120 @@ CLEAR gv_conf_date.
         EXIT.
       ENDIF.
     ENDLOOP.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***BOC--UJWAL--18.08.2026
+    ELSE.
+*     Component dimension is not MASS (e.g. BAG, EA in dimension AAAADL)
+*     Cross-dimension conversion to MT is not possible via MD_CONVERT_MATERIAL_UNIT.
+*     Base qty stays in component UOM; MT derived from material net weight.
+      gs_alv-qty_base = gs_stpo-menge.
+
+      IF ls_t006_cmp-dimid = 'MASS'.
+*       Component UOM itself is mass-based -> direct convert to MT
+        CLEAR lv_out_mt.
+        CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+          EXPORTING
+            i_matnr              = gs_stpo-idnrk
+            i_in_me              = gs_stpo-meins
+            i_out_me             = 'MT'
+            i_menge              = gs_stpo-menge
+          IMPORTING
+            e_menge              = lv_out_mt
+          EXCEPTIONS
+            error_in_application = 1
+            error                = 2
+            OTHERS               = 3.
+        IF sy-subrc = 0.
+          gs_alv-qty_mt = lv_out_mt.
+        ENDIF.
+
+      ELSE.
+*       Non-mass component UOM -> bridge to MT via MARA net weight
+        CLEAR ls_mara_wt.
+        READ TABLE gt_mara_wt INTO ls_mara_wt
+             WITH KEY matnr = gs_stpo-idnrk
+             BINARY SEARCH.
+        IF sy-subrc = 0 AND ls_mara_wt-ntgew IS NOT INITIAL
+                        AND ls_mara_wt-gewei IS NOT INITIAL.
+          CLEAR lv_wt.
+          lv_wt = gs_stpo-menge * ls_mara_wt-ntgew.
+
+          CLEAR lv_out_mt.
+          CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+            EXPORTING
+              i_matnr              = gs_stpo-idnrk
+              i_in_me              = ls_mara_wt-gewei
+              i_out_me             = 'MT'
+              i_menge              = lv_wt
+            IMPORTING
+              e_menge              = lv_out_mt
+            EXCEPTIONS
+              error_in_application = 1
+              error                = 2
+              OTHERS               = 3.
+          IF sy-subrc = 0.
+            gs_alv-qty_mt = lv_out_mt.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+***EOC--UJWAL--18.08.2026
+
+
+
+
+
+
+
+
+
+
+***BOC--UJWAL--18.08.2026
+* In top include / TYPES section:
+* TYPES: BEGIN OF ty_mara_wt,
+*          matnr TYPE mara-matnr,
+*          ntgew TYPE mara-ntgew,
+*          gewei TYPE mara-gewei,
+*        END OF ty_mara_wt.
+* DATA:  gt_mara_wt TYPE STANDARD TABLE OF ty_mara_wt.
+
+DATA: ls_mara_wt TYPE ty_mara_wt,
+      lv_wt      TYPE menge_d.
+***EOC--UJWAL--18.08.2026
+
+
+
+
+
+
+
+
+
+
+***BOC--UJWAL--18.08.2026
+  IF lt_idnrk IS NOT INITIAL.
+    SELECT matnr ntgew gewei
+      FROM mara
+      INTO TABLE gt_mara_wt
+      FOR ALL ENTRIES IN lt_idnrk
+      WHERE matnr = lt_idnrk-table_line.
+    SORT gt_mara_wt BY matnr.
+  ENDIF.
+***EOC--UJWAL--18.08.2026
+
+
