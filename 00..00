@@ -289,3 +289,130 @@ DATA: ls_mara_wt TYPE ty_mara_wt,
 ***EOC--UJWAL--18.08.2026
 
     APPEND gs_alv TO gt_alv.
+
+
+
+
+
+
+
+
+
+
+
+***BOC--UJWAL--18.08.2026
+TYPES: BEGIN OF ty_mara_uom,
+         matnr TYPE mara-matnr,
+         ntgew TYPE mara-ntgew,
+         gewei TYPE mara-gewei,
+       END OF ty_mara_uom.
+DATA:  gt_mara_uom TYPE STANDARD TABLE OF ty_mara_uom,
+       ls_mara_uom TYPE ty_mara_uom,
+       lv_wt       TYPE p LENGTH 16 DECIMALS 3.
+***EOC--UJWAL--18.08.2026
+
+
+
+
+
+
+***BOC--UJWAL--18.08.2026
+  SELECT matnr ntgew gewei
+    FROM mara
+    INTO TABLE gt_mara_uom
+    FOR ALL ENTRIES IN gt_mast
+    WHERE matnr = gt_mast-matnr.
+  SORT gt_mara_uom BY matnr.
+***EOC--UJWAL--18.08.2026
+
+
+
+
+
+
+
+
+  CLEAR: gs_alv-qty_mt, lv_out_menge.
+
+  IF gs_stko-bmein = 'MT'.
+    gs_alv-qty_mt = gs_stko-bmeng.
+  ELSE.
+    READ TABLE gt_t006 INTO ls_t006_uom
+         WITH KEY msehi = gs_stko-bmein
+         BINARY SEARCH.
+
+    IF sy-subrc = 0 AND ls_t006_uom-dimid = 'MASS'.
+*     Case 3: unit is already a mass unit - direct convert
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr = gs_mast-matnr
+          i_in_me = gs_stko-bmein
+          i_out_me = 'MT'
+          i_menge  = gs_stko-bmeng
+        IMPORTING
+          e_menge  = lv_out_menge
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc = 0.
+        gs_alv-qty_mt = lv_out_menge.
+      ENDIF.
+
+***BOC--UJWAL--18.08.2026
+    ELSE.
+*     Case 1: non-mass unit, but a mass conversion may be maintained in MARM
+      CLEAR lv_out_menge.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr = gs_mast-matnr
+          i_in_me = gs_stko-bmein
+          i_out_me = 'MT'
+          i_menge  = gs_stko-bmeng
+        IMPORTING
+          e_menge  = lv_out_menge
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc = 0.
+        gs_alv-qty_mt = lv_out_menge.
+      ELSE.
+*       Case 2: no conversion maintained - fall back to MARA net weight
+        READ TABLE gt_mara_uom INTO ls_mara_uom
+             WITH KEY matnr = gs_mast-matnr
+             BINARY SEARCH.
+        IF sy-subrc = 0 AND ls_mara_uom-ntgew IS NOT INITIAL
+                        AND ls_mara_uom-gewei IS NOT INITIAL.
+          CLEAR lv_wt.
+          TRY.
+              lv_wt = gs_stko-bmeng * ls_mara_uom-ntgew.
+            CATCH cx_sy_arithmetic_overflow.
+              CLEAR lv_wt.
+          ENDTRY.
+
+          IF lv_wt IS NOT INITIAL.
+            CLEAR lv_out_menge.
+            CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+              EXPORTING
+                i_matnr = gs_mast-matnr
+                i_in_me = ls_mara_uom-gewei
+                i_out_me = 'MT'
+                i_menge  = lv_wt
+              IMPORTING
+                e_menge  = lv_out_menge
+              EXCEPTIONS
+                error_in_application = 1
+                error                = 2
+                OTHERS               = 3.
+            IF sy-subrc = 0.
+              gs_alv-qty_mt = lv_out_menge.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+***EOC--UJWAL--18.08.2026
+    ENDIF.
+  ENDIF.
+
+  APPEND gs_alv TO gt_alv.
