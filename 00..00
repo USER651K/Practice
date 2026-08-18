@@ -210,3 +210,82 @@ DATA: ls_mara_wt TYPE ty_mara_wt,
       ENDIF.
     ENDIF.
 ***EOC--UJWAL--18.08.2026
+
+
+
+
+
+
+
+
+
+
+
+
+***BOC--UJWAL--18.08.2026
+    IF ls_t006_cmp-dimid = 'MASS' AND ls_t006_bas-dimid = 'MASS'.
+*     Case 3: both mass-based -> base and MT via direct conversion
+*     (your existing MASS/MASS base + MT conversion block stays here)
+      ... keep your original MASS-AND-MASS conversions unchanged ...
+
+    ELSE.
+*     Component / base not both MASS. Base qty stays in component UOM.
+      gs_alv-qty_base = gs_stpo-menge.
+
+*     Try direct conversion to MT first.
+*     Succeeds if component UOM is mass-based (Case 3 on component side)
+*     OR a mass-unit conversion (LB/MT/KG) is maintained in MARM (Case 1).
+      CLEAR lv_out_mt.
+      CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+        EXPORTING
+          i_matnr              = gs_stpo-idnrk
+          i_in_me              = gs_stpo-meins
+          i_out_me             = 'MT'
+          i_menge              = gs_stpo-menge
+        IMPORTING
+          e_menge              = lv_out_mt
+        EXCEPTIONS
+          error_in_application = 1
+          error                = 2
+          OTHERS               = 3.
+      IF sy-subrc = 0.
+*       Case 1 / Case 3 satisfied via direct or maintained conversion
+        gs_alv-qty_mt = lv_out_mt.
+      ELSE.
+*       Case 2: no maintained mass conversion -> bridge via MARA net weight
+        READ TABLE gt_mara_uom INTO ls_mara_uom
+             WITH KEY matnr = gs_stpo-idnrk
+             BINARY SEARCH.
+        IF sy-subrc = 0 AND ls_mara_uom-ntgew IS NOT INITIAL
+                        AND ls_mara_uom-gewei IS NOT INITIAL.
+          CLEAR lv_wt.
+          TRY.
+              lv_wt = gs_stpo-menge * ls_mara_uom-ntgew.
+            CATCH cx_sy_arithmetic_overflow.
+              CLEAR lv_wt.
+          ENDTRY.
+
+          IF lv_wt IS NOT INITIAL.
+            CLEAR lv_out_mt.
+            CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+              EXPORTING
+                i_matnr              = gs_stpo-idnrk
+                i_in_me              = ls_mara_uom-gewei
+                i_out_me             = 'MT'
+                i_menge              = lv_wt
+              IMPORTING
+                e_menge              = lv_out_mt
+              EXCEPTIONS
+                error_in_application = 1
+                error                = 2
+                OTHERS               = 3.
+            IF sy-subrc = 0.
+              gs_alv-qty_mt = lv_out_mt.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+***EOC--UJWAL--18.08.2026
+
+    APPEND gs_alv TO gt_alv.
