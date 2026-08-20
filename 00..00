@@ -451,3 +451,22 @@ DATA:  gt_mara_uom TYPE STANDARD TABLE OF ty_mara_uom,
             gs_alv-qty_mt = lv_out_menge.
           ENDIF.
         ENDIF.
+
+
+
+
+
+
+
+  AT SELECTION-SCREEN.
+***BOC--UJWAL--20.08.2026
+    IF lines( s_gstrs[] ) <> 1.
+      MESSAGE 'Please enter exactly one date range (Basic Start Date)' TYPE 'E'.
+    ENDIF.
+    IF s_gstrs-low IS INITIAL OR s_gstrs-high IS INITIAL.
+      MESSAGE 'Both From date and To date are mandatory' TYPE 'E'.
+    ENDIF.
+    IF s_gstrs-low > s_gstrs-high.
+      MESSAGE 'From date must not be later than To date' TYPE 'E'.
+    ENDIF.
+***EOC--UJWAL--20.08.2026
