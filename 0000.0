@@ -1,0 +1,216 @@
+REPORT zmm_mat_auom_upload.
+
+TYPE-POOLS: truxs.
+
+TYPES: BEGIN OF ty_upload,
+         material TYPE matnr,
+         meinh    TYPE meinh,
+         length   TYPE laeng,
+         width    TYPE breit,
+         height   TYPE hoehe,
+         unit_dim TYPE meabm,
+       END OF ty_upload.
+
+TYPES: BEGIN OF ty_log,
+         material TYPE matnr,
+         meinh    TYPE meinh,
+         type     TYPE bapi_mtype,
+         message  TYPE bapi_msg,
+       END OF ty_log.
+
+DATA: gt_upload TYPE STANDARD TABLE OF ty_upload,
+      gs_upload TYPE ty_upload,
+      gt_log    TYPE STANDARD TABLE OF ty_log,
+      gt_raw    TYPE truxs_t_text_data.
+
+DATA: gs_headdata   TYPE bapimathead,
+      gt_unitsofmea TYPE STANDARD TABLE OF bapi_marm,
+      gs_unitsofmea TYPE bapi_marm,
+      gt_unitsofmex TYPE STANDARD TABLE OF bapi_marmx,
+      gs_unitsofmex TYPE bapi_marmx,
+      gt_return     TYPE STANDARD TABLE OF bapiret2,
+      gs_return     TYPE bapiret2.
+
+DATA: gv_matnr_out TYPE matnr,
+      gv_meinh_in  TYPE meinh,
+      gv_meabm_in  TYPE meabm.
+
+CONSTANTS: gc_x TYPE c VALUE 'X'.
+
+PARAMETERS: p_file TYPE rlgrap-filename OBLIGATORY.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+  CALL FUNCTION 'F4_FILENAME'
+    EXPORTING
+      program_name  = syst-cprog
+      dynpro_number = syst-dynnr
+    IMPORTING
+      file_name     = p_file.
+
+START-OF-SELECTION.
+  PERFORM upload_file.
+  PERFORM process_data.
+  PERFORM display_log.
+
+FORM upload_file.
+  CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+    EXPORTING
+      i_field_seperator    = gc_x
+      i_line_header        = gc_x
+      i_tab_raw_data       = gt_raw
+      i_filename           = p_file
+    TABLES
+      i_tab_converted_data = gt_upload
+    EXCEPTIONS
+      conversion_failed    = 1
+      OTHERS               = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'File upload failed. Check file format.' TYPE 'E'.
+  ENDIF.
+
+  IF gt_upload IS INITIAL.
+    MESSAGE 'No data found in the uploaded file.' TYPE 'E'.
+  ENDIF.
+ENDFORM.
+
+FORM process_data.
+  LOOP AT gt_upload INTO gs_upload.
+
+    CLEAR: gs_headdata, gt_unitsofmea, gs_unitsofmea,
+           gt_unitsofmex, gs_unitsofmex, gt_return, gs_return,
+           gv_matnr_out, gv_meinh_in, gv_meabm_in.
+
+    CALL FUNCTION 'CONVERSION_EXIT_MATN1_INPUT'
+      EXPORTING
+        input        = gs_upload-material
+      IMPORTING
+        output       = gv_matnr_out
+      EXCEPTIONS
+        length_error = 1
+        OTHERS       = 2.
+
+    IF sy-subrc <> 0.
+      PERFORM add_log USING gs_upload-material gs_upload-meinh
+                            'E' 'Invalid material number'.
+      CONTINUE.
+    ENDIF.
+
+    CALL FUNCTION 'CONVERSION_EXIT_CUNIT_INPUT'
+      EXPORTING
+        input          = gs_upload-meinh
+        language       = sy-langu
+      IMPORTING
+        output         = gv_meinh_in
+      EXCEPTIONS
+        unit_not_found = 1
+        OTHERS         = 2.
+
+    IF sy-subrc <> 0.
+      PERFORM add_log USING gs_upload-material gs_upload-meinh
+                            'E' 'Invalid alternate unit of measure'.
+      CONTINUE.
+    ENDIF.
+
+    IF gs_upload-unit_dim IS NOT INITIAL.
+      CALL FUNCTION 'CONVERSION_EXIT_CUNIT_INPUT'
+        EXPORTING
+          input          = gs_upload-unit_dim
+          language       = sy-langu
+        IMPORTING
+          output         = gv_meabm_in
+        EXCEPTIONS
+          unit_not_found = 1
+          OTHERS         = 2.
+
+      IF sy-subrc <> 0.
+        PERFORM add_log USING gs_upload-material gs_upload-meinh
+                              'E' 'Invalid unit of dimension'.
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    gs_headdata-material   = gv_matnr_out.
+    gs_headdata-basic_view = gc_x.
+
+    gs_unitsofmea-alt_unit = gv_meinh_in.
+    gs_unitsofmea-length   = gs_upload-length.
+    gs_unitsofmea-width    = gs_upload-width.
+    gs_unitsofmea-height   = gs_upload-height.
+    gs_unitsofmea-unit_dim = gv_meabm_in.
+    APPEND gs_unitsofmea TO gt_unitsofmea.
+
+    gs_unitsofmex-alt_unit = gv_meinh_in.
+    IF gs_upload-length IS NOT INITIAL.
+      gs_unitsofmex-length = gc_x.
+    ENDIF.
+    IF gs_upload-width IS NOT INITIAL.
+      gs_unitsofmex-width = gc_x.
+    ENDIF.
+    IF gs_upload-height IS NOT INITIAL.
+      gs_unitsofmex-height = gc_x.
+    ENDIF.
+    IF gv_meabm_in IS NOT INITIAL.
+      gs_unitsofmex-unit_dim = gc_x.
+    ENDIF.
+    APPEND gs_unitsofmex TO gt_unitsofmex.
+
+    CALL FUNCTION 'BAPI_MATERIAL_SAVEDATA'
+      EXPORTING
+        headdata        = gs_headdata
+      TABLES
+        unitsofmeasure  = gt_unitsofmea
+        unitsofmeasurex = gt_unitsofmex
+        returnmessages  = gt_return.
+
+    READ TABLE gt_return INTO gs_return WITH KEY type = 'A'.
+    IF sy-subrc <> 0.
+      READ TABLE gt_return INTO gs_return WITH KEY type = 'E'.
+    ENDIF.
+
+    IF sy-subrc = 0.
+      CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+      PERFORM add_log USING gs_upload-material gs_upload-meinh
+                            gs_return-type gs_return-message.
+    ELSE.
+      CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+        EXPORTING
+          wait = gc_x.
+      PERFORM add_log USING gs_upload-material gs_upload-meinh
+                            'S' 'AUoM dimensions updated successfully'.
+    ENDIF.
+
+  ENDLOOP.
+ENDFORM.
+
+FORM add_log USING iv_material TYPE matnr
+                   iv_meinh    TYPE meinh
+                   iv_type     TYPE bapi_mtype
+                   iv_message  TYPE bapi_msg.
+  DATA: ls_log TYPE ty_log.
+
+  ls_log-material = iv_material.
+  ls_log-meinh    = iv_meinh.
+  ls_log-type     = iv_type.
+  ls_log-message  = iv_message.
+  APPEND ls_log TO gt_log.
+ENDFORM.
+
+FORM display_log.
+  DATA: lo_alv TYPE REF TO cl_salv_table.
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING
+          r_salv_table = lo_alv
+        CHANGING
+          t_table      = gt_log ).
+
+      lo_alv->get_functions( )->set_all( abap_true ).
+      lo_alv->get_columns( )->set_optimize( abap_true ).
+      lo_alv->display( ).
+
+    CATCH cx_salv_msg.
+      MESSAGE 'ALV display error' TYPE 'E'.
+  ENDTRY.
+ENDFORM.
