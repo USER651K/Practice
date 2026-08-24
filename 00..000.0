@@ -377,3 +377,101 @@ START-OF-SELECTION.
 
 
 
+
+
+
+
+
+
+
+
+  cl_salv_bs_runtime_info=>set(
+    EXPORTING
+      display  = abap_false
+      metadata = abap_true
+      data     = abap_true ).
+
+  SUBMIT (gc_report)
+    WITH SELECTION-TABLE lv_seltab
+    AND RETURN.
+
+  cl_salv_bs_runtime_info=>rectify_metadata( ).
+
+  TRY.
+      cl_salv_bs_runtime_info=>get_data_ref(
+        IMPORTING
+          r_data = gr_data ).
+
+      ASSIGN gr_data->* TO <gt_data>.
+
+      IF <gt_data> IS ASSIGNED AND <gt_data> IS NOT INITIAL.
+        LOOP AT <gt_data> ASSIGNING <ls_data>.
+          CLEAR gs_output.
+
+          ASSIGN COMPONENT 'CHARG' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-charg = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'PRUEFLOS' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-prueflos = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'LOSMENGE' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-losmenge = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'WERK' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-werk = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'MATNR' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-matnr = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA01' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka01 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA02' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka02 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA03' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka03 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA04' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka04 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA05' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka05 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA06' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka06 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA07' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka07 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA08' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka08 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA09' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka09 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA10' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka10 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA11' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka11 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'BRKA12' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-brka12 = <fv>. ENDIF.
+
+          ASSIGN COMPONENT 'REJ_REASON' OF STRUCTURE <ls_data> TO <fv>.
+          IF sy-subrc = 0. gs_output-rej_reason = <fv>. ENDIF.
+
+          APPEND gs_output TO gt_output.
+        ENDLOOP.
+      ENDIF.
+
+    CATCH cx_salv_bs_sc_runtime_info.
+      MESSAGE 'Unable to retrieve report data' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDTRY.
+
+  cl_salv_bs_runtime_info=>clear_all( ).
+
+
+
+
