@@ -1,8 +1,161 @@
+
+EXPORT git_final FROM git_final TO MEMORY ID 'ZO9ZLABCOM'.
+
+
+
+
+
+
+
+
 *&---------------------------------------------------------------------*
 *&  Include  ZO9_ZLABCOM_TOP
 *&---------------------------------------------------------------------*
 
 TABLES: qals, mch1, t001w.
+
+TYPES: BEGIN OF ty_final_mirror,
+         matnr      TYPE matnr,
+         art        TYPE qals-art,
+         ktextmat   TYPE qkurztext,
+         charg      TYPE charg_d,
+         enstehdat  TYPE qentst,
+         mblnr      TYPE mblnr,
+         ebeln      TYPE ebeln,
+         ebelp      TYPE ebelp,
+         werk       TYPE werks_d,
+         sellifnr   TYPE elifn,
+         losmenge   TYPE qlosmenge,
+         lgpla      TYPE lgpla,
+         lagortvorg TYPE qlgortvorg,
+         name1      TYPE lfa1-name1,
+         prueflos   TYPE qplos,
+         mandi      TYPE zp2pdemandi,
+         truck      TYPE zp2pdetruck,
+         geno       TYPE zp2pdegeno,
+         bag        TYPE zp2pbag,
+         unldngsup  TYPE char20,
+         price      TYPE dmbtr,
+         pperq      TYPE netwr,
+         lpperqp    TYPE netwr,
+         psbnm      TYPE zperc,
+         psugh      TYPE zperc,
+         psrbt      TYPE zperc,
+         admix      TYPE zperc,
+         pparm      TYPE zperc,
+         mbd        TYPE zperc,
+         mad        TYPE zperc,
+         whrp       TYPE zperc,
+         yield      TYPE zperc,
+         ratio      TYPE zperc,
+         wtbr       TYPE zperc,
+         padd       TYPE zperc,
+         headr      TYPE zperc,
+         redgr      TYPE zperc,
+         deadg      TYPE zperc,
+         immat      TYPE zperc,
+         greng      TYPE zperc,
+         chalk      TYPE zperc,
+         dmdis      TYPE zperc,
+         brokn      TYPE zperc,
+         lengt      TYPE zperc,
+         breth      TYPE zperc,
+         bas        TYPE zperc,
+         z1509mix   TYPE zperc,
+         basdup     TYPE zperc,
+         z1121pus   TYPE zperc,
+         shab       TYPE zperc,
+         parm       TYPE zperc,
+         suga       TYPE zperc,
+         oth        TYPE zperc,
+         totadmix   TYPE zperc,
+         kett       TYPE zperc,
+         moisture   TYPE zperc,
+         sela       TYPE zperc,
+         paddyper   TYPE zperc,
+         sltd       TYPE zperc,
+         z1121admx  TYPE zperc,
+         z1509admx  TYPE zperc,
+         pusaadmx   TYPE zperc,
+         sugadmix   TYPE zperc,
+         paddywhr   TYPE zperc,
+         bkn25      TYPE zperc,
+         greengr    TYPE zperc,
+         chalkygr   TYPE zperc,
+         ddgr       TYPE zperc,
+         immgr      TYPE zperc,
+         deadgr     TYPE zperc,
+         purity     TYPE zperc,
+         z1718mix   TYPE zperc,
+         z1401mix   TYPE zperc,
+         rh10mix    TYPE zperc,
+         sharmix    TYPE zperc,
+         paddy      TYPE zperc,
+         bknwht     TYPE zperc,
+         whitedd    TYPE zperc,
+         sella      TYPE zperc,
+         cook       TYPE char40,
+         z1718admx  TYPE zperc,
+         rh10admx   TYPE zperc,
+         sbtiadmx   TYPE zperc,
+         pusamix    TYPE zperc,
+         sellamix   TYPE zperc,
+         belly      TYPE zperc,
+         branst     TYPE zperc,
+         kett1      TYPE zperc,
+         ricmoist   TYPE zperc,
+         wv         TYPE zperc,
+         ckod       TYPE char40,
+         apc        TYPE char40,
+         total_ex   TYPE zperc,
+         ktextlos   TYPE qals-ktextlos,
+         gv_status  TYPE char30,
+         del_num    TYPE char12,
+         y          TYPE zperc,
+         z          TYPE zperc,
+         lengrad    TYPE c LENGTH 1,
+         infst      TYPE char40,
+         aroma      TYPE char40,
+         fm         TYPE char40,
+         pes        TYPE char40,
+         co2        TYPE char40,
+         cln        TYPE char40,
+         brka01     TYPE zperc,
+         brka02     TYPE zperc,
+         brka03     TYPE zperc,
+         brka04     TYPE zperc,
+         brka05     TYPE zperc,
+         brka06     TYPE zperc,
+         brka07     TYPE zperc,
+         brka08     TYPE zperc,
+         brka09     TYPE zperc,
+         brka10     TYPE zperc,
+         brka11     TYPE zperc,
+         brka12     TYPE zperc,
+         brka13     TYPE zperc,
+         zgrad01    TYPE char40,
+         comp01     TYPE zperc,
+         taj1       TYPE zperc,
+         rh10mix1   TYPE zperc,
+         sm1        TYPE zperc,
+         ot1        TYPE zperc,
+         z1509mix1  TYPE zperc,
+         rej_reason TYPE string,
+         sel        TYPE c,
+         choba      TYPE zperc,
+         rec_cpudt  TYPE sydatum,
+         rec_cputm  TYPE syuzeit,
+         vdatum     TYPE sydatum,
+         vezeiterf  TYPE syuzeit,
+         tat_hours  TYPE char12,
+         z1847mix   TYPE zperc,
+         z1885mix   TYPE zperc,
+         z1886mix   TYPE zperc,
+         sona1      TYPE zperc,
+       END OF ty_final_mirror.
+
+DATA: it_final_mirror TYPE STANDARD TABLE OF ty_final_mirror,
+      wa_final_mirror TYPE ty_final_mirror.
 
 TYPES: BEGIN OF ty_output,
          charg      TYPE charg_d,
@@ -28,20 +181,15 @@ TYPES: BEGIN OF ty_output,
 DATA: gt_output TYPE TABLE OF ty_output,
       gs_output TYPE ty_output.
 
-DATA: gr_data TYPE REF TO data.
-
-FIELD-SYMBOLS: <gt_data> TYPE ANY TABLE,
-               <ls_data> TYPE any,
-               <fv>      TYPE any.
-
-CONSTANTS: gc_report TYPE syrepid VALUE 'ZF2PR102_LAB_COMPARISON1_TE'.
+CONSTANTS: gc_report  TYPE syrepid            VALUE 'ZF2PR102_LAB_COMPARISON1_TE',
+           gc_memid   TYPE char10             VALUE 'ZO9ZLABCOM'.
 
 CONSTANTS: gc_sel_matnr    TYPE rsparams-selname VALUE 'S_MATNR',
-           gc_sel_werks    TYPE rsparams-selname VALUE 'P_WERKS',
-           gc_sel_lifnr    TYPE rsparams-selname VALUE 'S_LIFNR',
-           gc_sel_prueflos TYPE rsparams-selname VALUE 'S_PRFLOS',
+           gc_sel_werks    TYPE rsparams-selname VALUE 'S_WERKS',
+           gc_sel_lifnr    TYPE rsparams-selname VALUE 'S_VNDR',
+           gc_sel_prueflos TYPE rsparams-selname VALUE 'S_INSPL',
            gc_sel_charg    TYPE rsparams-selname VALUE 'S_CHARG',
-           gc_sel_ensteh   TYPE rsparams-selname VALUE 'S_ENSTEH',
+           gc_sel_ensteh   TYPE rsparams-selname VALUE 'S_DATE',
            gc_sel_ebeln    TYPE rsparams-selname VALUE 'S_EBELN'.
 
 DATA: lv_str       TYPE string,
@@ -64,8 +212,20 @@ SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
                   s_charg  FOR mch1-charg,
                   s_ensteh FOR qals-enstehdat,
                   s_ebeln  FOR qals-ebeln.
-  PARAMETERS:     p_werks TYPE qals-werks MATCHCODE OBJECT h_t001w.
+  PARAMETERS:     p_werks TYPE qals-werk MATCHCODE OBJECT h_t001w.
 SELECTION-SCREEN END OF BLOCK b1.
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -113,7 +273,7 @@ START-OF-SELECTION.
 
   CLEAR ls_seltab.
   ls_seltab-selname = gc_sel_werks.
-  ls_seltab-kind    = 'P'.
+  ls_seltab-kind    = 'S'.
   ls_seltab-sign    = 'I'.
   ls_seltab-option  = 'EQ'.
   ls_seltab-low     = p_werks.
@@ -174,94 +334,41 @@ START-OF-SELECTION.
     APPEND ls_seltab TO lv_seltab.
   ENDLOOP.
 
-  cl_salv_bs_runtime_info=>set(
-    EXPORTING
-      display  = abap_false
-      metadata = abap_false
-      data     = abap_true ).
+  FREE MEMORY ID gc_memid.
 
   SUBMIT (gc_report)
     WITH SELECTION-TABLE lv_seltab
     AND RETURN.
 
-  TRY.
-      cl_salv_bs_runtime_info=>get_data_ref(
-        IMPORTING
-          r_data = gr_data ).
+  IMPORT git_final TO it_final_mirror FROM MEMORY ID gc_memid.
+  FREE MEMORY ID gc_memid.
 
-      ASSIGN gr_data->* TO <gt_data>.
-
-      IF <gt_data> IS ASSIGNED AND <gt_data> IS NOT INITIAL.
-        LOOP AT <gt_data> ASSIGNING <ls_data>.
-          CLEAR gs_output.
-
-          ASSIGN COMPONENT 'CHARG' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-charg = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'PRUEFLOS' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-prueflos = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'LOSMENGE' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-losmenge = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'WERK' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-werk = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'MATNR' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-matnr = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA01' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka01 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA02' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka02 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA03' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka03 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA04' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka04 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA05' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka05 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA06' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka06 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA07' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka07 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA08' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka08 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA09' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka09 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA10' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka10 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA11' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka11 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA12' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka12 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'REJ_REASON' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-rej_reason = <fv>. ENDIF.
-
-          APPEND gs_output TO gt_output.
-        ENDLOOP.
-      ENDIF.
-
-    CATCH cx_salv_bs_sc_runtime_info.
-      MESSAGE 'Unable to retrieve report data' TYPE 'S' DISPLAY LIKE 'E'.
-  ENDTRY.
-
-  cl_salv_bs_runtime_info=>clear_all( ).
-
-  IF <gt_data> IS ASSIGNED.
-    UNASSIGN <gt_data>.
+  IF it_final_mirror IS INITIAL.
+    MESSAGE 'No Data Found' TYPE 'E'.
   ENDIF.
+
+  LOOP AT it_final_mirror INTO wa_final_mirror.
+    CLEAR gs_output.
+    gs_output-charg      = wa_final_mirror-charg.
+    gs_output-prueflos   = wa_final_mirror-prueflos.
+    gs_output-losmenge   = wa_final_mirror-losmenge.
+    gs_output-werk       = wa_final_mirror-werk.
+    gs_output-matnr      = wa_final_mirror-matnr.
+    gs_output-brka01     = wa_final_mirror-brka01.
+    gs_output-brka02     = wa_final_mirror-brka02.
+    gs_output-brka03     = wa_final_mirror-brka03.
+    gs_output-brka04     = wa_final_mirror-brka04.
+    gs_output-brka05     = wa_final_mirror-brka05.
+    gs_output-brka06     = wa_final_mirror-brka06.
+    gs_output-brka07     = wa_final_mirror-brka07.
+    gs_output-brka08     = wa_final_mirror-brka08.
+    gs_output-brka09     = wa_final_mirror-brka09.
+    gs_output-brka10     = wa_final_mirror-brka10.
+    gs_output-brka11     = wa_final_mirror-brka11.
+    gs_output-brka12     = wa_final_mirror-brka12.
+    gs_output-rej_reason = wa_final_mirror-rej_reason.
+    APPEND gs_output TO gt_output.
+  ENDLOOP.
 
   IF gt_output IS INITIAL.
     MESSAGE 'No Data Found' TYPE 'E'.
@@ -276,12 +383,7 @@ START-OF-SELECTION.
     lv_dir = '/usr/sap/trans/O9/out/'.
   ENDIF.
 
-  CONCATENATE lv_dir
-              'In_ZLABCOM_'
-              lv_date_str
-              '_'
-              lv_time_str
-              '.csv'
+  CONCATENATE lv_dir 'In_ZLABCOM_' lv_date_str '_' lv_time_str '.csv'
          INTO lv_filepath.
 
   OPEN DATASET lv_filepath FOR OUTPUT IN TEXT MODE ENCODING DEFAULT.
@@ -290,23 +392,11 @@ START-OF-SELECTION.
   ENDIF.
 
   CONCATENATE
-    'Batch'
-    'Inspection Lot'
-    'Quantity'
-    'Plant'
-    'Material No'
-    'Head Rice(8.25-8.50)'
-    'Super 2nd Wand(7.50-8.00)'
-    '2nd Wand(7.00-7.50)'
-    'Super Tibar(6.51-6.99)'
-    'Tibar(6.11-6.50)'
-    'Dubar(5.51-6.10)'
-    'Super 90(4.91-5.50)'
-    'Mini Dubar(4.40-4.90)'
-    'Daily Feast(4.00-4.39)'
-    'Mongra1(3.70-3.99)'
-    'Mongra2(3.30-3.69)'
-    'Mongra3(2.60-3.29)'
+    'Batch' 'Inspection Lot' 'Quantity' 'Plant' 'Material No'
+    'Head Rice(8.25-8.50)' 'Super 2nd Wand(7.50-8.00)' '2nd Wand(7.00-7.50)'
+    'Super Tibar(6.51-6.99)' 'Tibar(6.11-6.50)' 'Dubar(5.51-6.10)'
+    'Super 90(4.91-5.50)' 'Mini Dubar(4.40-4.90)' 'Daily Feast(4.00-4.39)'
+    'Mongra1(3.70-3.99)' 'Mongra2(3.30-3.69)' 'Mongra3(2.60-3.29)'
     'Reject Reason'
     INTO lv_str SEPARATED BY '|'.
   TRANSFER lv_str TO lv_filepath.
@@ -315,7 +405,6 @@ START-OF-SELECTION.
 
     CLEAR: lv_matnr, lv_matnr_ext.
     lv_matnr = gs_output-matnr.
-
     CALL FUNCTION 'CONVERSION_EXIT_MATN1_OUTPUT'
       EXPORTING
         input  = lv_matnr
@@ -361,117 +450,8 @@ START-OF-SELECTION.
     CONCATENATE lv_str gs_output-rej_reason INTO lv_str SEPARATED BY '|'.
 
     TRANSFER lv_str TO lv_filepath.
-
     CLEAR: gs_output, lv_str.
   ENDLOOP.
 
   CLOSE DATASET lv_filepath.
   MESSAGE 'File generated successfully' TYPE 'S'.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  cl_salv_bs_runtime_info=>set(
-    EXPORTING
-      display  = abap_false
-      metadata = abap_true
-      data     = abap_true ).
-
-  SUBMIT (gc_report)
-    WITH SELECTION-TABLE lv_seltab
-    AND RETURN.
-
-  cl_salv_bs_runtime_info=>rectify_metadata( ).
-
-  TRY.
-      cl_salv_bs_runtime_info=>get_data_ref(
-        IMPORTING
-          r_data = gr_data ).
-
-      ASSIGN gr_data->* TO <gt_data>.
-
-      IF <gt_data> IS ASSIGNED AND <gt_data> IS NOT INITIAL.
-        LOOP AT <gt_data> ASSIGNING <ls_data>.
-          CLEAR gs_output.
-
-          ASSIGN COMPONENT 'CHARG' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-charg = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'PRUEFLOS' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-prueflos = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'LOSMENGE' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-losmenge = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'WERK' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-werk = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'MATNR' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-matnr = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA01' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka01 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA02' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka02 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA03' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka03 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA04' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka04 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA05' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka05 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA06' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka06 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA07' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka07 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA08' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka08 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA09' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka09 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA10' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka10 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA11' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka11 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'BRKA12' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-brka12 = <fv>. ENDIF.
-
-          ASSIGN COMPONENT 'REJ_REASON' OF STRUCTURE <ls_data> TO <fv>.
-          IF sy-subrc = 0. gs_output-rej_reason = <fv>. ENDIF.
-
-          APPEND gs_output TO gt_output.
-        ENDLOOP.
-      ENDIF.
-
-    CATCH cx_salv_bs_sc_runtime_info.
-      MESSAGE 'Unable to retrieve report data' TYPE 'S' DISPLAY LIKE 'E'.
-  ENDTRY.
-
-  cl_salv_bs_runtime_info=>clear_all( ).
-
-
-
-
