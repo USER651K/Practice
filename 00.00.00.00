@@ -1,0 +1,49 @@
+CASE iv_zbukr.
+  WHEN '6500'.
+    gv_office1 = 'Works: 45 KM Stone, G.T. Road, Kamaspur-131021,'.
+    gv_office2 = 'District Sonepat (Haryana), India'.
+
+  WHEN '6600'.
+    gv_office1 = 'Works: 214C & D, New Industrial Area-II,'.
+    gv_office2 = 'Mandideep, Raisen - 462046'.
+
+  WHEN OTHERS.
+    DATA: lv_adrnr  TYPE adrc-addrnumber,
+          lv_land1  TYPE t001-land1,
+          lv_bland  TYPE t001-bland.
+
+    SELECT SINGLE adrnr land1 bland
+      FROM t001
+      INTO ( lv_adrnr, lv_land1, lv_bland )
+      WHERE bukrs = iv_zbukr.
+
+    DATA: lv_street TYPE adrc-street,
+          lv_city1  TYPE adrc-city1,
+          lv_post   TYPE adrc-post_code1.
+
+    SELECT SINGLE street city1 post_code1
+      FROM adrc
+      INTO ( lv_street, lv_city1, lv_post )
+      WHERE addrnumber = lv_adrnr.
+
+    DATA: lv_bezei TYPE t005u-bezei,   " state/region text
+          lv_landx TYPE t005t-landx.   " country text
+
+    SELECT SINGLE bezei
+      FROM t005u
+      INTO lv_bezei
+      WHERE spras = 'EN'
+        AND land1 = lv_land1
+        AND bland = lv_bland.
+
+    SELECT SINGLE landx
+      FROM t005t
+      INTO lv_landx
+      WHERE spras = 'EN'
+        AND land1 = lv_land1.
+
+    CONCATENATE 'Works:' lv_street ',' lv_city1
+           INTO gv_office1 SEPARATED BY space.
+    CONCATENATE lv_bezei ',' lv_post ',' lv_landx
+           INTO gv_office2 SEPARATED BY space.
+ENDCASE.
