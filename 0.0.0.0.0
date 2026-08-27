@@ -15,4 +15,54 @@ INITIALIZATION.
 AT SELECTION-SCREEN.
   IF sscrfields-ucomm = 'FC01'.
     PERFORM download_format.
+
+
+
+
+
+
+
+FORM download_format.
+
+  DATA: lt_head TYPE STANDARD TABLE OF string,
+        lv_line TYPE string,
+        lv_path TYPE string,
+        lv_fn   TYPE string,
+        lv_dir  TYPE string,
+        lv_ok   TYPE i.
+
+  " Column headers in the SAME order as ty_data (tab-separated for xls)
+  CONCATENATE
+    'Material' 'Description' 'Plant' 'BOM Usage' 'Alt BOM' 'Valid From'
+    'Header Text' 'Base Qty' 'Base UoM' 'BOM Status'
+    'Item No' 'Component' 'Comp Desc' 'Quantity' 'UoM' 'Item Cat'
+    'Doc Change' 'Co-Product' 'Losvn' 'Losbs' 'Sanfe' 'Item Text'
+    'Storage Loc' 'Sales Rel' 'Special Proc' 'Net ID'
+    'Sort String' 'Alt Usage Prob' 'Alt Strategy' 'Alt Priority' 'Alt Group'
+    INTO lv_line SEPARATED BY cl_abap_char_utilities=>horizontal_tab.
+  APPEND lv_line TO lt_head.
+
+  cl_gui_frontend_services=>get_desktop_directory( CHANGING desktop_directory = lv_dir ).
+  cl_gui_cfw=>flush( ).
+  IF lv_dir IS INITIAL.
+    lv_dir = 'C:\Temp'.
   ENDIF.
+  CONCATENATE lv_dir '\Upload BOM Sample Format.xls' INTO lv_path.
+
+  cl_gui_frontend_services=>gui_download(
+    EXPORTING
+      filename                = lv_path
+      filetype                = 'ASC'
+      write_field_separator   = 'X'
+    CHANGING
+      data_tab                = lt_head
+    EXCEPTIONS
+      OTHERS                  = 1 ).
+
+  IF sy-subrc = 0.
+    MESSAGE 'Format downloaded to Desktop' TYPE 'S'.
+  ELSE.
+    MESSAGE 'Download failed' TYPE 'S' DISPLAY LIKE 'E'.
+  ENDIF.
+
+ENDFORM.
