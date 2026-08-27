@@ -21,7 +21,6 @@ AT SELECTION-SCREEN.
 
 
 
-
 FORM download_format.
 
   DATA: lt_head TYPE STANDARD TABLE OF string,
