@@ -1,0 +1,18 @@
+    netid TYPE char1,
+    sortf TYPE char10,
+    ewahr TYPE char13,
+    alpst TYPE char2,
+    alprf TYPE char3,
+    alpgr TYPE char4,
+  END OF ty_data.
+
+
+
+
+INITIALIZATION.
+  sscrfields-functxt_01 = 'Download Format'.
+
+AT SELECTION-SCREEN.
+  IF sscrfields-ucomm = 'FC01'.
+    PERFORM download_format.
+  ENDIF.
