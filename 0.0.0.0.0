@@ -65,3 +65,25 @@ FORM download_format.
   ENDIF.
 
 ENDFORM.
+
+
+
+
+
+
+
+
+
+
+*BOC--Ujwal--03.09.2026.
+    DATA: lv_old_dat  TYPE d,
+          lv_old_tim  TYPE t,
+          lv_curr_dat TYPE d,
+          lv_curr_tim TYPE t.
+
+    CONVERT TIME STAMP lv_old    TIME ZONE sy-zonlo
+            INTO DATE lv_old_dat  TIME lv_old_tim.
+
+    CONVERT TIME STAMP curr_time TIME ZONE sy-zonlo
+            INTO DATE lv_curr_dat TIME lv_curr_tim.
+*EOC--Ujwal--03.09.2026.
