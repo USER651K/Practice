@@ -220,3 +220,39 @@ ENDFORM.
     MODIFY gt_regup FROM ls_regup INDEX sy-tabix
            TRANSPORTING wht_sum.
   ENDLOOP.
+
+
+
+
+
+
+  DATA: BEGIN OF ls_wht,
+          bukrs    TYPE with_item-bukrs,
+          belnr    TYPE with_item-belnr,
+          gjahr    TYPE with_item-gjahr,
+          wt_qbshh TYPE with_item-wt_qbshh,
+        END OF ls_wht.
+  DATA: lt_wht LIKE SORTED TABLE OF ls_wht
+               WITH NON-UNIQUE KEY bukrs belnr gjahr.
+
+  IF gt_regup IS NOT INITIAL.
+    SELECT bukrs belnr gjahr wt_qbshh
+      FROM with_item
+      INTO TABLE lt_wht
+      FOR ALL ENTRIES IN gt_regup
+      WHERE bukrs = iv_zbukr
+        AND belnr = gt_regup-belnr
+        AND gjahr = gt_regup-gjahr.
+  ENDIF.
+
+  LOOP AT gt_regup INTO ls_regup.
+    CLEAR ls_regup-wht_sum.
+    LOOP AT lt_wht INTO ls_wht
+         WHERE bukrs = iv_zbukr
+           AND belnr = ls_regup-belnr
+           AND gjahr = ls_regup-gjahr.
+      ls_regup-wht_sum = ls_regup-wht_sum + ls_wht-wt_qbshh.
+    ENDLOOP.
+    MODIFY gt_regup FROM ls_regup INDEX sy-tabix
+           TRANSPORTING wht_sum.
+  ENDLOOP.
