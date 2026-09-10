@@ -167,3 +167,16 @@ ENDFORM.
 
 
 
+
+
+
+  IF gt_regup IS NOT INITIAL.
+    SELECT bukrs belnr gjahr wt_qbshh
+      FROM with_item
+      INTO TABLE lt_wht
+      FOR ALL ENTRIES IN gt_regup
+      WHERE bukrs = iv_zbukr
+        AND belnr = gt_regup-belnr
+        AND gjahr = gt_regup-gjahr.
+  ENDIF.
+
