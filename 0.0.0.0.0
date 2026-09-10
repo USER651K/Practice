@@ -115,3 +115,55 @@ ENDFORM.
     CONVERT TIME STAMP curr_time TIME ZONE sy-zonlo
             INTO DATE lv_curr_dat TIME lv_curr_tim.
 *EOC--Ujwal--03.09.2026.
+
+
+
+
+
+
+
+*--- BOC WHT/INR : sum WT_QBSHH from WITH_ITEM per document ---
+  DATA: BEGIN OF ls_wht,
+          bukrs   TYPE with_item-bukrs,
+          belnr   TYPE with_item-belnr,
+          gjahr   TYPE with_item-gjahr,
+          wt_qbshh TYPE with_item-wt_qbshh,
+        END OF ls_wht.
+  DATA: lt_wht LIKE SORTED TABLE OF ls_wht
+               WITH UNIQUE KEY bukrs belnr gjahr.
+
+  IF gt_regup IS NOT INITIAL.
+    SELECT bukrs, belnr, gjahr, SUM( wt_qbshh ) AS wt_qbshh
+      FROM with_item
+      FOR ALL ENTRIES IN @gt_regup
+      WHERE bukrs = @iv_zbukr
+        AND belnr = @gt_regup-belnr
+        AND gjahr = @gt_regup-gjahr
+      GROUP BY bukrs, belnr, gjahr
+      INTO TABLE @lt_wht.
+  ENDIF.
+
+*--- write the total back onto each REGUP line ---
+  LOOP AT gt_regup INTO ls_regup.
+    CLEAR ls_wht.
+    READ TABLE lt_wht INTO ls_wht
+      WITH KEY bukrs = iv_zbukr
+               belnr = ls_regup-belnr
+               gjahr = ls_regup-gjahr
+      BINARY SEARCH.
+    IF sy-subrc = 0.
+      ls_regup-wht_sum = ls_wht-wt_qbshh.
+    ELSE.
+      CLEAR ls_regup-wht_sum.
+    ENDIF.
+    MODIFY gt_regup FROM ls_regup INDEX sy-tabix
+           TRANSPORTING wht_sum.
+  ENDLOOP.
+*--- EOC WHT/INR ---
+
+
+
+
+
+
+
