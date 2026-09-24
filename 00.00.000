@@ -1,0 +1,67 @@
+*BOC--CODE ADDED--UJWAL--05.08.2026 / Changed 24.09.2026 - plant-specific time zone
+READ TABLE lt_afru INTO DATA(ls_afru_dt)
+           WITH KEY rmzhl = ls_afwd-rmzhl.
+
+IF sy-subrc = 0.
+  DATA: lv_date     TYPE c LENGTH 10,
+        lv_time     TYPE c LENGTH 8,
+        lv_out_date TYPE d,
+        lv_out_time TYPE t,
+        lv_sys_tz   TYPE tznzone,
+        lv_tgt_tz   TYPE tznzone,
+        lv_tstamp   TYPE timestamp,
+        lv_tz_text  TYPE c LENGTH 6,
+        lv_low      TYPE tvarvc-low,
+        lv_high     TYPE tvarvc-high.
+
+  CLEAR: lv_date, lv_time, lv_sys_tz, lv_tgt_tz, lv_tstamp,
+         lv_tz_text, lv_low, lv_high.
+
+* Default: print as stored (system time zone)
+  lv_out_date = ls_afru_dt-ersda.
+  lv_out_time = ls_afru_dt-erzet.
+
+* Target time zone for confirmation plant (TVARVC: LOW = plant, HIGH = TZ)
+  lv_low = ls_afru_dt-werks.
+  SELECT SINGLE high FROM tvarvc INTO @lv_high
+    WHERE name = 'ZPP_PLANT_TIMEZONE'
+      AND type = 'S'
+      AND low  = @lv_low.
+
+  IF sy-subrc = 0 AND lv_high IS NOT INITIAL.
+    lv_tgt_tz = lv_high.
+
+*   Time zone in which ERSDA/ERZET were stored
+    CALL FUNCTION 'GET_SYSTEM_TIMEZONE'
+      IMPORTING
+        timezone = lv_sys_tz
+      EXCEPTIONS
+        OTHERS   = 1.
+    IF sy-subrc <> 0 OR lv_sys_tz IS INITIAL.
+      lv_sys_tz = 'INDIA'.
+    ENDIF.
+
+    IF lv_tgt_tz <> lv_sys_tz.
+      CONVERT DATE ls_afru_dt-ersda TIME ls_afru_dt-erzet
+              INTO TIME STAMP lv_tstamp TIME ZONE lv_sys_tz.
+      IF sy-subrc = 0.
+        CONVERT TIME STAMP lv_tstamp TIME ZONE lv_tgt_tz
+                INTO DATE lv_out_date TIME lv_out_time.
+        IF sy-subrc = 0.
+          lv_tz_text = lv_tgt_tz.
+        ELSE.
+*         Conversion failed (e.g. invalid TZ in TVARVC) - fall back to stored value
+          lv_out_date = ls_afru_dt-ersda.
+          lv_out_time = ls_afru_dt-erzet.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+  WRITE lv_out_date TO lv_date DD/MM/YYYY.
+  WRITE lv_out_time TO lv_time USING EDIT MASK '__:__:__'.
+
+  CONCATENATE 'Confirmed on' lv_date 'at' lv_time 'hrs' lv_tz_text
+         INTO gv_conf_date SEPARATED BY space.
+ENDIF.
+*EOC--CODE ADDED--UJWAL--05.08.2026 / 24.09.2026
