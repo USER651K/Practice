@@ -1,4 +1,19 @@
 *BOC-CODE ADDED UJWAL--01.10.2026.
+CONSTANTS: lc_cc_var TYPE tvarvc-name VALUE 'ZFI_CUSTCD_CC',
+           lc_s      TYPE rsscr_kind  VALUE 'S'.
+DATA: lt_tvarvc TYPE STANDARD TABLE OF tvarvc,
+      ls_tvarvc TYPE tvarvc,
+      lr_bukrs  TYPE RANGE OF bukrs.
+*EOC-CODE ADDED UJWAL--01.10.2026.
+
+
+
+
+
+
+
+
+*BOC-CODE ADDED UJWAL--01.10.2026.
 CLEAR: lt_tvarvc, lr_bukrs.
 
 SELECT * FROM tvarvc
