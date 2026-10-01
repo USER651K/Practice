@@ -1,0 +1,21 @@
+*BOC-CODE ADDED UJWAL--01.10.2026.
+CLEAR: lt_tvarvc, lr_bukrs.
+
+SELECT * FROM tvarvc
+  INTO TABLE lt_tvarvc
+  WHERE name = lc_cc_var
+  AND   type = lc_s.
+
+LOOP AT lt_tvarvc INTO ls_tvarvc
+     WHERE sign IS NOT INITIAL
+     AND   opti IS NOT INITIAL.
+  APPEND VALUE #( sign   = ls_tvarvc-sign
+                  option = ls_tvarvc-opti
+                  low    = ls_tvarvc-low
+                  high   = ls_tvarvc-high ) TO lr_bukrs.
+ENDLOOP.
+
+IF lr_bukrs IS NOT INITIAL AND bkpf-bukrs IN lr_bukrs.
+*EOC-CODE ADDED UJWAL--01.10.2026.
+  ... existing mail logic (unchanged) ...
+ENDIF.
