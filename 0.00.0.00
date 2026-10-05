@@ -1,0 +1,31 @@
+        lv_low      TYPE tvarvc-low,
+        lv_high     TYPE tvarvc-high,
+        lv_tz_plant TYPE abap_bool,
+        lv_mhdhb    TYPE mara-mhdhb.
+
+
+
+
+    IF sy-subrc = 0 AND lv_high IS NOT INITIAL.
+    lv_tz_plant = abap_true.
+    lv_tgt_tz   = lv_high.
+
+
+
+
+
+
+
+  CONCATENATE 'Confirmed on' lv_date 'at' lv_time 'hrs'
+         INTO gv_conf_date SEPARATED BY space.
+
+* Best before date = confirmation date (plant TZ) + total shelf life (days)
+  IF lv_tz_plant = abap_true AND ls_caufv-plnbez IS NOT INITIAL.
+    SELECT SINGLE mhdhb FROM mara INTO @lv_mhdhb
+      WHERE matnr = @ls_caufv-plnbez
+        AND iprkz = 'D'.
+    IF sy-subrc = 0 AND lv_mhdhb > 0.
+      gs_final-vfdat = lv_out_date + lv_mhdhb.
+    ENDIF.
+  ENDIF.
+ENDIF.
