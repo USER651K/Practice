@@ -29,3 +29,27 @@
     ENDIF.
   ENDIF.
 ENDIF.
+
+
+
+
+
+
+
+
+
+
+
+    IF sy-subrc = 0 AND lv_mhdhb > 0.
+      gs_final-vfdat = lv_out_date + lv_mhdhb.
+
+*     Loop node %EV2 reads GS_FINAL from GT_FINAL1 - update table rows too
+      LOOP AT gt_final1 ASSIGNING FIELD-SYMBOL(<ls_final1>)
+           WHERE charg = gs_final-charg.
+        <ls_final1>-vfdat = gs_final-vfdat.
+      ENDLOOP.
+      LOOP AT gt_final ASSIGNING FIELD-SYMBOL(<ls_final>)
+           WHERE charg = gs_final-charg.
+        <ls_final>-vfdat = gs_final-vfdat.
+      ENDLOOP.
+    ENDIF.
