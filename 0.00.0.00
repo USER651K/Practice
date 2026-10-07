@@ -128,3 +128,139 @@ ENDIF.
       gs_unitsofmex-unit_of_wt = gc_x.
     ENDIF.
     APPEND gs_unitsofmex TO gt_unitsofmex.
+
+
+
+
+
+
+
+
+
+
+
+
+
+*BOC--UJWAL--07.10.2026 Freight allocation
+  TYPES: BEGIN OF ty_del_sales,
+           tknum TYPE vttk-tknum,
+           vbeln TYPE vttp-vbeln,
+           netwr TYPE vbrp-netwr,
+         END OF ty_del_sales,
+         BEGIN OF ty_shp_sales,
+           tknum TYPE vttk-tknum,
+           netwr TYPE vbrp-netwr,
+         END OF ty_shp_sales.
+*EOC--UJWAL--07.10.2026
+
+
+
+
+
+
+
+*BOC--UJWAL--07.10.2026
+DATA: gt_del_sales TYPE SORTED TABLE OF ty_del_sales WITH UNIQUE KEY tknum vbeln,
+      gt_shp_sales TYPE HASHED TABLE OF ty_shp_sales WITH UNIQUE KEY tknum.
+*EOC--UJWAL--07.10.2026
+
+
+
+
+*BOC--UJWAL--07.10.2026 Delivery & shipment-wise invoice value
+    CLEAR: gt_del_sales, gt_shp_sales.
+    SELECT t~tknum, f~vbelv AS vbeln, SUM( p~netwr ) AS netwr
+      FROM vttp AS t
+      INNER JOIN vbfa AS f ON  f~vbelv   = t~vbeln
+                           AND f~vbtyp_n = 'M'
+      INNER JOIN vbrp AS p ON  p~vbeln = f~vbeln
+                           AND p~posnr = f~posnn
+      INNER JOIN vbrk AS k ON  k~vbeln = p~vbeln
+      WHERE t~tknum IN @lr_tknum
+        AND k~fksto = @space
+      GROUP BY t~tknum, f~vbelv
+      INTO CORRESPONDING FIELDS OF TABLE @gt_del_sales.
+
+    DATA ls_shp_coll TYPE ty_shp_sales.
+    LOOP AT gt_del_sales INTO DATA(ls_ds).
+      ls_shp_coll-tknum = ls_ds-tknum.
+      ls_shp_coll-netwr = ls_ds-netwr.
+      COLLECT ls_shp_coll INTO gt_shp_sales.
+    ENDLOOP.
+*EOC--UJWAL--07.10.2026
+
+
+
+
+
+*BOC--UJWAL--07.10.2026
+  DATA: ls_shp TYPE ty_shp_sales,
+        ls_del TYPE ty_del_sales.
+*EOC--UJWAL--07.10.2026
+
+
+
+
+
+
+*BOC--Code Commented--UJWAL--07.10.2026
+**--- Calculate SHIPMENT FREIGHT (VTTK)
+*        READ TABLE gt_vttk INTO ls_vttk
+*          WITH KEY tknum = ls_vttp-tknum.
+*        CLEAR lv_deliv_count.
+*        LOOP AT gt_vttp INTO DATA(ls_vttp_temp)
+*           WHERE tknum = ls_vttp-tknum.
+*          lv_deliv_count += 1.
+*        ENDLOOP.
+*        IF sy-subrc = 0 AND ls_vttk-tndr_maxp IS NOT INITIAL
+*                        AND ls_vttk-tndr_maxp > 0.
+*          IF lv_deliv_count = 1.
+*            gs_output-ship_cost_frt = ls_vttk-tndr_maxp.
+*          ELSE.
+*            IF lv_tknum_prev <> ls_vttp-tknum.
+*              CLEAR lv_total_sales.
+*              LOOP AT gt_vbfa_del_m INTO DATA(ls_del_m_loop)
+*              WHERE vbelv = ls_vbfa_j-vbeln.
+*                READ TABLE gt_vbrk INTO ls_vbrk
+*                WITH KEY vbeln = ls_del_m_loop-vbeln
+*                BINARY SEARCH.
+*                IF sy-subrc = 0.
+*                  lv_total_sales = lv_total_sales + ls_vbrk-netwr.
+*                ENDIF.
+*              ENDLOOP.
+*              lv_tknum_prev = ls_vttp-tknum.
+*              IF lv_total_sales > 0.
+*                lv_shipment_frt = ls_vttk-tndr_maxp / lv_total_sales.
+*              ENDIF.
+*            ENDIF.
+*            gs_output-ship_cost_frt = lv_shipment_frt * gs_output-sales_price.
+*          ENDIF.
+*        ENDIF.
+*EOC--Code Commented--UJWAL--07.10.2026
+
+*BOC--UJWAL--07.10.2026
+*--- Shipment Cost Freight = TNDR_MAXP * Delivery Sales / Shipment Sales
+        CLEAR: ls_vttk, ls_shp, ls_del.
+        READ TABLE gt_vttk INTO ls_vttk
+             WITH KEY tknum = ls_vttp-tknum BINARY SEARCH.
+        READ TABLE gt_shp_sales INTO ls_shp
+             WITH TABLE KEY tknum = ls_vttp-tknum.
+        READ TABLE gt_del_sales INTO ls_del
+             WITH TABLE KEY tknum = ls_vttp-tknum
+                            vbeln = ls_vbfa_j-vbeln.
+        IF ls_vttk-tndr_maxp > 0 AND ls_shp-netwr > 0.
+          gs_output-ship_cost_frt = ls_vttk-tndr_maxp * ls_del-netwr / ls_shp-netwr.
+        ENDIF.
+*EOC--UJWAL--07.10.2026
+      ENDIF.                                  "<-- KEEP: closes READ gt_vttp
+*EOC--CODE ADDED UJWAL--03.07.2026----------  "<-- KEEP
+
+
+
+
+
+
+
+
+
+
