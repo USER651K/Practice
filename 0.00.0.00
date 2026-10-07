@@ -53,3 +53,78 @@ ENDIF.
         <ls_final>-vfdat = gs_final-vfdat.
       ENDLOOP.
     ENDIF.
+
+
+
+
+
+
+
+
+
+
+         unit_dim TYPE meabm,
+         gross_wt TYPE brgew,     " ADD
+         unit_wt  TYPE gewei,     " ADD
+       END OF ty_upload.
+
+
+
+
+      gv_meabm_in  TYPE meabm,
+      gv_gewei_in  TYPE gewei.    " ADD (move the period: gv_meabm_in now ends with comma)
+
+
+
+
+
+           gv_matnr_out, gv_meinh_in, gv_meabm_in, gv_gewei_in.
+
+
+
+
+
+    IF gs_upload-unit_wt IS NOT INITIAL.
+      CALL FUNCTION 'CONVERSION_EXIT_CUNIT_INPUT'
+        EXPORTING
+          input          = gs_upload-unit_wt
+          language       = sy-langu
+        IMPORTING
+          output         = gv_gewei_in
+        EXCEPTIONS
+          unit_not_found = 1
+          OTHERS         = 2.
+
+      IF sy-subrc <> 0.
+        PERFORM add_log USING gs_upload-material gs_upload-meinh
+                              'E' 'Invalid weight unit'.
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+
+
+
+
+
+
+
+    gs_unitsofmea-unit_dim = gv_meabm_in.
+    gs_unitsofmea-gross_wt = gs_upload-gross_wt.      " ADD
+    gs_unitsofmea-unit_of_wt = gv_gewei_in.           " ADD
+    APPEND gs_unitsofmea TO gt_unitsofmea.
+
+
+
+
+
+    IF gv_meabm_in IS NOT INITIAL.
+      gs_unitsofmex-unit_dim = gc_x.
+    ENDIF.
+    IF gs_upload-gross_wt IS NOT INITIAL.             " ADD block
+      gs_unitsofmex-gross_wt = gc_x.
+    ENDIF.
+    IF gv_gewei_in IS NOT INITIAL.                    " ADD block
+      gs_unitsofmex-unit_of_wt = gc_x.
+    ENDIF.
+    APPEND gs_unitsofmex TO gt_unitsofmex.
