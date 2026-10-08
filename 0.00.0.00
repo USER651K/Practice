@@ -264,3 +264,65 @@ DATA: gt_del_sales TYPE SORTED TABLE OF ty_del_sales WITH UNIQUE KEY tknum vbeln
 
 
 
+
+
+
+
+            CLEAR ls_vbrk_bill.
+*BOC--UJWAL--08.10.2026  Values from THIS row's billing document
+            CLEAR: gs_output-sales_price, gs_output-stwae, gs_output-inco,
+                   gs_output-cpg, gs_output-planned_freight, gs_output-cogs.
+*EOC--UJWAL--08.10.2026
+            READ TABLE gt_vbrk INTO ls_vbrk_bill
+              WITH KEY vbeln = ls_del_bill-vbeln.
+            IF sy-subrc = 0.
+              gs_output-invoice_date = ls_vbrk_bill-fkdat.
+*BOC--UJWAL--08.10.2026
+              gs_output-sales_price = ls_vbrk_bill-netwr.
+              gs_output-stwae       = ls_vbrk_bill-stwae.
+              gs_output-inco        = ls_vbrk_bill-inco1.
+
+              LOOP AT gt_prcd INTO ls_prcd WHERE knumv = ls_vbrk_bill-knumv.
+                CASE ls_prcd-kschl.
+                  WHEN 'ZFRT'.
+                    gs_output-planned_freight = gs_output-planned_freight + ls_prcd-kwert.
+                  WHEN 'VPRS'.
+                    gs_output-cogs = gs_output-cogs + ls_prcd-kwert.
+                  WHEN OTHERS.
+                    gs_output-cpg = gs_output-cpg + ls_prcd-kwert.
+                ENDCASE.
+              ENDLOOP.
+*EOC--UJWAL--08.10.2026
+            ENDIF.
+
+
+
+
+
+
+
+
+
+*BOC--UJWAL--08.10.2026  Calculations per billing document row
+            DATA: lv_actual_freight TYPE p DECIMALS 2.
+            CLEAR: lv_actual_freight, gs_output-net_contribution,
+                   gs_output-percent_net, gs_output-plan_frt_var.
+
+            IF gs_output-shipment_freight IS NOT INITIAL.
+              lv_actual_freight = gs_output-shipment_freight.
+            ELSE.
+              lv_actual_freight = gs_output-ship_cost_frt.
+            ENDIF.
+
+            gs_output-net_contribution = gs_output-sales_price
+                                       - ( lv_actual_freight + gs_output-cogs + gs_output-cpg ).
+            IF gs_output-sales_price IS NOT INITIAL.
+              gs_output-percent_net = ( gs_output-net_contribution / gs_output-sales_price ) * 100.
+            ENDIF.
+            gs_output-plan_frt_var = gs_output-planned_freight - lv_actual_freight.
+*EOC--UJWAL--08.10.2026
+
+
+
+
+
