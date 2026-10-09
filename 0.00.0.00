@@ -326,3 +326,55 @@ DATA: gt_del_sales TYPE SORTED TABLE OF ty_del_sales WITH UNIQUE KEY tknum vbeln
 
 
 
+
+
+
+
+
+
+
+
+*BOC--CODE ADDED--UJWAL--09.10.2026 - restrict label logic to plant/order type (TVARVC)
+  DATA: lv_uk_label TYPE abap_bool,
+        lt_uk_var   TYPE STANDARD TABLE OF tvarvc,
+        lr_uk_werks TYPE RANGE OF werks_d,
+        lr_uk_auart TYPE RANGE OF aufart.
+
+  CLEAR: lv_uk_label, lt_uk_var, lr_uk_werks, lr_uk_auart.
+
+  IF lv_aufnr IS NOT INITIAL.
+    SELECT SINGLE werks, auart FROM aufk INTO @DATA(ls_uk_aufk)
+      WHERE aufnr = @lv_aufnr.
+    IF sy-subrc = 0.
+      SELECT * FROM tvarvc INTO TABLE @lt_uk_var
+        WHERE name IN ( 'ZPP_UK_LABEL_WERKS', 'ZPP_UK_LABEL_AUART' )
+          AND type = 'S'.
+
+      LOOP AT lt_uk_var INTO DATA(ls_uk_var)
+           WHERE sign IS NOT INITIAL
+             AND opti IS NOT INITIAL.
+        CASE ls_uk_var-name.
+          WHEN 'ZPP_UK_LABEL_WERKS'.
+            APPEND VALUE #( sign   = ls_uk_var-sign
+                            option = ls_uk_var-opti
+                            low    = ls_uk_var-low
+                            high   = ls_uk_var-high ) TO lr_uk_werks.
+          WHEN 'ZPP_UK_LABEL_AUART'.
+            APPEND VALUE #( sign   = ls_uk_var-sign
+                            option = ls_uk_var-opti
+                            low    = ls_uk_var-low
+                            high   = ls_uk_var-high ) TO lr_uk_auart.
+        ENDCASE.
+      ENDLOOP.
+
+*     Both lists must have at least one include entry (empty = no match)
+      IF line_exists( lr_uk_werks[ sign = 'I' ] ) AND ls_uk_aufk-werks IN lr_uk_werks
+     AND line_exists( lr_uk_auart[ sign = 'I' ] ) AND ls_uk_aufk-auart IN lr_uk_auart.
+        lv_uk_label = abap_true.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+*EOC--CODE ADDED--UJWAL--09.10.2026
+
+
+
