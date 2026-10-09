@@ -378,3 +378,39 @@ DATA: gt_del_sales TYPE SORTED TABLE OF ty_del_sales WITH UNIQUE KEY tknum vbeln
 
 
 
+
+
+
+
+
+
+
+
+*BOC--CODE ADDED--UJWAL--09.10.2026 - restrict label logic to plant/order type (TVARVC)
+  DATA: lv_uk_label TYPE abap_bool,
+        lv_uk_low   TYPE tvarvc-low,
+        lv_uk_high  TYPE tvarvc-high.
+
+  CLEAR: lv_uk_label, lv_uk_low, lv_uk_high.
+
+  IF lv_aufnr IS NOT INITIAL.
+    SELECT SINGLE werks, auart FROM aufk INTO @DATA(ls_uk_aufk)
+      WHERE aufnr = @lv_aufnr.
+    IF sy-subrc = 0.
+      lv_uk_low  = ls_uk_aufk-werks.
+      lv_uk_high = ls_uk_aufk-auart.
+*     TVARVC: LOW = plant, HIGH = order type (one row per combination)
+      SELECT SINGLE low FROM tvarvc INTO @DATA(lv_uk_dummy)
+        WHERE name = 'ZPP_UK_LABEL_PLNT_AUART'
+          AND type = 'S'
+          AND sign = 'I'
+          AND low  = @lv_uk_low
+          AND high = @lv_uk_high.
+      IF sy-subrc = 0.
+        lv_uk_label = abap_true.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+*EOC--CODE ADDED--UJWAL--09.10.2026
+
+
