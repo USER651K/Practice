@@ -1,4 +1,4 @@
-        lv_low      TYPE tvarvc-low,
+yr        lv_low      TYPE tvarvc-low,
         lv_high     TYPE tvarvc-high,
         lv_tz_plant TYPE abap_bool,
         lv_mhdhb    TYPE mara-mhdhb.
@@ -413,4 +413,19 @@ DATA: gt_del_sales TYPE SORTED TABLE OF ty_del_sales WITH UNIQUE KEY tknum vbeln
   ENDIF.
 *EOC--CODE ADDED--UJWAL--09.10.2026
 
+
+
+
+
+
+
+
+
+
+
+SELECT SINGLE t001~butxt
+  FROM ekko
+  INNER JOIN t001 ON t001~bukrs = ekko~bukrs
+  INTO gv_butxt
+  WHERE ekko~ebeln = gs_head-ebeln.
 
