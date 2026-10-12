@@ -1,4 +1,4 @@
-yr        lv_low      TYPE tvarvc-low,
+8yr        lv_low      TYPE tvarvc-low,
         lv_high     TYPE tvarvc-high,
         lv_tz_plant TYPE abap_bool,
         lv_mhdhb    TYPE mara-mhdhb.
@@ -428,4 +428,105 @@ SELECT SINGLE t001~butxt
   INNER JOIN t001 ON t001~bukrs = ekko~bukrs
   INTO gv_butxt
   WHERE ekko~ebeln = gs_head-ebeln.
+
+
+
+
+
+
+
+
+
+
+
+
+
+*BOC-----------------------------------------------------------
+* Pick sheet exclusion - TVARVC ZEWM_PICK_EXCL
+* LOW = plant (LIPS-WERKS), HIGH = PO type (EKKO-BSART)
+TYPES: BEGIN OF lty_excl,
+         low  TYPE tvarvc-low,
+         high TYPE tvarvc-high,
+       END OF lty_excl,
+       BEGIN OF lty_lips,
+         vgbel TYPE lips-vgbel,
+         werks TYPE lips-werks,
+       END OF lty_lips.
+
+DATA: lt_excl     TYPE STANDARD TABLE OF lty_excl,
+      ls_excl     TYPE lty_excl,
+      lt_lips     TYPE STANDARD TABLE OF lty_lips,
+      ls_lips     TYPE lty_lips,
+      lv_bsart    TYPE ekko-bsart,
+      lv_dl_vbeln TYPE lips-vbeln.
+*EOC-----------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+*BOC-----------------------------------------------------------
+"--- Exclusion: no pick sheet for PO type ZUKL + plant 3050 ---
+* TVARVC: LOW = plant, HIGH = PO document type
+CLEAR lt_excl.
+SELECT low high FROM tvarvc
+  INTO TABLE lt_excl
+  WHERE name = 'ZEWM_PICK_EXCL'
+    AND type = 'S'
+    AND sign = 'I'.
+
+IF lt_excl IS NOT INITIAL AND lv_doc_c IS NOT INITIAL.
+
+* Delivery number -> internal format
+  CLEAR lv_dl_vbeln.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = lv_doc_c
+    IMPORTING
+      output = lv_dl_vbeln.
+
+* LIPS: reference document (PO) and plant per item
+  CLEAR lt_lips.
+  SELECT vgbel werks FROM lips
+    INTO TABLE lt_lips
+    WHERE vbeln = lv_dl_vbeln.
+  SORT lt_lips BY vgbel werks.
+  DELETE ADJACENT DUPLICATES FROM lt_lips COMPARING vgbel werks.
+
+  LOOP AT lt_lips INTO ls_lips.
+    IF ls_lips-vgbel IS INITIAL.
+      CONTINUE.
+    ENDIF.
+
+*   Plant must be maintained in TVARVC-LOW
+    READ TABLE lt_excl TRANSPORTING NO FIELDS
+      WITH KEY low = ls_lips-werks.
+    IF sy-subrc <> 0.
+      CONTINUE.
+    ENDIF.
+
+*   EKKO: PO document type
+    CLEAR lv_bsart.
+    SELECT SINGLE bsart FROM ekko
+      INTO lv_bsart
+      WHERE ebeln = ls_lips-vgbel.
+    IF sy-subrc <> 0.
+      CONTINUE.            "VGBEL is not a PO - not excluded
+    ENDIF.
+
+*   Plant (LOW) + PO type (HIGH) pair maintained -> no pick sheet
+    READ TABLE lt_excl TRANSPORTING NO FIELDS
+      WITH KEY low  = ls_lips-werks
+               high = lv_bsart.
+    IF sy-subrc = 0.
+      RAISE no_data.
+    ENDIF.
+  ENDLOOP.
+ENDIF.
+*EOC-----------------------------------------------------------
 
