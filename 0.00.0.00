@@ -530,3 +530,39 @@ IF lt_excl IS NOT INITIAL AND lv_doc_c IS NOT INITIAL.
 ENDIF.
 *EOC-----------------------------------------------------------
 
+
+
+
+
+
+
+
+
+
+
+
+
+Thanks for the feedback on the pick sheet. Below is how it currently behaves, what will change, and two points I need you to confirm.
+
+Current behaviour
+- Target Qty and UoM are printed in the warehouse task base unit (KG). Example: an SO line of 50 BAG (20 KG/bag) prints as 1000 KG.
+- Weight is printed from /SCWM/ORDIM_O-WEIGHT / UNIT_W, as per the field mapping shared by Dharma. This field is the gross (loading) weight, including packaging.
+
+Change 1 – UoM as per SO
+As per the mapping shared by Dharma, UoM should come from the delivery item (/SCDL/DB_PROCI_O-UOM), which carries the SO unit. During the build, the warehouse task to delivery item link was not available for HU-based picks, so the base unit was used. That link is now available, and I will change Qty/UoM to print in the SO unit (e.g. 50 BAG).
+
+Please confirm: the pick sheet prints one row per HU/pallet. If one delivery item is picked from more than one HU, should each row show
+ a) the quantity to pick from that HU, in the SO unit (e.g. 30 BAG + 20 BAG), or
+ b) the total delivery item quantity (50 BAG on each row)?
+I recommend option (a), because option (b) would repeat the item total on every row.
+
+Change 2 – Net weight
+As this is a change to the weight mapping shared earlier (gross from ORDIM_O), I will calculate net weight as material net weight (MARA-NTGEW) x pick quantity. The footer total will also show net weight. Could you please:
+ - confirm this logic,
+ - confirm that net weight is maintained in the material master for these materials, and
+ - get the FSD weight mapping updated, so that testing matches the build.
+
+Once I have your confirmation, I will complete the change in DEV and share the test print.
+
+Thanks & Regards,
+
