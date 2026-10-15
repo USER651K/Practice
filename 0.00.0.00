@@ -828,3 +828,33 @@ ENDIF.
 
 
 
+
+
+
+
+
+  "--- Qty as per WT (VSOLM), UoM as per SO (VBAP-VRKME) --------
+*BOC-code changes--ujwal--15.10.2026.
+  lv_qty_sales = ls_wt-vsolm.               "quantity always from WT
+  lv_uom_out   = ls_wt-meins.               "default UoM: WT unit
+
+  IF ls_item-itemno IS NOT INITIAL.
+    lv_posnr = ls_item-itemno.              "EWM item -> LIPS-POSNR
+    READ TABLE lt_lips_uom INTO ls_lips_uom
+      WITH TABLE KEY posnr = lv_posnr.
+    IF sy-subrc = 0 AND ls_lips_uom-vgbel IS NOT INITIAL.
+      READ TABLE lt_vbap INTO ls_vbap
+        WITH TABLE KEY vbeln = ls_lips_uom-vgbel
+                       posnr = ls_lips_uom-vgpos.
+      IF sy-subrc = 0 AND ls_vbap-vrkme IS NOT INITIAL.
+        lv_uom_out = ls_vbap-vrkme.         "UoM from sales order
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+  CLEAR lv_qty_c.
+  WRITE lv_qty_sales TO lv_qty_c LEFT-JUSTIFIED NO-GROUPING DECIMALS 3.
+  CONDENSE lv_qty_c NO-GAPS.
+  ls_itm-target_qty = lv_qty_c.
+  ls_itm-uom        = lv_uom_out.
+*EOC-code changes--ujwal--15.10.2026.
