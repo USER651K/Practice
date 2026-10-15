@@ -566,3 +566,265 @@ Once I have your confirmation, I will complete the change in DEV and share the t
 
 Thanks & Regards,
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*BOC-code changes--ujwal--15.10.2026.
+* Qty/UoM as per SO (VBAP-VRKME) and net weight (MARA-NTGEW)
+TYPES: BEGIN OF lty_lips_uom,
+         posnr TYPE lips-posnr,
+         matnr TYPE lips-matnr,
+         meins TYPE lips-meins,
+         vgbel TYPE lips-vgbel,
+         vgpos TYPE lips-vgpos,
+       END OF lty_lips_uom,
+       BEGIN OF lty_vbap,
+         vbeln TYPE vbap-vbeln,
+         posnr TYPE vbap-posnr,
+         vrkme TYPE vbap-vrkme,
+       END OF lty_vbap,
+       BEGIN OF lty_mara,
+         matnr TYPE mara-matnr,
+         meins TYPE mara-meins,
+         ntgew TYPE mara-ntgew,
+         gewei TYPE mara-gewei,
+       END OF lty_mara.
+
+DATA: lt_lips_uom  TYPE SORTED TABLE OF lty_lips_uom WITH UNIQUE KEY posnr,
+      ls_lips_uom  TYPE lty_lips_uom,
+      lt_vbap      TYPE SORTED TABLE OF lty_vbap WITH UNIQUE KEY vbeln posnr,
+      ls_vbap      TYPE lty_vbap,
+      lt_mara      TYPE SORTED TABLE OF lty_mara WITH UNIQUE KEY matnr,
+      ls_mara      TYPE lty_mara,
+      lv_posnr     TYPE lips-posnr,
+      lv_dlv_no    TYPE lips-vbeln,
+      lv_qty_sales TYPE p DECIMALS 3,
+      lv_uom_out   TYPE meins,
+      lv_net_wt    TYPE p DECIMALS 3,
+      lv_net_kg    TYPE p DECIMALS 3,
+      lv_wgt_unit  TYPE gewei,
+      lv_tot_unit  TYPE gewei.
+*EOC-code changes--ujwal--15.10.2026.
+
+
+
+
+
+
+
+
+
+DATA: lv_who_c           TYPE char20,
+*BOC-code changes--ujwal--15.10.2026.
+* DECIMALS 3 - avoid rounding of MT total (2.030 vs 2.032)
+      lv_total_weight_mt TYPE p DECIMALS 3,
+*EOC-code changes--ujwal--15.10.2026.
+      lv_doc_c           TYPE char20.
+
+
+
+
+
+
+*BOC-code changes--ujwal--15.10.2026.
+"--- Delivery items: SO reference, SO unit, net weight basis ----
+CLEAR: lt_lips_uom, lt_vbap, lt_mara, lv_dlv_no.
+IF lv_doc_c IS NOT INITIAL.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = lv_doc_c
+    IMPORTING
+      output = lv_dlv_no.
+
+  SELECT posnr matnr meins vgbel vgpos FROM lips
+    INTO CORRESPONDING FIELDS OF TABLE lt_lips_uom
+    WHERE vbeln = lv_dlv_no.
+
+  IF lt_lips_uom IS NOT INITIAL.
+*   SO unit as per sales order item
+    SELECT vbeln posnr vrkme FROM vbap
+      INTO CORRESPONDING FIELDS OF TABLE lt_vbap
+      FOR ALL ENTRIES IN lt_lips_uom
+      WHERE vbeln = lt_lips_uom-vgbel
+        AND posnr = lt_lips_uom-vgpos.
+
+*   Net weight per base unit
+    SELECT matnr meins ntgew gewei FROM mara
+      INTO CORRESPONDING FIELDS OF TABLE lt_mara
+      FOR ALL ENTRIES IN lt_lips_uom
+      WHERE matnr = lt_lips_uom-matnr.
+  ENDIF.
+ENDIF.
+*EOC-code changes--ujwal--15.10.2026.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DATA: lv_total_weight TYPE p DECIMALS 3.
+
+*BOC-code changes--ujwal--15.10.2026.
+CLEAR: lv_total_weight, lv_tot_unit.
+*EOC-code changes--ujwal--15.10.2026.
+
+
+
+
+
+
+
+
+
+*BOC-code changes--ujwal--15.10.2026.
+  CLEAR: ls_lips_uom, ls_vbap, ls_mara, lv_posnr, lv_qty_sales,
+         lv_uom_out, lv_net_wt, lv_net_kg, lv_wgt_unit.
+
+  "--- Qty in SO unit (VBAP-VRKME) -------------------------------
+  lv_qty_sales = ls_wt-vsolm.               "default: WT unit
+  lv_uom_out   = ls_wt-meins.
+
+  IF ls_item-itemno IS NOT INITIAL.
+    lv_posnr = ls_item-itemno.              "EWM item -> LIPS-POSNR
+    READ TABLE lt_lips_uom INTO ls_lips_uom
+      WITH TABLE KEY posnr = lv_posnr.
+    IF sy-subrc = 0 AND ls_lips_uom-vgbel IS NOT INITIAL.
+      READ TABLE lt_vbap INTO ls_vbap
+        WITH TABLE KEY vbeln = ls_lips_uom-vgbel
+                       posnr = ls_lips_uom-vgpos.
+      IF sy-subrc = 0 AND ls_vbap-vrkme IS NOT INITIAL.
+        IF ls_vbap-vrkme = ls_wt-meins.
+*         Same unit as SO - no conversion
+          lv_uom_out = ls_vbap-vrkme.
+        ELSE.
+*         Not equal - convert pick qty from WT unit to SO unit
+          CLEAR: lv_menge_in, lv_bag_qty.
+          lv_menge_in = ls_wt-vsolm.
+          CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+            EXPORTING
+              i_matnr              = ls_lips_uom-matnr
+              i_in_me              = ls_wt-meins
+              i_out_me             = ls_vbap-vrkme
+              i_menge              = lv_menge_in
+            IMPORTING
+              e_menge              = lv_bag_qty
+            EXCEPTIONS
+              error_in_application = 1
+              error                = 2
+              OTHERS               = 3.
+          IF sy-subrc = 0.
+            lv_qty_sales = lv_bag_qty.
+            lv_uom_out   = ls_vbap-vrkme.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+  CLEAR lv_qty_c.
+  WRITE lv_qty_sales TO lv_qty_c UNIT lv_uom_out
+        LEFT-JUSTIFIED NO-GROUPING.
+  CONDENSE lv_qty_c NO-GAPS.
+  ls_itm-target_qty = lv_qty_c.
+  ls_itm-uom        = lv_uom_out.
+
+  "--- Net weight = pick qty (base unit) x MARA-NTGEW ------------
+  IF ls_lips_uom-matnr IS NOT INITIAL.
+    READ TABLE lt_mara INTO ls_mara
+      WITH TABLE KEY matnr = ls_lips_uom-matnr.
+  ENDIF.
+  IF ls_mara-matnr IS INITIAL AND ls_mat_global-matnr IS NOT INITIAL.
+    SELECT SINGLE matnr meins ntgew gewei FROM mara
+      INTO CORRESPONDING FIELDS OF ls_mara
+      WHERE matnr = ls_mat_global-matnr.
+  ENDIF.
+
+  IF ls_mara-ntgew > 0 AND ls_mara-meins = ls_wt-meins.
+    lv_net_wt   = ls_wt-vsolm * ls_mara-ntgew.
+    lv_wgt_unit = ls_mara-gewei.
+  ELSE.
+*   Net weight not maintained - fall back to WT loading weight
+    lv_net_wt   = ls_wt-weight.
+    lv_wgt_unit = ls_wt-unit_w.
+  ENDIF.
+
+* Normalise to KG (e.g. NTGEW maintained in TO/MT)
+  IF lv_wgt_unit IS NOT INITIAL AND lv_wgt_unit <> 'KG'.
+    CALL FUNCTION 'UNIT_CONVERSION_SIMPLE'
+      EXPORTING
+        input    = lv_net_wt
+        unit_in  = lv_wgt_unit
+        unit_out = 'KG'
+      IMPORTING
+        output   = lv_net_kg
+      EXCEPTIONS
+        OTHERS   = 1.
+    IF sy-subrc = 0.
+      lv_net_wt   = lv_net_kg.
+      lv_wgt_unit = 'KG'.
+    ENDIF.
+  ENDIF.
+
+  CLEAR: lv_wgt_c, lv_mt_c, lv_wgt_mt.
+  WRITE lv_net_wt TO lv_wgt_c LEFT-JUSTIFIED NO-GROUPING DECIMALS 0.
+  CONDENSE lv_wgt_c NO-GAPS.
+
+  IF lv_wgt_unit = 'KG'.
+    lv_wgt_mt = lv_net_wt / 1000.
+    WRITE lv_wgt_mt TO lv_mt_c LEFT-JUSTIFIED NO-GROUPING DECIMALS 3.
+    CONDENSE lv_mt_c NO-GAPS.
+    CONCATENATE lv_wgt_c lv_wgt_unit '(' lv_mt_c 'MT)'
+      INTO ls_itm-weight SEPARATED BY space.
+    lv_total_weight_mt = lv_total_weight_mt + lv_wgt_mt.
+  ELSE.
+    CONCATENATE lv_wgt_c lv_wgt_unit
+      INTO ls_itm-weight SEPARATED BY space.
+  ENDIF.
+
+  lv_total_weight = lv_total_weight + lv_net_wt.
+  lv_tot_unit     = lv_wgt_unit.
+*EOC-code changes--ujwal--15.10.2026.
+
+
+
+
+
+
+
+
+
+
+IF lv_total_weight_mt > 0.
+  WRITE lv_total_weight_mt TO lv_mt_c LEFT-JUSTIFIED NO-GROUPING DECIMALS 3.
+  CONDENSE lv_mt_c NO-GAPS.
+*BOC-code changes--ujwal--15.10.2026.
+  CONCATENATE lv_wgt_c lv_tot_unit '(' lv_mt_c 'MT)'
+    INTO lv_tot_weight SEPARATED BY space.
+ELSE.
+  CONCATENATE lv_wgt_c lv_tot_unit INTO lv_tot_weight SEPARATED BY space.
+*EOC-code changes--ujwal--15.10.2026.
+ENDIF.
+
+
+
+
