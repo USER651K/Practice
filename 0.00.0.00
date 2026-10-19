@@ -1,4 +1,42 @@
 *BOC-code changes--ujwal--19.10.2026.
+* Build address lines without gaps for empty fields
+CLEAR: is_header-addr_line1, is_header-addr_line2, is_header-addr_line3.
+
+* Line 1: street supplement 3, street, supplement 2
+CONCATENATE ls_st_adrc-str_suppl3 ls_st_adrc-street ls_st_adrc-str_suppl2
+  INTO is_header-addr_line1 SEPARATED BY space.
+CONDENSE is_header-addr_line1.
+
+* Line 2: city, post code
+CONCATENATE ls_st_adrc-city1 ls_st_adrc-post_code1
+  INTO is_header-addr_line2 SEPARATED BY space.
+CONDENSE is_header-addr_line2.
+
+* Line 3: region, country
+CONCATENATE lv_region_txt lv_country_txt
+  INTO is_header-addr_line3 SEPARATED BY ', '.
+SHIFT is_header-addr_line3 LEFT DELETING LEADING ', '.
+IF lv_region_txt IS INITIAL OR lv_country_txt IS INITIAL.
+  REPLACE ALL OCCURRENCES OF ', ' IN is_header-addr_line3 WITH ''.
+ENDIF.
+CONDENSE is_header-addr_line3.
+*EOC-code changes--ujwal--19.10.2026.
+
+
+
+
+&IS_HEADER-ADDR_LINE1&
+&IS_HEADER-ADDR_LINE2&
+&IS_HEADER-ADDR_LINE3&
+
+
+
+
+
+
+
+
+*BOC-code changes--ujwal--19.10.2026.
 * Ship-To name / address from SO ship-to partner (VBPA-WE)
 DATA: lv_so_vbeln    TYPE vbpa-vbeln,
       lv_shipto      TYPE vbpa-kunnr,
