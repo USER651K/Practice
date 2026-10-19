@@ -1,3 +1,140 @@
+*BOC-code changes--ujwal--19.10.2026.
+* Ship-To name / address from SO ship-to partner (VBPA-WE)
+DATA: lv_so_vbeln    TYPE vbpa-vbeln,
+      lv_shipto      TYPE vbpa-kunnr,
+      lv_st_name1    TYPE kna1-name1,
+      lv_st_name2    TYPE kna1-name2,
+      lv_st_adrnr    TYPE kna1-adrnr,
+      ls_st_adrc     TYPE adrc,
+      lv_region_txt  TYPE t005u-bezei,
+      lv_country_txt TYPE t005t-landx50.
+*EOC-code changes--ujwal--19.10.2026.
+
+
+
+
+
+
+*BOC-code changes--ujwal--19.10.2026.
+"--- Ship-To name and address (SO ship-to partner) -------------
+CLEAR: lv_so_vbeln, lv_shipto, lv_st_name1, lv_st_name2,
+       lv_st_adrnr, ls_st_adrc, lv_region_txt, lv_country_txt.
+
+IF lv_so IS NOT INITIAL.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = lv_so
+    IMPORTING
+      output = lv_so_vbeln.
+
+* Ship-to party - header level
+  SELECT SINGLE kunnr FROM vbpa
+    INTO lv_shipto
+    WHERE vbeln = lv_so_vbeln
+      AND posnr = '000000'
+      AND parvw = 'WE'.
+  IF sy-subrc <> 0.
+*   Fallback - item level ship-to
+    SELECT kunnr FROM vbpa
+      INTO lv_shipto
+      UP TO 1 ROWS
+      WHERE vbeln = lv_so_vbeln
+        AND parvw = 'WE'
+      ORDER BY posnr.
+    ENDSELECT.
+  ENDIF.
+
+  IF lv_shipto IS NOT INITIAL.
+*   Ship-to name and address number
+    SELECT SINGLE name1 name2 adrnr FROM kna1
+      INTO (lv_st_name1, lv_st_name2, lv_st_adrnr)
+      WHERE kunnr = lv_shipto.
+
+    IF sy-subrc = 0 AND lv_st_adrnr IS NOT INITIAL.
+*     Address
+      SELECT SINGLE * FROM adrc
+        INTO ls_st_adrc
+        WHERE addrnumber = lv_st_adrnr
+          AND date_from <= sy-datum
+          AND nation     = space.
+
+*     Country text
+      IF ls_st_adrc-country IS NOT INITIAL.
+        SELECT SINGLE landx50 FROM t005t
+          INTO lv_country_txt
+          WHERE spras = lv_langu
+            AND land1 = ls_st_adrc-country.
+        IF sy-subrc <> 0.
+          lv_country_txt = ls_st_adrc-country.   "fallback: code
+        ENDIF.
+
+*       Region text
+        IF ls_st_adrc-region IS NOT INITIAL.
+          SELECT SINGLE bezei FROM t005u
+            INTO lv_region_txt
+            WHERE spras = lv_langu
+              AND land1 = ls_st_adrc-country
+              AND bland = ls_st_adrc-region.
+          IF sy-subrc <> 0.
+            lv_region_txt = ls_st_adrc-region.   "fallback: code
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+ENDIF.
+*EOC-code changes--ujwal--19.10.2026.
+
+
+
+
+*BOC-code changes--ujwal--19.10.2026.
+is_header-shipto_name     = lv_st_name1.
+is_header-shipto_name2    = lv_st_name2.
+is_header-addr_str_suppl3 = ls_st_adrc-str_suppl3.
+is_header-addr_street     = ls_st_adrc-street.
+is_header-addr_str_suppl2 = ls_st_adrc-str_suppl2.
+is_header-addr_city1      = ls_st_adrc-city1.
+is_header-addr_post_code1 = ls_st_adrc-post_code1.
+is_header-addr_region     = lv_region_txt.
+is_header-addr_country    = lv_country_txt.
+*EOC-code changes--ujwal--19.10.2026.
+
+
+
+
+
+
+
+Ship-To:  &IS_HEADER-SHIPTO_NAME& &IS_HEADER-SHIPTO_NAME2&
+Address:  &IS_HEADER-ADDR_STR_SUPPL3& &IS_HEADER-ADDR_STREET&
+          &IS_HEADER-ADDR_STR_SUPPL2&
+          &IS_HEADER-ADDR_CITY1& &IS_HEADER-ADDR_POST_CODE1&
+          &IS_HEADER-ADDR_REGION& &IS_HEADER-ADDR_COUNTRY&
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 8yr        lv_low      TYPE tvarvc-low,
         lv_high     TYPE tvarvc-high,
         lv_tz_plant TYPE abap_bool,
