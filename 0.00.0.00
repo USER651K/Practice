@@ -1,3 +1,52 @@
+*BOC-code changes--ujwal--21.10.2026.
+* Print only if a task of this WO goes to an allowed
+* destination storage type (custom table ZEWM_PWO_SPOOLALLOW)
+TYPES: BEGIN OF lty_spool,
+         lgnum TYPE zewm_pwo_spoolallow-lgnum,
+         nltyp TYPE zewm_pwo_spoolallow-nltyp,
+       END OF lty_spool.
+
+DATA: lt_spool TYPE SORTED TABLE OF lty_spool
+                 WITH UNIQUE KEY lgnum nltyp,
+      lv_allow TYPE abap_bool.
+
+SELECT lgnum nltyp FROM zewm_pwo_spoolallow
+  INTO TABLE lt_spool.
+
+* Table not maintained - no restriction (print as before)
+IF lt_spool IS NOT INITIAL.
+  lv_allow = abap_false.
+  LOOP AT lt_wt INTO ls_wt.
+    READ TABLE lt_spool TRANSPORTING NO FIELDS
+      WITH TABLE KEY lgnum = ls_wt-lgnum
+                     nltyp = ls_wt-nltyp.
+    IF sy-subrc = 0.
+      lv_allow = abap_true.
+      EXIT.
+    ENDIF.
+  ENDLOOP.
+
+  IF lv_allow = abap_false.
+*   No task to an allowed storage type - no pick sheet, no spool
+    RAISE no_data.
+  ENDIF.
+ENDIF.
+*EOC-code changes--ujwal--21.10.2026.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 *BOC-code changes--ujwal--19.10.2026.
 * Build address lines without gaps for empty fields
 CLEAR: is_header-addr_line1, is_header-addr_line2, is_header-addr_line3.
