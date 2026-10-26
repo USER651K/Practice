@@ -1,3 +1,127 @@
+*BOC-code changes--ujwal--26.10.2026.
+DATA: lv_ref_vbeln TYPE vbap-vbeln,
+      lv_ref_posnr TYPE vbap-posnr,
+      lv_item_c    TYPE char10.
+*EOC-code changes--ujwal--26.10.2026.
+
+
+
+*BOC-code changes--ujwal--26.10.2026.
+SELECT docid itemid itemno productno batchno
+       refdocno_so refitemno_so
+  FROM /scdl/db_proci_o
+  INTO CORRESPONDING FIELDS OF TABLE lt_item
+  WHERE docid = lv_docid.
+*EOC-code changes--ujwal--26.10.2026.
+
+
+
+*BOC-code changes--ujwal--26.10.2026.
+*   All SO items of the delivery's sales order
+    IF lv_so_vbeln IS NOT INITIAL.
+      SELECT vbeln posnr vrkme FROM vbap
+        INTO CORRESPONDING FIELDS OF TABLE lt_vbap
+        WHERE vbeln = lv_so_vbeln.
+    ENDIF.
+*EOC-code changes--ujwal--26.10.2026.
+
+
+
+
+*BOC-code changes--ujwal--26.10.2026.
+* Item No as per sales order (fallback: EWM item no, e.g. STO)
+      CLEAR lv_item_c.
+      IF ls_item-refitemno_so IS NOT INITIAL.
+        lv_item_c = ls_item-refitemno_so.
+      ELSE.
+        lv_item_c = ls_item-itemno.
+      ENDIF.
+      SHIFT lv_item_c LEFT DELETING LEADING '0'.
+      ls_itm-item_no = lv_item_c.
+*EOC-code changes--ujwal--26.10.2026.
+
+
+
+
+
+*BOC-code changes--ujwal--26.10.2026.
+* SO item from EWM delivery item reference (REFDOCNO_SO / REFITEMNO_SO)
+  CLEAR: ls_vbap, lv_ref_vbeln, lv_ref_posnr.
+  IF ls_item-refdocno_so IS NOT INITIAL
+     AND ls_item-refitemno_so IS NOT INITIAL.
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+      EXPORTING
+        input  = ls_item-refdocno_so
+      IMPORTING
+        output = lv_ref_vbeln.
+    lv_ref_posnr = ls_item-refitemno_so.        "0000000030 -> 000030
+
+    READ TABLE lt_vbap INTO ls_vbap
+      WITH TABLE KEY vbeln = lv_ref_vbeln
+                     posnr = lv_ref_posnr.
+    IF sy-subrc = 0 AND ls_vbap-vrkme IS NOT INITIAL.
+      IF ls_vbap-vrkme = ls_wt-meins.
+*       Same unit as SO - no conversion
+        lv_uom_out = ls_vbap-vrkme.
+      ELSE.
+*       Convert pick qty from WT unit to SO unit
+        CLEAR: lv_menge_in, lv_bag_qty.
+        lv_menge_in = ls_wt-vsolm.
+        CALL FUNCTION 'MD_CONVERT_MATERIAL_UNIT'
+          EXPORTING
+            i_matnr              = ls_mat_global-matnr
+            i_in_me              = ls_wt-meins
+            i_out_me             = ls_vbap-vrkme
+            i_menge              = lv_menge_in
+          IMPORTING
+            e_menge              = lv_bag_qty
+          EXCEPTIONS
+            error_in_application = 1
+            error                = 2
+            OTHERS               = 3.
+        IF sy-subrc = 0.
+          lv_qty_sales = lv_bag_qty.
+          lv_uom_out   = ls_vbap-vrkme.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+*EOC-code changes--ujwal--26.10.2026.
+
+
+
+
+
+
+*BOC-code changes--ujwal--26.10.2026.
+  IF ls_mat_global-matnr IS NOT INITIAL.
+    READ TABLE lt_mara INTO ls_mara
+      WITH TABLE KEY matnr = ls_mat_global-matnr.
+  ENDIF.
+*EOC-code changes--ujwal--26.10.2026.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 *BOC-code changes--ujwal--21.10.2026.
 * Print only if a task of this WO goes to an allowed
 * destination storage type (custom table ZEWM_PWO_SPOOLALLOW)
