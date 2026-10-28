@@ -9,6 +9,211 @@
 
 
 
+
+
+         plan_frt_var      TYPE p LENGTH 15 DECIMALS 2, "Planned Freight Variance
+*BOC--UJWAL--28.10.2026  Technical keys (not displayed in ALV)
+         deliv_item        TYPE lips-posnr,              "Delivery item
+         bill_item         TYPE vbrp-posnr,              "Billing item
+*EOC--UJWAL--28.10.2026
+       END OF ty_output.
+
+
+
+
+
+
+*BOC--UJWAL--28.10.2026 Invoice item net values
+TYPES: BEGIN OF ty_vbrp,
+         vbeln TYPE vbrp-vbeln,
+         posnr TYPE vbrp-posnr,
+         netwr TYPE vbrp-netwr,
+       END OF ty_vbrp.
+DATA: gt_vbrp TYPE SORTED TABLE OF ty_vbrp WITH UNIQUE KEY vbeln posnr.
+*EOC--UJWAL--28.10.2026
+
+
+
+
+
+
+
+    SELECT knumv kposn kschl kbetr kwert          "kposn added UJWAL 28.10.2026
+      FROM prcd_elements
+      INTO TABLE gt_prcd
+      WHERE knumv IN lr_knumv
+        AND kschl IN ( ...unchanged... ).
+
+
+
+
+
+
+
+*BOC--UJWAL--28.10.2026
+    SELECT vbeln, posnr, netwr
+      FROM vbrp
+      WHERE vbeln IN @lr_vbeln_billing
+      INTO TABLE @gt_vbrp.
+*EOC--UJWAL--28.10.2026
+  ENDIF.
+
+
+
+
+
+
+
+*BOC--UJWAL--28.10.2026
+*--- Billing Document No. (Delivery to Billing) - Handle BOTH M and U types
+*--- One row per delivery item per billing document, item-level values
+      DATA: lt_del_billing     TYPE STANDARD TABLE OF ty_vbfa,
+            ls_del_bill        TYPE ty_vbfa,
+            ls_vbrk_bill       TYPE ty_vbrk,
+            ls_vbrp            TYPE ty_vbrp,
+            lv_del_sales       TYPE vbrp-netwr,
+            lv_del_frt_alloc   TYPE vttk-tndr_maxp,
+            lv_del_frt_vfkn    TYPE vfkp-netwr,
+            lv_actual_freight  TYPE p DECIMALS 2.
+
+      CLEAR: lt_del_billing, ls_del_bill, ls_vbrk_bill.
+
+*--- Delivery-level freight & delivery sales value (base for item split)
+      CLEAR: lv_del_sales, lv_del_frt_alloc, lv_del_frt_vfkn, ls_del.
+      lv_del_frt_alloc = gs_output-ship_cost_frt.       "TNDR_MAXP share of delivery
+      lv_del_frt_vfkn  = gs_output-shipment_freight.    "VFKN amount of delivery
+      IF gs_output-tknum IS NOT INITIAL.
+        READ TABLE gt_del_sales INTO ls_del
+             WITH TABLE KEY tknum = gs_output-tknum
+                            vbeln = ls_vbfa_j-vbeln.
+        IF sy-subrc = 0.
+          lv_del_sales = ls_del-netwr.
+        ENDIF.
+      ENDIF.
+
+*--- Collect all billing docs (M and U) for this delivery item
+      LOOP AT gt_vbfa_del_m INTO ls_del_bill
+        WHERE vbelv = ls_vbfa_j-vbeln
+          AND posnv = ls_vbfa_j-posnn.
+        APPEND ls_del_bill TO lt_del_billing.
+      ENDLOOP.
+
+      IF lt_del_billing IS INITIAL.
+*--- No billing exists - row is removed later (billing_doc initial)
+        CLEAR: gs_output-billing_doc, gs_output-invoice_date, gs_output-bill_item.
+        gs_output-deliv_item = ls_vbfa_j-posnn.                        "NEW
+        APPEND gs_output TO gt_output.
+      ELSE.
+*--- One row per billing document
+        LOOP AT lt_del_billing INTO ls_del_bill.
+          CLEAR: gs_output-billing_doc, gs_output-invoice_date.
+          gs_output-deliv_item = ls_vbfa_j-posnn.                      "NEW
+          gs_output-bill_item  = ls_del_bill-posnn.                    "NEW
+
+          "BOC SA 19/06/26
+          READ TABLE lt_chk INTO DATA(ls_chk) WITH KEY
+          vbeln = ls_del_bill-vbeln.
+          IF sy-subrc = 0.
+            gs_output-billing_doc = ls_del_bill-vbeln.
+          ENDIF.
+          "EOC SA 19/06/26
+
+*--- Clear invoice-level values; reset freight to delivery level
+          CLEAR: gs_output-sales_price, gs_output-stwae, gs_output-inco,
+                 gs_output-cpg, gs_output-planned_freight, gs_output-cogs,
+                 ls_vbrk_bill, ls_vbrp.
+          gs_output-ship_cost_frt    = lv_del_frt_alloc.
+          gs_output-shipment_freight = lv_del_frt_vfkn.
+
+          READ TABLE gt_vbrk INTO ls_vbrk_bill
+            WITH KEY vbeln = ls_del_bill-vbeln.
+          IF sy-subrc = 0.
+            gs_output-invoice_date = ls_vbrk_bill-fkdat.
+            gs_output-stwae        = ls_vbrk_bill-stwae.
+            gs_output-inco         = ls_vbrk_bill-inco1.
+
+*--- Sales price = this invoice item's net value
+            READ TABLE gt_vbrp INTO ls_vbrp
+                 WITH TABLE KEY vbeln = ls_del_bill-vbeln
+                                posnr = ls_del_bill-posnn.
+            gs_output-sales_price = ls_vbrp-netwr.
+
+*--- COGS / Planned freight / CPG = this invoice item's conditions
+            LOOP AT gt_prcd INTO ls_prcd
+                 WHERE knumv = ls_vbrk_bill-knumv
+                   AND kposn = ls_del_bill-posnn.
+              CASE ls_prcd-kschl.
+                WHEN 'ZFRT'.
+                  gs_output-planned_freight = gs_output-planned_freight + ls_prcd-kwert.
+                WHEN 'VPRS'.
+                  gs_output-cogs = gs_output-cogs + ls_prcd-kwert.
+                WHEN OTHERS.
+                  gs_output-cpg = gs_output-cpg + ls_prcd-kwert.
+              ENDCASE.
+            ENDLOOP.
+
+*--- Split delivery freight to this item by value share
+            IF lv_del_sales > 0.
+              gs_output-ship_cost_frt    = lv_del_frt_alloc * ls_vbrp-netwr / lv_del_sales.
+              gs_output-shipment_freight = lv_del_frt_vfkn  * ls_vbrp-netwr / lv_del_sales.
+            ENDIF.
+          ENDIF.
+
+*--- Calculations per row
+          CLEAR: lv_actual_freight, gs_output-net_contribution,
+                 gs_output-percent_net, gs_output-plan_frt_var.
+*         Actual freight = Shipment cost doc (VFKN), else allocated TNDR_MAXP
+          IF gs_output-shipment_freight IS NOT INITIAL.
+            lv_actual_freight = gs_output-shipment_freight.
+          ELSE.
+            lv_actual_freight = gs_output-ship_cost_frt.
+          ENDIF.
+*         Net Contribution = Sales Price - (Actual Freight + COGS + CPG)
+          gs_output-net_contribution = gs_output-sales_price
+                                     - ( lv_actual_freight + gs_output-cogs + gs_output-cpg ).
+          IF gs_output-sales_price IS NOT INITIAL.
+            gs_output-percent_net = ( gs_output-net_contribution / gs_output-sales_price ) * 100.
+          ENDIF.
+*         Planned Freight Variance = Planned Freight - Actual Freight
+          gs_output-plan_frt_var = gs_output-planned_freight - lv_actual_freight.
+
+          APPEND gs_output TO gt_output.
+        ENDLOOP.
+      ENDIF.
+*EOC--UJWAL--28.10.2026
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+BEGIN OF ty_prcd,
+         knumv TYPE prcd_elements-knumv,
+         kposn TYPE prcd_elements-kposn,          "Added UJWAL 28.10.2026
+         kschl TYPE prcd_elements-kschl,
+         kbetr TYPE prcd_elements-kbetr,
+         kwert type prcd_elements-kwert,
+       END OF ty_prcd,
+
+
+
+
 *BOC--UJWAL--28.10.2026 Invoice item net values
 TYPES: BEGIN OF ty_vbrp,
          vbeln TYPE vbrp-vbeln,
