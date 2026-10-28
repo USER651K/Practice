@@ -1,4 +1,55 @@
-    netid TYPE char1,
+TYPES: BEGIN OF ty_who,
+         who TYPE /scwm/ordim_o-who,
+       END OF ty_who.
+
+DATA: gt_who     TYPE STANDARD TABLE OF ty_who,
+      gs_who     TYPE ty_who,
+      gt_ordim_o TYPE /scwm/tt_ordim_o,
+      gt_ordim_c TYPE /scwm/tt_ordim_c.
+
+
+
+  PARAMETERS: p_lgnum TYPE /scwm/lgnum OBLIGATORY DEFAULT '3U01',
+              p_who   TYPE /scwm/ordim_o-who OBLIGATORY.
+
+
+
+
+
+FORM get_warehouse_orders.
+
+  DATA lv_who TYPE /scwm/ordim_o-who.
+
+  CLEAR gt_who.
+
+* Open tasks
+  SELECT SINGLE who FROM /scwm/ordim_o
+    INTO lv_who
+    WHERE lgnum = p_lgnum
+      AND who   = p_who.
+  IF sy-subrc <> 0.
+*   Confirmed tasks (reprint after confirmation)
+    SELECT SINGLE who FROM /scwm/ordim_c
+      INTO lv_who
+      WHERE lgnum = p_lgnum
+        AND who   = p_who.
+  ENDIF.
+
+  IF sy-subrc = 0.
+    gs_who-who = p_who.
+    APPEND gs_who TO gt_who.
+  ENDIF.
+
+ENDFORM.
+
+
+
+
+
+
+
+
+netid TYPE char1,
     sortf TYPE char10,
     ewahr TYPE char13,
     alpst TYPE char2,
