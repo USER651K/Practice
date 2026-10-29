@@ -1,4 +1,227 @@
-       BEGIN OF ty_prcd,
+       BEGIN OF ty_lips,
+         vbeln TYPE lips-vbeln,
+         posnr TYPE lips-posnr,
+         matnr TYPE lips-matnr,
+         arktx TYPE lips-arktx,
+         lfimg TYPE lips-lfimg,
+         vrkme TYPE lips-vrkme,
+*BOC--Ujwal--20.05.2026.
+         ntgew TYPE lips-ntgew,
+         gewei TYPE lips-gewei,
+*EOC--Ujwal--20.05.2026.
+*BOC--UJWAL--30.10.2026 Sales unit conversion factors
+         umvkz TYPE lips-umvkz,
+         umvkn TYPE lips-umvkn,
+*EOC--UJWAL--30.10.2026
+       END OF ty_lips,
+
+
+
+
+
+
+*BOC-------UJWAL---
+      TYPES: BEGIN OF ty_vfkn,
+        fknum TYPE vfkn-fknum,
+        rebel TYPE vfkn-rebel,
+        repos TYPE vfkn-repos,          "Ref. item - UJWAL 30.10.2026
+        netwr TYPE vfkn-netwr,
+      END OF ty_vfkn.
+*EOC-------UJWAL---
+
+
+
+
+
+
+*BOC--UJWAL--30.10.2026 Batch split sub-items
+TYPES: BEGIN OF ty_lips_sub,
+         vbeln TYPE lips-vbeln,
+         posnr TYPE lips-posnr,
+         uecha TYPE lips-uecha,
+         matnr TYPE lips-matnr,
+         lfimg TYPE lips-lfimg,
+         vrkme TYPE lips-vrkme,
+         lgmng TYPE lips-lgmng,
+         ntgew TYPE lips-ntgew,
+         gewei TYPE lips-gewei,
+       END OF ty_lips_sub.
+DATA: gt_lips_sub TYPE SORTED TABLE OF ty_lips_sub
+                  WITH NON-UNIQUE KEY vbeln uecha posnr.
+*EOC--UJWAL--30.10.2026
+
+
+
+
+  IF lr_vbeln_deliv IS NOT INITIAL.
+    SELECT vbeln, posnr, matnr, arktx, lfimg, vrkme, ntgew, gewei,
+           umvkz, umvkn                                   "UJWAL 30.10.2026
+      FROM lips
+      INTO TABLE @gt_lips
+      FOR ALL ENTRIES IN @gt_vbfa_j
+      WHERE vbeln = @gt_vbfa_j-vbeln
+      AND posnr = @gt_vbfa_j-posnn.
+  ENDIF.
+
+
+
+
+*BOC--UJWAL--30.10.2026  Batch split sub-items (UECHA = main item)
+  IF gt_lips IS NOT INITIAL.
+    SELECT vbeln, posnr, uecha, matnr, lfimg, vrkme, lgmng, ntgew, gewei
+      FROM lips
+      FOR ALL ENTRIES IN @gt_lips
+      WHERE vbeln = @gt_lips-vbeln
+        AND uecha = @gt_lips-posnr
+      INTO TABLE @gt_lips_sub.
+  ENDIF.
+*EOC--UJWAL--30.10.2026
+
+
+
+*BOC--UJWAL----------
+    SELECT fknum rebel repos netwr                       "repos added UJWAL 30.10.2026
+      FROM vfkn
+      INTO TABLE gt_vfkn
+     " WHERE rebel IN lr_vbeln_contract.
+      WHERE rebel IN lr_vbeln_deliv.
+*EOC--UJWAL----------
+
+
+
+
+
+
+*BOC--UJWAL--30.10.2026
+  DATA: ls_lips_sub   TYPE ty_lips_sub,
+        lv_sub_lgmng  TYPE lips-lgmng,
+        lv_sub_lfimg  TYPE lips-lfimg,
+        lv_sub_ntgew  TYPE lips-ntgew,
+        lv_has_sub    TYPE abap_bool,
+        lv_vfkn_hdr   TYPE vfkn-netwr,
+        lv_vfkn_doc   TYPE vfkn-fknum,
+        lv_vfkn_split TYPE abap_bool.
+*EOC--UJWAL--30.10.2026
+
+
+
+*BOC--UJWAL--30.10.2026  Batch split: qty & weight from sub-items
+          CLEAR: lv_sub_lgmng, lv_sub_lfimg, lv_sub_ntgew, lv_has_sub.
+          LOOP AT gt_lips_sub INTO ls_lips_sub
+               WHERE vbeln = ls_lips-vbeln
+                 AND uecha = ls_lips-posnr.
+            CHECK ls_lips_sub-matnr = ls_lips-matnr.   "only batches of same material
+            lv_has_sub   = abap_true.
+            lv_sub_lgmng = lv_sub_lgmng + ls_lips_sub-lgmng.          "base unit
+            IF ls_lips_sub-vrkme = ls_lips-vrkme.
+              lv_sub_lfimg = lv_sub_lfimg + ls_lips_sub-lfimg.        "fallback
+            ENDIF.
+            CASE ls_lips_sub-gewei.                                   "weight in KG
+              WHEN 'TO' OR 'TNE'.
+                lv_sub_ntgew = lv_sub_ntgew + ls_lips_sub-ntgew * 1000.
+              WHEN 'G'.
+                lv_sub_ntgew = lv_sub_ntgew + ls_lips_sub-ntgew / 1000.
+              WHEN OTHERS.
+                lv_sub_ntgew = lv_sub_ntgew + ls_lips_sub-ntgew.
+            ENDCASE.
+          ENDLOOP.
+
+          IF lv_has_sub = abap_true.
+            IF ls_lips-umvkz IS NOT INITIAL.
+*             Sales unit qty = base qty * UMVKN / UMVKZ
+              ls_lips-lfimg = lv_sub_lgmng * ls_lips-umvkn / ls_lips-umvkz.
+            ELSE.
+              ls_lips-lfimg = lv_sub_lfimg.
+            ENDIF.
+            ls_lips-ntgew = lv_sub_ntgew.
+            ls_lips-gewei = 'KG'.
+          ENDIF.
+*EOC--UJWAL--30.10.2026
+
+
+
+
+
+
+
+*BOC--UJWAL--30.10.2026  Shipment cost (VFKN) per delivery ITEM
+        CLEAR: lv_vfkn_hdr, lv_vfkn_doc, lv_vfkn_split.
+        LOOP AT gt_vfkn INTO ls_vfkn WHERE rebel = ls_vbfa_j-vbeln.
+          IF ls_vfkn-repos = ls_vbfa_j-posnn.
+*           Cost line for this item
+            gs_output-shipment_freight = gs_output-shipment_freight + ls_vfkn-netwr.
+            gs_output-ship_cost_doc    = ls_vfkn-fknum.
+          ELSEIF ls_vfkn-repos IS INITIAL.
+*           Cost line at delivery header level -> split by value later
+            lv_vfkn_hdr = lv_vfkn_hdr + ls_vfkn-netwr.
+            lv_vfkn_doc = ls_vfkn-fknum.
+          ELSE.
+*           Cost line on a batch sub-item of this item
+            READ TABLE gt_lips_sub TRANSPORTING NO FIELDS
+                 WITH KEY vbeln = ls_vfkn-rebel
+                          uecha = ls_vbfa_j-posnn
+                          posnr = ls_vfkn-repos.
+            IF sy-subrc = 0.
+              gs_output-shipment_freight = gs_output-shipment_freight + ls_vfkn-netwr.
+              gs_output-ship_cost_doc    = ls_vfkn-fknum.
+            ENDIF.
+          ENDIF.
+        ENDLOOP.
+        IF gs_output-shipment_freight IS INITIAL AND lv_vfkn_hdr IS NOT INITIAL.
+          gs_output-shipment_freight = lv_vfkn_hdr.
+          gs_output-ship_cost_doc    = lv_vfkn_doc.
+          lv_vfkn_split              = abap_true.
+        ENDIF.
+*EOC--UJWAL--30.10.2026
+
+
+
+
+
+
+
+
+            IF lv_del_sales > 0.
+              gs_output-ship_cost_frt = lv_del_frt_alloc * ls_vbrp-netwr / lv_del_sales.
+*BOC--UJWAL--30.10.2026  VFKN is item level; split only header-level cost
+              IF lv_vfkn_split = abap_true.
+                gs_output-shipment_freight = lv_del_frt_vfkn * ls_vbrp-netwr / lv_del_sales.
+              ENDIF.
+*EOC--UJWAL--30.10.2026
+            ENDIF.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+BEGIN OF ty_prcd,
          knumv TYPE prcd_elements-knumv,
          kposn TYPE prcd_elements-kposn,          "Added UJWAL 28.10.2026
          kschl TYPE prcd_elements-kschl,
