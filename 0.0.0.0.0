@@ -1,4 +1,86 @@
-       BEGIN OF ty_lips,
+*&---------------------------------------------------------------------*
+*& Form INSERT_FAILED_ORDER  (BA-5774)
+*&---------------------------------------------------------------------*
+FORM insert_failed_order USING iv_aufnr  TYPE clike
+                               iv_reason TYPE clike.
+  DATA ls_lock TYPE zpp_co02_lock.
+
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = iv_aufnr
+    IMPORTING
+      output = ls_lock-aufnr.
+  ls_lock-erdat   = sy-datum.
+  ls_lock-erzet   = sy-uzeit.
+  ls_lock-zreason = iv_reason.
+
+  MODIFY zpp_co02_lock FROM ls_lock.                  "#EC CI_IMUD_NESTED
+ENDFORM.
+
+
+
+
+  DATA lv_msg TYPE string.          "BA-5774
+
+
+
+
+          "BOC BA-5774
+          MESSAGE ID ls_message-msgid TYPE 'I' NUMBER ls_message-msgnr
+                  WITH ls_message-msgv1 ls_message-msgv2
+                       ls_message-msgv3 ls_message-msgv4
+                  INTO lv_msg.
+          PERFORM insert_failed_order USING lw_aufnr-aufnr lv_msg.
+          "EOC BA-5774
+
+
+
+
+
+
+              "BOC BA-5774
+              DATA(lv_fail_ord) = CONV aufnr( ls_fin-orderreferencenumber+0(12) ).
+              PERFORM insert_failed_order USING lv_fail_ord ls_fin-errordata.
+              "EOC BA-5774
+
+
+
+
+
+          "BOC BA-5774
+          DATA(lv_api_reason) = |API FAILED { l_status_code }|.
+          PERFORM insert_failed_order USING hs_error-orderno lv_api_reason.
+          "EOC BA-5774
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+BEGIN OF ty_lips,
          vbeln TYPE lips-vbeln,
          posnr TYPE lips-posnr,
          matnr TYPE lips-matnr,
