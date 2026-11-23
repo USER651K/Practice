@@ -1,3 +1,77 @@
+  METHOD has_gr_101.
+
+*   CO11N goods movements (function group COWB):
+*   GT_COMP        = all component/GR rows (deleted rows stay here)
+*   GT_CONTROL_TAB = rows shown on the screen, IND_TO_TABLE -> GT_COMP
+*   A line deleted on the screen is removed only from GT_CONTROL_TAB
+    DATA: ls_comp  TYPE cowb_comp,
+          lv_index TYPE sy-tabix.
+
+    FIELD-SYMBOLS: <lt_comp> TYPE STANDARD TABLE,
+                   <lt_ctrl> TYPE STANDARD TABLE,
+                   <ls_ctrl> TYPE any,
+                   <ls_line> TYPE any,
+                   <lv_ind>  TYPE any.
+
+    rv_found = abap_false.
+
+    ASSIGN ('(SAPLCOWB)GT_COMP[]') TO <lt_comp>.
+    IF sy-subrc <> 0.
+      RETURN.                    "goods movements never loaded -> no 101
+    ENDIF.
+
+    ASSIGN ('(SAPLCOWB)GT_CONTROL_TAB[]') TO <lt_ctrl>.
+    IF sy-subrc = 0 AND <lt_ctrl> IS NOT INITIAL.
+*     Screen list exists -> check only the lines still on the screen
+      LOOP AT <lt_ctrl> ASSIGNING <ls_ctrl>.
+        ASSIGN COMPONENT 'IND_TO_TABLE' OF STRUCTURE <ls_ctrl> TO <lv_ind>.
+        IF sy-subrc <> 0.
+          CONTINUE.
+        ENDIF.
+        lv_index = <lv_ind>.
+        READ TABLE <lt_comp> ASSIGNING <ls_line> INDEX lv_index.
+        IF sy-subrc <> 0.
+          CONTINUE.
+        ENDIF.
+        CLEAR ls_comp.
+        MOVE-CORRESPONDING <ls_line> TO ls_comp.
+        IF ls_comp-aufnr = iv_aufnr
+       AND ls_comp-bwart = gc_bwart_gr
+       AND ls_comp-erfmg > 0.
+          rv_found = abap_true.
+          RETURN.
+        ENDIF.
+      ENDLOOP.
+    ELSE.
+*     Goods Movements screen never opened -> proposals in GT_COMP apply
+      LOOP AT <lt_comp> ASSIGNING <ls_line>.
+        CLEAR ls_comp.
+        MOVE-CORRESPONDING <ls_line> TO ls_comp.
+        IF ls_comp-aufnr = iv_aufnr
+       AND ls_comp-bwart = gc_bwart_gr
+       AND ls_comp-erfmg > 0.
+          rv_found = abap_true.
+          RETURN.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ***BOC--UJWAL--21.11.2026--BA-5776
 CLASS zcl_pp_co11n_zero_yield DEFINITION
   PUBLIC
