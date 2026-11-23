@@ -13,6 +13,162 @@ CLASS zcl_pp_co11n_zero_yield DEFINITION
     CONSTANTS:
       gc_tcode_co11n TYPE sytcode VALUE 'CO11N',
       gc_bwart_gr    TYPE bwart   VALUE '101',
+      gc_gm_buffer   TYPE string  VALUE '(SAPLCOWB)GT_COMP[]'.
+
+    CONSTANTS:
+      gc_enh_id TYPE zpptb_co01_valid-enhacement_id VALUE 'ZCO11N_ZERO_YIELD'.
+
+    CLASS-METHODS is_relevant
+      IMPORTING
+        is_afrud           TYPE afrud
+      RETURNING
+        VALUE(rv_relevant) TYPE abap_bool.
+
+    CLASS-METHODS has_gr_101
+      IMPORTING
+        iv_aufnr        TYPE aufnr
+      RETURNING
+        VALUE(rv_found) TYPE abap_bool.
+ENDCLASS.
+
+
+CLASS zcl_pp_co11n_zero_yield IMPLEMENTATION.
+
+  METHOD process.
+
+    IF is_relevant( cs_afrud ) = abap_false.
+      RETURN.
+    ENDIF.
+
+*   No yield entered (or already zeroed in an earlier pass)
+    IF cs_afrud-lmnga <= 0.
+      RETURN.
+    ENDIF.
+
+*   Keep the yield the user entered
+    cs_afrud-zyield = cs_afrud-lmnga.
+
+*   GR 101 present -> standard behaviour
+    IF has_gr_101( cs_afrud-aufnr ) = abap_true.
+      RETURN.
+    ENDIF.
+
+*   No 101 / no goods movements -> yield = 0
+    CLEAR cs_afrud-lmnga.
+
+  ENDMETHOD.
+
+
+  METHOD is_relevant.
+
+    DATA: lv_werks TYPE aufk-werks,
+          lv_auart TYPE aufk-auart,
+          lv_found TYPE zpptb_co01_valid-plant.
+
+    rv_relevant = abap_false.
+
+    IF sy-tcode <> gc_tcode_co11n.
+      RETURN.
+    ENDIF.
+
+    IF is_afrud-aufnr IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    SELECT SINGLE werks auart FROM aufk
+      INTO (lv_werks, lv_auart)
+      WHERE aufnr = is_afrud-aufnr.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    SELECT SINGLE plant FROM zpptb_co01_valid
+      INTO lv_found
+      WHERE plant         = lv_werks
+        AND enhacement_id = gc_enh_id
+        AND pp_aufart     = lv_auart.
+    IF sy-subrc = 0.
+      rv_relevant = abap_true.
+    ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD has_gr_101.
+
+*   CO11N goods movements: global table GT_COMP of function group COWB
+    DATA: ls_comp TYPE cowb_comp.
+
+    FIELD-SYMBOLS: <lt_comp> TYPE STANDARD TABLE,
+                   <ls_line> TYPE any.
+
+    rv_found = abap_false.
+
+    ASSIGN (gc_gm_buffer) TO <lt_comp>.
+    IF sy-subrc <> 0.
+      RETURN.                    "goods movements never loaded -> no 101
+    ENDIF.
+
+    LOOP AT <lt_comp> ASSIGNING <ls_line>.
+      CLEAR ls_comp.
+      MOVE-CORRESPONDING <ls_line> TO ls_comp.
+      IF ls_comp-aufnr = iv_aufnr
+     AND ls_comp-bwart = gc_bwart_gr
+     AND ls_comp-erfmg > 0.
+        rv_found = abap_true.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+ENDCLASS.
+***EOC--UJWAL--21.11.2026--BA-5776
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***BOC--UJWAL--21.11.2026--BA-5776
+CLASS zcl_pp_co11n_zero_yield DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC.
+
+  PUBLIC SECTION.
+    CLASS-METHODS process
+      CHANGING
+        cs_afrud TYPE afrud.
+
+  PRIVATE SECTION.
+    CONSTANTS:
+      gc_tcode_co11n TYPE sytcode VALUE 'CO11N',
+      gc_bwart_gr    TYPE bwart   VALUE '101',
       gc_enh_id      TYPE enhname VALUE 'ZCO11N_ZERO_YIELD',
       gc_gm_buffer   TYPE string  VALUE '(SAPLCOWB)GT_COMP[]'.
 
