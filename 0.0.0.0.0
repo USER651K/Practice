@@ -1,7 +1,58 @@
+    CLASS-METHODS gm_screen_used
+      IMPORTING
+        iv_aufnr       TYPE aufnr
+      RETURNING
+        VALUE(rv_used) TYPE abap_bool.
+
+
+
+*   Applies only when the Goods Movements screen was used for this
+*   order. Saved directly -> standard, no change.
+    IF gm_screen_used( cs_afrud-aufnr ) = abap_false.
+      RETURN.
+    ENDIF.
+
+
+
+
+
+  METHOD gm_screen_used.
+
+*   Goods Movements screen of CO11N = function group COWB.
+*   GT_COMP holds rows of the order only once the screen was opened.
+    FIELD-SYMBOLS: <lt_comp> TYPE STANDARD TABLE,
+                   <ls_line> TYPE any,
+                   <lv_aufn> TYPE any.
+
+    rv_used = abap_false.
+
+    ASSIGN (gc_gm_buffer) TO <lt_comp>.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    LOOP AT <lt_comp> ASSIGNING <ls_line>.
+      ASSIGN COMPONENT 'AUFNR' OF STRUCTURE <ls_line> TO <lv_aufn>.
+      IF sy-subrc = 0 AND <lv_aufn> = iv_aufnr.
+        rv_used = abap_true.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+
+
+
+
 *&---------------------------------------------------------------------*
 *& Report      ZFI_DMCC_TAX_INV
 *&---------------------------------------------------------------------*
-*& Title       : Tax Invoice / Tax Debit Note / Tax Credit Note (DMCC)
+*&
+
+
+Title       : Tax Invoice / Tax Debit Note / Tax Credit Note (DMCC)
 *& Smartform   : ZDMCC_FI_DOC
 *& Requirement : 3945 (Working_3945_logic.xlsx)
 *& Author      : UJWAL
