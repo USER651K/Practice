@@ -1,4 +1,269 @@
-  METHOD has_gr_101.
+*&---------------------------------------------------------------------*
+*& Report      ZFI_DMCC_TAX_INV
+*&---------------------------------------------------------------------*
+*& Title       : Tax Invoice / Tax Debit Note / Tax Credit Note (DMCC)
+*& Smartform   : ZDMCC_FI_DOC
+*& Requirement : 3945 (Working_3945_logic.xlsx)
+*& Author      : UJWAL
+*& Date        : 27.10.2026
+*& Description : Driver program. ALL data selection, business logic,
+*&               VAT calculation (document currency BKPF-WAERS),
+*&               formatting and amount-in-words is done here. The
+*&               smartform only prints the prepared fields.
+*&               Output: Print / Mail internally / Mail party+internal
+*&---------------------------------------------------------------------*
+*& Change History
+*& Date        Author   Description
+*& 27.10.2026  UJWAL    Initial version
+*& 28.10.2026  UJWAL    Single currency: document currency BKPF-WAERS
+*&                      (AED/USD dual-currency output removed)
+*&---------------------------------------------------------------------*
+REPORT zfi_dmcc_tax_inv.
+
+INCLUDE zfi_dmcc_tax_inv_top.     " Types, constants, global data
+INCLUDE zfi_dmcc_tax_inv_sel.     " Selection screen
+INCLUDE zfi_dmcc_tax_inv_f01.     " Form routines
+
+*----------------------------------------------------------------------*
+INITIALIZATION.
+*----------------------------------------------------------------------*
+  PERFORM init_defaults.
+
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN OUTPUT.
+*----------------------------------------------------------------------*
+  PERFORM modify_screen.
+
+*----------------------------------------------------------------------*
+AT SELECTION-SCREEN.
+*----------------------------------------------------------------------*
+  PERFORM validate_selection.
+
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+*----------------------------------------------------------------------*
+***BOC--UJWAL--27.10.2026 Phase 1: force Print (covers variants/bg jobs)
+  rb_prnt = 'X'.
+  CLEAR: rb_mint, rb_mcus.
+***EOC--UJWAL--27.10.2026
+
+  PERFORM get_data.
+
+  IF gt_bkpf IS INITIAL.
+    MESSAGE 'No documents found for the given selection'(m10)
+            TYPE 'S' DISPLAY LIKE 'E'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  PERFORM get_fm_name.
+  PERFORM build_all.
+
+  IF rb_prnt = 'X'.
+    PERFORM output_print.
+  ELSE.
+    PERFORM output_mail.
+  ENDIF.
+
+  PERFORM display_log.
+
+
+
+
+
+
+
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Include          ZFI_DMCC_TAX_INV_TOP
+*&---------------------------------------------------------------------*
+TABLES: sscrfields.
+
+INCLUDE <icon>.
+
+*----------------------------------------------------------------------*
+* Constants
+*----------------------------------------------------------------------*
+CONSTANTS:
+  gc_formname   TYPE tdsfname   VALUE 'ZDMCC_FI_DOC',
+  gc_tvarv_mail TYPE rvari_vnam VALUE 'ZDMCC_FI_DOC_INT_MAIL',
+  gc_kappl_tx   TYPE kappl      VALUE 'TX',
+  gc_koart_cust TYPE koart      VALUE 'D',
+  gc_koart_vend TYPE koart      VALUE 'K',
+  gc_koart_gl   TYPE koart      VALUE 'S',
+  gc_buzid_tax  TYPE buzid      VALUE 'T'.
+
+*----------------------------------------------------------------------*
+* Types
+*----------------------------------------------------------------------*
+TYPES: ty_pct TYPE p LENGTH 7 DECIMALS 3.
+
+TYPES: BEGIN OF ty_bkpf,
+         bukrs TYPE bkpf-bukrs,
+         belnr TYPE bkpf-belnr,
+         gjahr TYPE bkpf-gjahr,
+         blart TYPE bkpf-blart,
+         budat TYPE bkpf-budat,
+         xblnr TYPE bkpf-xblnr,
+         waers TYPE bkpf-waers,
+       END OF ty_bkpf.
+
+TYPES: BEGIN OF ty_bseg,
+         bukrs TYPE bseg-bukrs,
+         belnr TYPE bseg-belnr,
+         gjahr TYPE bseg-gjahr,
+         buzei TYPE bseg-buzei,
+         buzid TYPE bseg-buzid,
+         koart TYPE bseg-koart,
+         shkzg TYPE bseg-shkzg,
+         mwskz TYPE bseg-mwskz,
+         wrbtr TYPE bseg-wrbtr,
+         sgtxt TYPE bseg-sgtxt,
+         kunnr TYPE bseg-kunnr,
+         lifnr TYPE bseg-lifnr,
+         rebzg TYPE bseg-rebzg,
+         rebzj TYPE bseg-rebzj,
+       END OF ty_bseg,
+       ty_t_bseg TYPE STANDARD TABLE OF ty_bseg WITH DEFAULT KEY.
+
+TYPES: BEGIN OF ty_t001,
+         bukrs TYPE t001-bukrs,
+         butxt TYPE t001-butxt,
+         land1 TYPE t001-land1,
+         adrnr TYPE t001-adrnr,
+         stceg TYPE t001-stceg,
+       END OF ty_t001.
+
+* VAT rate buffer (per tax code)
+TYPES: BEGIN OF ty_rate,
+         mwskz TYPE mwskz,
+         rate  TYPE ty_pct,
+       END OF ty_rate.
+
+TYPES: BEGIN OF ty_tax_cond,
+         knumh TYPE konp-knumh,
+         kbetr TYPE konp-kbetr,
+       END OF ty_tax_cond.
+
+* Raw (numeric) values per printable line - document currency
+TYPES: BEGIN OF ty_calc,
+         sgtxt TYPE bseg-sgtxt,
+         mwskz TYPE bseg-mwskz,
+         rate  TYPE ty_pct,
+         amt   TYPE bseg-wrbtr,
+         vat   TYPE bseg-wrbtr,
+       END OF ty_calc,
+       ty_t_calc TYPE STANDARD TABLE OF ty_calc WITH DEFAULT KEY.
+
+TYPES: ty_t_mail TYPE STANDARD TABLE OF ad_smtpadr WITH DEFAULT KEY.
+
+* One complete form (per document) ready for output
+TYPES: BEGIN OF ty_out,
+         hdr  TYPE zst_dmcc_fi_hdr,
+         itm  TYPE ztt_dmcc_fi_itm,
+         mail TYPE ty_t_mail,          " Customer / vendor e-mail IDs
+         warn TYPE bapi_msg,           " Non-blocking warning
+       END OF ty_out.
+
+TYPES: BEGIN OF ty_log,
+         status  TYPE icon_d,
+         bukrs   TYPE bukrs,
+         belnr   TYPE belnr_d,
+         gjahr   TYPE gjahr,
+         blart   TYPE blart,
+         message TYPE bapi_msg,
+       END OF ty_log.
+
+*----------------------------------------------------------------------*
+* Global data
+*----------------------------------------------------------------------*
+DATA: gt_bkpf      TYPE STANDARD TABLE OF ty_bkpf,
+      gt_bseg      TYPE STANDARD TABLE OF ty_bseg,
+      gt_rate      TYPE STANDARD TABLE OF ty_rate,
+      gt_out       TYPE STANDARD TABLE OF ty_out,
+      gt_log       TYPE STANDARD TABLE OF ty_log,
+      gs_t001      TYPE ty_t001,
+      gv_comp_addr TYPE char255,
+      gv_fm_name   TYPE rs38l_fnam,
+      gv_belnr     TYPE bkpf-belnr,       " Selection screen reference
+      gv_email     TYPE ad_smtpadr.       " Selection screen reference
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+METHOD has_gr_101.
 
 *   CO11N goods movements (function group COWB):
 *   GT_COMP        = all component/GR rows (deleted rows stay here)
