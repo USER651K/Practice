@@ -1,3 +1,72 @@
+*BOC--CODE ADDED--UJWAL--27.11.2026. (BA-5951)
+*&---------------------------------------------------------------------*
+*& Form VALIDATE_BATCH
+*&---------------------------------------------------------------------*
+*& Valid Batch = Plant Batch code (ZF2P_PRD_BATCH-VAR, MvT 101)
+*&               + Order Number. Invalid orders are not pushed to BCIL.
+*&---------------------------------------------------------------------*
+FORM validate_batch.
+
+  DATA: lt_inv_ord TYPE SORTED TABLE OF aufnr WITH UNIQUE KEY table_line,
+        lv_ord_out TYPE string,
+        ls_bc_alv  TYPE ty_alv.
+
+  CHECK it_aufnr IS NOT INITIAL.
+
+  SELECT pwerk, var
+    FROM zf2p_prd_batch
+    FOR ALL ENTRIES IN @it_aufnr
+    WHERE pwerk = @it_aufnr-werks
+      AND bwart = '101'
+    INTO TABLE @DATA(lt_batch_pfx).
+
+  SORT lt_batch_pfx BY pwerk.
+
+  LOOP AT it_aufnr INTO DATA(ls_bchk).
+    lv_ord_out = |{ ls_bchk-aufnr ALPHA = OUT }|.
+
+    READ TABLE lt_batch_pfx INTO DATA(ls_batch_pfx)
+         WITH KEY pwerk = ls_bchk-werks BINARY SEARCH.
+    IF sy-subrc = 0 AND ls_bchk-charg = |{ ls_batch_pfx-var }{ lv_ord_out }|.
+      CONTINUE.                                          "Valid batch
+    ENDIF.
+
+*   Invalid batch - one error line per order
+    INSERT ls_bchk-aufnr INTO TABLE lt_inv_ord.
+    IF sy-subrc = 0.
+      CLEAR ls_bc_alv.
+      ls_bc_alv-orderno  = ls_bchk-aufnr.
+      ls_bc_alv-sitecode = ls_bchk-werks.
+      ls_bc_alv-itemcode = ls_bchk-plnbez.
+      ls_bc_alv-batchno  = ls_bchk-charg.
+      ls_bc_alv-zerror   = replace( val  = replace( val = TEXT-003 sub = '&1' with = lv_ord_out )
+                                    sub  = '&2'
+                                    with = ls_bchk-charg ).
+      APPEND ls_bc_alv TO it_table1.
+    ENDIF.
+  ENDLOOP.
+
+* Restrict invalid orders from push to BCIL
+  LOOP AT lt_inv_ord INTO DATA(lv_inv_ord).
+    DELETE it_aufnr WHERE aufnr = lv_inv_ord.
+  ENDLOOP.
+
+ENDFORM.
+*EOC--CODE ADDED--UJWAL--27.11.2026. (BA-5951)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 *Description  - BA-5951 - Restricting Invalid Batch push to BCIL
 *Technical    - Ujwal Gupta
 *Date         - 27.11.2026
